@@ -1,0 +1,1 @@
+"""Signal module placeholder."""

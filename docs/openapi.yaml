@@ -1,0 +1,1946 @@
+openapi: 3.1.0
+info:
+  title: NianNian API
+  version: 1.0.0
+  description: |
+    API contract for the NianNian AI companion system. Public DTOs are not ORM entities.
+    Sensitive conversation content, embeddings, provider metadata and tokens are never
+    exposed through public resource schemas.
+servers:
+  - url: /v1
+    description: Versioned API base path
+tags:
+  - name: Auth
+  - name: Families
+  - name: Consents
+  - name: Memories
+  - name: Files
+  - name: Reminders
+  - name: Conversations
+  - name: SignalEvents
+  - name: Notifications
+  - name: Reports
+  - name: Emergency
+  - name: Devices
+  - name: Audit
+  - name: Privacy
+security:
+  - bearerAuth: []
+x-websocket-channels:
+  /ws/conversations/{conversation_id}:
+    summary: Conversation state channel
+    security:
+      - bearerAuth: []
+    parameters:
+      conversation_id:
+        $ref: '#/components/parameters/ConversationId'
+    clientMessages:
+      $ref: '#/components/schemas/WebSocketClientMessage'
+    serverMessages:
+      $ref: '#/components/schemas/WebSocketServerMessage'
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              credential:
+                type: DEMO
+                identifier: demo-elder
+              device:
+                device_id: demo-elder-tablet
+                name: Elder tablet
+                app_version: 0.1.0
+      responses:
+        '201':
+          description: Signed in and device session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+              example:
+                access_token: eyJhbGciOi...
+                refresh_token: r1_demo_only
+                token_type: Bearer
+                expires_in: 900
+                user:
+                  id: 0192f1e4-6ed8-7c21-a4c1-5d58db7c1001
+                  display_name: 王阿姨
+                  timezone: Asia/Shanghai
+                  global_status: ACTIVE
+                families: []
+                device_session:
+                  id: 0192f1e4-6ed8-7c21-a4c1-5d58db7c1002
+                  device_name: Elder tablet
+                  created_at: '2026-09-22T06:00:00Z'
+        '401': { $ref: '#/components/responses/AuthError' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimitError' }
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshAccessToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: Rotated access and refresh tokens
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '401': { $ref: '#/components/responses/AuthError' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      responses:
+        '204': { description: Current device session revoked }
+        '401': { $ref: '#/components/responses/AuthError' }
+  /auth/logout-all:
+    post:
+      tags: [Auth]
+      operationId: logoutAll
+      responses:
+        '204': { description: All sessions for current user revoked }
+        '401': { $ref: '#/components/responses/AuthError' }
+  /me:
+    get:
+      tags: [Auth]
+      operationId: getCurrentUser
+      responses:
+        '200':
+          description: Current user and memberships
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeResponse' }
+        '401': { $ref: '#/components/responses/AuthError' }
+  /families:
+    get:
+      tags: [Families]
+      operationId: listFamilies
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Current user's family memberships
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FamilySummaryPage' }
+    post:
+      tags: [Families]
+      operationId: createFamily
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FamilyCreate' }
+      responses:
+        '201':
+          description: Family created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FamilyResponse' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+  /families/{family_id}:
+    parameters:
+      - $ref: '#/components/parameters/FamilyId'
+    get:
+      tags: [Families]
+      operationId: getFamily
+      responses:
+        '200':
+          description: Family
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FamilyResponse' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+  /families/{family_id}/invitations:
+    parameters:
+      - $ref: '#/components/parameters/FamilyId'
+    post:
+      tags: [Families]
+      operationId: createFamilyInvitation
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InvitationCreate' }
+      responses:
+        '201':
+          description: One-time invitation token (shown once)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InvitationResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+  /families/{family_id}/invitations/{invitation_id}/revoke:
+    parameters:
+      - $ref: '#/components/parameters/FamilyId'
+      - $ref: '#/components/parameters/InvitationId'
+    post:
+      tags: [Families]
+      operationId: revokeFamilyInvitation
+      responses:
+        '204': { description: Invitation revoked }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+  /family-invitations/{token}/accept:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema: { type: string, minLength: 16, maxLength: 512 }
+    post:
+      tags: [Families]
+      operationId: acceptFamilyInvitation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InvitationAccept' }
+      responses:
+        '200':
+          description: Pending or activated family membership
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FamilyMemberResponse' }
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+  /families/{family_id}/members:
+    parameters:
+      - $ref: '#/components/parameters/FamilyId'
+    get:
+      tags: [Families]
+      operationId: listFamilyMembers
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/MemberStatus' }
+      responses:
+        '200':
+          description: Family members
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FamilyMemberPage' }
+  /families/{family_id}/members/{member_id}:
+    parameters:
+      - $ref: '#/components/parameters/FamilyId'
+      - $ref: '#/components/parameters/MemberId'
+    get:
+      tags: [Families]
+      operationId: getFamilyMember
+      responses:
+        '200':
+          description: Family member
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FamilyMemberResponse' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+    patch:
+      tags: [Families]
+      operationId: updateFamilyMember
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FamilyMemberUpdate' }
+      responses:
+        '200':
+          description: Updated member
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FamilyMemberResponse' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+  /families/{family_id}/members/{member_id}/leave:
+    parameters:
+      - $ref: '#/components/parameters/FamilyId'
+      - $ref: '#/components/parameters/MemberId'
+    post:
+      tags: [Families]
+      operationId: leaveFamilyMember
+      responses:
+        '204': { description: Member left family }
+  /consents:
+    get:
+      tags: [Consents]
+      operationId: listConsents
+      parameters:
+        - name: family_id
+          in: query
+          schema: { $ref: '#/components/schemas/Id' }
+        - name: subject_user_id
+          in: query
+          schema: { $ref: '#/components/schemas/Id' }
+        - name: grantee_user_id
+          in: query
+          schema: { $ref: '#/components/schemas/Id' }
+        - name: scope
+          in: query
+          schema: { $ref: '#/components/schemas/ConsentScope' }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Visible consent history
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConsentPage' }
+    post:
+      tags: [Consents]
+      operationId: grantConsent
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConsentCreate' }
+      responses:
+        '201':
+          description: Immutable consent record
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConsentResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+  /consents/{consent_id}:
+    parameters:
+      - $ref: '#/components/parameters/ConsentId'
+    get:
+      tags: [Consents]
+      operationId: getConsent
+      responses:
+        '200':
+          description: Consent history item
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConsentResponse' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+  /consents/{consent_id}/revoke:
+    parameters:
+      - $ref: '#/components/parameters/ConsentId'
+    post:
+      tags: [Consents]
+      operationId: revokeConsent
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConsentRevoke' }
+      responses:
+        '201':
+          description: New immutable revoked history record
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConsentResponse' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+  /memories:
+    get:
+      tags: [Memories]
+      operationId: listMemories
+      parameters:
+        - name: family_id
+          in: query
+          schema: { $ref: '#/components/schemas/Id' }
+        - name: subject_user_id
+          in: query
+          schema: { $ref: '#/components/schemas/Id' }
+        - name: type
+          in: query
+          schema: { $ref: '#/components/schemas/MemoryType' }
+        - name: verification_status
+          in: query
+          schema: { $ref: '#/components/schemas/MemoryStatus' }
+        - name: pending_confirmation
+          in: query
+          schema: { type: boolean }
+        - name: q
+          in: query
+          schema: { type: string, maxLength: 160 }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Authorized memories only
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemoryPage' }
+    post:
+      tags: [Memories]
+      operationId: createMemory
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemoryCreate' }
+      responses:
+        '201':
+          description: Memory created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemoryResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+  /memories/{memory_id}:
+    parameters:
+      - $ref: '#/components/parameters/MemoryId'
+    get:
+      tags: [Memories]
+      operationId: getMemory
+      responses:
+        '200':
+          description: Authorized memory detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemoryDetailResponse' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+    patch:
+      tags: [Memories]
+      operationId: updateMemory
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemoryUpdate' }
+      responses:
+        '200':
+          description: Updated memory
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemoryResponse' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+    delete:
+      tags: [Memories]
+      operationId: deleteMemory
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: Memory hidden immediately; cleanup asynchronous
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataJobResponse' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+  /memories/{memory_id}/confirm:
+    parameters: [{ $ref: '#/components/parameters/MemoryId' }]
+    post:
+      tags: [Memories]
+      operationId: confirmMemory
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      responses:
+        '200':
+          description: Confirmed memory
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemoryResponse' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+  /memories/{memory_id}/reject:
+    parameters: [{ $ref: '#/components/parameters/MemoryId' }]
+    post:
+      tags: [Memories]
+      operationId: rejectMemory
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      responses:
+        '200':
+          description: Rejected memory
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemoryResponse' }
+  /memories/{memory_id}/revoke:
+    parameters: [{ $ref: '#/components/parameters/MemoryId' }]
+    post:
+      tags: [Memories]
+      operationId: revokeMemory
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      responses:
+        '200':
+          description: Revoked memory
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemoryResponse' }
+  /memories/{memory_id}/feedback:
+    parameters: [{ $ref: '#/components/parameters/MemoryId' }]
+    post:
+      tags: [Memories]
+      operationId: reportMemoryFeedback
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemoryFeedbackRequest' }
+      responses:
+        '202': { description: Feedback accepted and queued for review }
+  /files/upload-requests:
+    post:
+      tags: [Files]
+      operationId: createFileUploadRequest
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FileUploadRequest' }
+      responses:
+        '201':
+          description: Short-lived signed upload URL
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SignedUploadResponse' }
+        '413': { $ref: '#/components/responses/FileTooLargeError' }
+  /files/{file_id}/confirm:
+    parameters: [{ $ref: '#/components/parameters/FileId' }]
+    post:
+      tags: [Files]
+      operationId: confirmFileUpload
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FileUploadConfirm' }
+      responses:
+        '202':
+          description: Object validation/processing queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FileAssetResponse' }
+  /files/{file_id}/download-url:
+    parameters: [{ $ref: '#/components/parameters/FileId' }]
+    get:
+      tags: [Files]
+      operationId: createFileDownloadUrl
+      responses:
+        '200':
+          description: Short-lived authorized URL
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SignedDownloadResponse' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+  /files/{file_id}:
+    parameters: [{ $ref: '#/components/parameters/FileId' }]
+    delete:
+      tags: [Files]
+      operationId: deleteFile
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      responses:
+        '202': { description: File deletion queued }
+  /reminders:
+    get:
+      tags: [Reminders]
+      operationId: listReminders
+      parameters:
+        - name: family_id
+          in: query
+          schema: { $ref: '#/components/schemas/Id' }
+        - name: owner_user_id
+          in: query
+          schema: { $ref: '#/components/schemas/Id' }
+        - name: type
+          in: query
+          schema: { $ref: '#/components/schemas/ReminderType' }
+        - name: active
+          in: query
+          schema: { type: boolean }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Reminder rules
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReminderPage' }
+    post:
+      tags: [Reminders]
+      operationId: createReminder
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReminderCreate' }
+      responses:
+        '201':
+          description: Reminder created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReminderResponse' }
+  /reminders/{reminder_id}:
+    parameters: [{ $ref: '#/components/parameters/ReminderId' }]
+    get:
+      tags: [Reminders]
+      operationId: getReminder
+      responses:
+        '200':
+          description: Reminder
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReminderResponse' }
+    patch:
+      tags: [Reminders]
+      operationId: updateReminder
+      parameters: [{ $ref: '#/components/parameters/IfMatch' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReminderUpdate' }
+      responses:
+        '200':
+          description: Updated reminder
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReminderResponse' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+    delete:
+      tags: [Reminders]
+      operationId: deleteReminder
+      responses:
+        '204': { description: Reminder disabled/deleted }
+  /reminders/{reminder_id}/executions:
+    parameters: [{ $ref: '#/components/parameters/ReminderId' }]
+    get:
+      tags: [Reminders]
+      operationId: listReminderExecutions
+      parameters:
+        - name: feedback_status
+          in: query
+          schema: { $ref: '#/components/schemas/ReminderFeedbackStatus' }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Reminder executions
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReminderExecutionPage' }
+  /reminder-executions/{execution_id}/feedback:
+    parameters: [{ $ref: '#/components/parameters/ExecutionId' }]
+    post:
+      tags: [Reminders]
+      operationId: submitReminderFeedback
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReminderFeedbackRequest' }
+      responses:
+        '200':
+          description: Feedback recorded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReminderExecutionResponse' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+  /conversations:
+    post:
+      tags: [Conversations]
+      operationId: createConversation
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConversationCreate' }
+      responses:
+        '201':
+          description: Conversation created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConversationResponse' }
+        '503': { $ref: '#/components/responses/UnavailableError' }
+  /conversations/{conversation_id}:
+    parameters: [{ $ref: '#/components/parameters/ConversationId' }]
+    get:
+      tags: [Conversations]
+      operationId: getConversation
+      responses:
+        '200':
+          description: Session metadata and authorized summary status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConversationResponse' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+  /conversations/{conversation_id}/end:
+    parameters: [{ $ref: '#/components/parameters/ConversationId' }]
+    post:
+      tags: [Conversations]
+      operationId: endConversation
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConversationEndRequest' }
+      responses:
+        '200':
+          description: Conversation ended
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConversationResponse' }
+  /conversations/{conversation_id}/summary:
+    parameters: [{ $ref: '#/components/parameters/ConversationId' }]
+    post:
+      tags: [Conversations]
+      operationId: requestConversationSummary
+      responses:
+        '202':
+          description: Summary generation requested
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConversationSummaryJob' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+  /signal-events:
+    get:
+      tags: [SignalEvents]
+      operationId: listSignalEvents
+      parameters:
+        - name: family_id
+          in: query
+          schema: { $ref: '#/components/schemas/Id' }
+        - name: type
+          in: query
+          schema: { $ref: '#/components/schemas/SignalType' }
+        - name: severity
+          in: query
+          schema: { $ref: '#/components/schemas/SignalSeverity' }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/SignalStatus' }
+        - name: from
+          in: query
+          schema: { $ref: '#/components/schemas/Timestamp' }
+        - name: to
+          in: query
+          schema: { $ref: '#/components/schemas/Timestamp' }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Authorized signal events
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SignalEventPage' }
+  /signal-events/{event_id}:
+    parameters: [{ $ref: '#/components/parameters/EventId' }]
+    get:
+      tags: [SignalEvents]
+      operationId: getSignalEvent
+      responses:
+        '200':
+          description: Explainable signal detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SignalEventDetailResponse' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+  /signal-events/{event_id}/ack:
+    parameters: [{ $ref: '#/components/parameters/EventId' }]
+    post:
+      tags: [SignalEvents]
+      operationId: acknowledgeSignalEvent
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      responses:
+        '200':
+          description: Acknowledged signal
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SignalEventDetailResponse' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+  /signal-events/{event_id}/contact:
+    parameters: [{ $ref: '#/components/parameters/EventId' }]
+    post:
+      tags: [SignalEvents]
+      operationId: contactForSignalEvent
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SignalContactRequest' }
+      responses:
+        '202':
+          description: Contact flow initiated; does not mean connected
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmergencyCallResponse' }
+  /signal-events/{event_id}/false-positive:
+    parameters: [{ $ref: '#/components/parameters/EventId' }]
+    post:
+      tags: [SignalEvents]
+      operationId: markSignalFalsePositive
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FalsePositiveRequest' }
+      responses:
+        '200':
+          description: False positive recorded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SignalEventDetailResponse' }
+  /signal-events/{event_id}/resolve:
+    parameters: [{ $ref: '#/components/parameters/EventId' }]
+    post:
+      tags: [SignalEvents]
+      operationId: resolveSignalEvent
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      responses:
+        '200':
+          description: Resolved signal
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SignalEventDetailResponse' }
+  /notifications:
+    get:
+      tags: [Notifications]
+      operationId: listNotifications
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/NotificationStatus' }
+        - name: channel
+          in: query
+          schema: { $ref: '#/components/schemas/NotificationChannel' }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Recipient inbox
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationPage' }
+  /notifications/{notification_id}:
+    parameters: [{ $ref: '#/components/parameters/NotificationId' }]
+    get:
+      tags: [Notifications]
+      operationId: getNotification
+      responses:
+        '200':
+          description: Notification
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationResponse' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+  /notifications/{notification_id}/read:
+    parameters: [{ $ref: '#/components/parameters/NotificationId' }]
+    post:
+      tags: [Notifications]
+      operationId: markNotificationRead
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      responses:
+        '200':
+          description: Read notification
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationResponse' }
+  /notifications/{notification_id}/action:
+    parameters: [{ $ref: '#/components/parameters/NotificationId' }]
+    post:
+      tags: [Notifications]
+      operationId: actOnNotification
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotificationActionRequest' }
+      responses:
+        '200':
+          description: Notification action recorded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationResponse' }
+  /reports/weekly:
+    get:
+      tags: [Reports]
+      operationId: listWeeklyReports
+      parameters:
+        - name: family_id
+          in: query
+          schema: { $ref: '#/components/schemas/Id' }
+        - name: owner_user_id
+          in: query
+          schema: { $ref: '#/components/schemas/Id' }
+        - name: period_start
+          in: query
+          schema: { $ref: '#/components/schemas/LocalDate' }
+        - name: period_end
+          in: query
+          schema: { $ref: '#/components/schemas/LocalDate' }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Weekly reports
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WeeklyReportPage' }
+    post:
+      tags: [Reports]
+      operationId: requestWeeklyReport
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WeeklyReportRequest' }
+      responses:
+        '202':
+          description: Report generation queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataJobResponse' }
+  /reports/weekly/{report_id}:
+    parameters: [{ $ref: '#/components/parameters/ReportId' }]
+    get:
+      tags: [Reports]
+      operationId: getWeeklyReport
+      responses:
+        '200':
+          description: Versioned weekly report
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WeeklyReportResponse' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+  /emergency/contacts:
+    get:
+      tags: [Emergency]
+      operationId: listEmergencyContacts
+      responses:
+        '200':
+          description: Owner-scoped contacts
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmergencyContactPage' }
+    post:
+      tags: [Emergency]
+      operationId: createEmergencyContact
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmergencyContactCreate' }
+      responses:
+        '201':
+          description: Contact created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmergencyContactResponse' }
+  /emergency/contacts/{contact_id}:
+    parameters: [{ $ref: '#/components/parameters/ContactId' }]
+    patch:
+      tags: [Emergency]
+      operationId: updateEmergencyContact
+      parameters: [{ $ref: '#/components/parameters/IfMatch' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmergencyContactUpdate' }
+      responses:
+        '200':
+          description: Updated contact
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmergencyContactResponse' }
+    delete:
+      tags: [Emergency]
+      operationId: deleteEmergencyContact
+      responses:
+        '204': { description: Contact disabled/deleted }
+  /emergency/calls:
+    post:
+      tags: [Emergency]
+      operationId: createEmergencyCall
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmergencyCallCreate' }
+      responses:
+        '202':
+          description: Contact flow initiated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmergencyCallResponse' }
+  /emergency/calls/{call_id}:
+    parameters: [{ $ref: '#/components/parameters/CallId' }]
+    get:
+      tags: [Emergency]
+      operationId: getEmergencyCall
+      responses:
+        '200':
+          description: Emergency call result state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmergencyCallResponse' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+  /devices/register:
+    post:
+      tags: [Devices]
+      operationId: registerDevice
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeviceRegister' }
+      responses:
+        '201':
+          description: Device binding
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceResponse' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+  /devices:
+    get:
+      tags: [Devices]
+      operationId: listDevices
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Bound devices
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DevicePage' }
+  /devices/{device_id}:
+    parameters: [{ $ref: '#/components/parameters/DeviceId' }]
+    get:
+      tags: [Devices]
+      operationId: getDevice
+      responses:
+        '200':
+          description: Device capability state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceResponse' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+  /devices/{device_id}/heartbeat:
+    parameters: [{ $ref: '#/components/parameters/DeviceId' }]
+    post:
+      tags: [Devices]
+      operationId: heartbeatDevice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeviceHeartbeat' }
+      responses:
+        '200':
+          description: Updated device state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceResponse' }
+        '429': { $ref: '#/components/responses/RateLimitError' }
+  /devices/{device_id}/settings:
+    parameters: [{ $ref: '#/components/parameters/DeviceId' }]
+    patch:
+      tags: [Devices]
+      operationId: updateDeviceSettings
+      parameters: [{ $ref: '#/components/parameters/IfMatch' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeviceSettingsUpdate' }
+      responses:
+        '200':
+          description: Updated device settings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceResponse' }
+  /devices/{device_id}/unbind:
+    parameters: [{ $ref: '#/components/parameters/DeviceId' }]
+    post:
+      tags: [Devices]
+      operationId: unbindDevice
+      responses:
+        '204': { description: Device unbound }
+  /audit-logs:
+    get:
+      tags: [Audit]
+      operationId: listAuditLogs
+      parameters:
+        - name: family_id
+          in: query
+          schema: { $ref: '#/components/schemas/Id' }
+        - name: action
+          in: query
+          schema: { type: string, maxLength: 64 }
+        - name: target_type
+          in: query
+          schema: { type: string, maxLength: 48 }
+        - name: from
+          in: query
+          schema: { $ref: '#/components/schemas/Timestamp' }
+        - name: to
+          in: query
+          schema: { $ref: '#/components/schemas/Timestamp' }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Authorized audit records
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditLogPage' }
+  /data-exports:
+    post:
+      tags: [Privacy]
+      operationId: requestDataExport
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DataExportRequest' }
+      responses:
+        '202':
+          description: Export queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataJobResponse' }
+  /data-exports/{export_id}:
+    parameters: [{ $ref: '#/components/parameters/ExportId' }]
+    get:
+      tags: [Privacy]
+      operationId: getDataExport
+      responses:
+        '200':
+          description: Export job state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataJobResponse' }
+  /account-deletion-requests:
+    post:
+      tags: [Privacy]
+      operationId: requestAccountDeletion
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccountDeletionRequest' }
+      responses:
+        '202':
+          description: Account deletion queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountDeletionResponse' }
+  /account-deletion-requests/{request_id}:
+    parameters: [{ $ref: '#/components/parameters/DeletionRequestId' }]
+    get:
+      tags: [Privacy]
+      operationId: getAccountDeletionRequest
+      responses:
+        '200':
+          description: Account deletion state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountDeletionResponse' }
+  /account-deletion-requests/{request_id}/cancel:
+    parameters: [{ $ref: '#/components/parameters/DeletionRequestId' }]
+    post:
+      tags: [Privacy]
+      operationId: cancelAccountDeletion
+      responses:
+        '200':
+          description: Cancellation result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountDeletionResponse' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: access-token
+  parameters:
+    FamilyId: { name: family_id, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    InvitationId: { name: invitation_id, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    MemberId: { name: member_id, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    ConsentId: { name: consent_id, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    MemoryId: { name: memory_id, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    FileId: { name: file_id, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    ReminderId: { name: reminder_id, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    ExecutionId: { name: execution_id, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    ConversationId: { name: conversation_id, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    EventId: { name: event_id, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    NotificationId: { name: notification_id, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    ReportId: { name: report_id, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    ContactId: { name: contact_id, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    CallId: { name: call_id, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    DeviceId: { name: device_id, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    ExportId: { name: export_id, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    DeletionRequestId: { name: request_id, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string, maxLength: 512 }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, minLength: 1, maxLength: 128 }
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema: { type: string, minLength: 1, maxLength: 64 }
+  responses:
+    AuthError:
+      description: Authentication failed
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+    ForbiddenError:
+      description: Authenticated but not allowed
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+    NotFoundError:
+      description: Missing or intentionally hidden resource
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+    BadRequestError:
+      description: Invalid state transition or request
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+    ValidationError:
+      description: Schema validation error
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+    ConflictError:
+      description: Conflict or optimistic concurrency failure
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+    RateLimitError:
+      description: Rate limited
+      headers: { Retry-After: { schema: { type: integer } } }
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+    UnavailableError:
+      description: Service or provider temporarily unavailable
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+    FileTooLargeError:
+      description: File exceeds configured limit
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+  examples:
+    UserElder:
+      value:
+        id: 0192f1e4-6ed8-7c21-a4c1-5d58db7c1001
+        display_name: 王阿姨
+        timezone: Asia/Shanghai
+        global_status: ACTIVE
+  schemas:
+    Id: { type: string, format: uuid }
+    Timestamp: { type: string, format: date-time }
+    LocalDate: { type: string, format: date }
+    TimeOfDay: { type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$' }
+    Version: { type: integer, minimum: 1 }
+    ConsentScope:
+      type: string
+      enum: [VOICE, PORTRAIT, FAMILY_MEMORY, HEALTH_MEDICATION, CONVERSATION_SUMMARY, CAMERA_PROXIMITY, NOTIFICATION_TO_FAMILY]
+    FamilyRole: { type: string, enum: [ELDER, CHILD, CAREGIVER, EMERGENCY_CONTACT] }
+    MemberStatus: { type: string, enum: [PENDING, ACTIVE, REVOKED, LEFT] }
+    MemoryType: { type: string, enum: [PERSON, RELATIONSHIP, EVENT, PLACE, PREFERENCE, TABOO, PHOTO] }
+    MemoryStatus: { type: string, enum: [PENDING, CONFIRMED, REJECTED, REVOKED, DELETED] }
+    ReminderType: { type: string, enum: [CALENDAR, WEATHER, MEDICATION, WATER, CLOTHING, COMPANIONSHIP] }
+    ReminderFeedbackStatus: { type: string, enum: [PENDING, DONE, LATER, SKIPPED, NO_RESPONSE] }
+    SignalType: { type: string, enum: [PHYSICAL_DISCOMFORT, EMOTION_EXPRESSION, IMPORTANT_MEMORY, MISS_FAMILY, SCAM_RISK, EMERGENCY] }
+    SignalSeverity: { type: string, enum: [L0, L1, L2, L3, L4] }
+    SignalStatus: { type: string, enum: [DETECTED, VALIDATED, NOTIFIED, ACKNOWLEDGED, CONTACTED, FALSE_POSITIVE, RESOLVED, WITHHELD, NOTIFICATION_FAILED] }
+    NotificationChannel: { type: string, enum: [IN_APP, PUSH, SMS, PHONE] }
+    NotificationStatus: { type: string, enum: [PENDING, QUEUED, SENT, DELIVERED, READ, FAILED, CANCELLED] }
+    ErrorDetail:
+      type: object
+      required: [field, reason]
+      properties:
+        field: { type: string }
+        reason: { type: string }
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, example: MEMORY_NOT_FOUND }
+        message: { type: string, example: 这条家庭记忆已不存在或你没有查看权限。 }
+        details:
+          type: array
+          items: { $ref: '#/components/schemas/ErrorDetail' }
+    ErrorResponse:
+      type: object
+      required: [error, request_id]
+      properties:
+        error: { $ref: '#/components/schemas/ErrorBody' }
+        request_id: { type: string, example: req_01J9N9M7Z7 }
+    PageInfo:
+      type: object
+      required: [limit, has_more]
+      properties:
+        limit: { type: integer, minimum: 1, maximum: 100 }
+        next_cursor: { type: string, nullable: true }
+        has_more: { type: boolean }
+    UserResponse:
+      type: object
+      required: [id, display_name, timezone, global_status]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        display_name: { type: string, maxLength: 120 }
+        timezone: { type: string, example: Asia/Shanghai }
+        global_status: { type: string, enum: [ACTIVE, SUSPENDED, DELETED] }
+        accessibility_settings: { type: object, additionalProperties: true }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+    DeviceSessionResponse:
+      type: object
+      required: [id, device_name, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        device_name: { type: string }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        last_seen_at: { $ref: '#/components/schemas/Timestamp' }
+    TokenPair:
+      type: object
+      required: [access_token, refresh_token, token_type, expires_in]
+      properties:
+        access_token: { type: string, writeOnly: true }
+        refresh_token: { type: string, writeOnly: true }
+        token_type: { type: string, enum: [Bearer] }
+        expires_in: { type: integer, minimum: 1 }
+    LoginRequest:
+      type: object
+      required: [credential, device]
+      properties:
+        credential:
+          type: object
+          required: [type, identifier]
+          properties:
+            type: { type: string, enum: [DEMO, VERIFICATION_CODE] }
+            identifier: { type: string, maxLength: 160 }
+            proof: { type: string, writeOnly: true, maxLength: 256 }
+        device:
+          type: object
+          required: [device_id, name, app_version]
+          properties:
+            device_id: { type: string, maxLength: 160 }
+            name: { type: string, maxLength: 120 }
+            app_version: { type: string, maxLength: 64 }
+    RefreshTokenRequest:
+      type: object
+      required: [refresh_token]
+      properties: { refresh_token: { type: string, writeOnly: true } }
+    AuthResponse:
+      allOf:
+        - $ref: '#/components/schemas/TokenPair'
+        - type: object
+          required: [user, families, device_session]
+          properties:
+            user: { $ref: '#/components/schemas/UserResponse' }
+            families:
+              type: array
+              items: { $ref: '#/components/schemas/FamilySummary' }
+            device_session: { $ref: '#/components/schemas/DeviceSessionResponse' }
+    FamilyCreate:
+      type: object
+      required: [name]
+      properties: { name: { type: string, minLength: 1, maxLength: 120 } }
+    FamilySummary:
+      type: object
+      required: [id, name, status, role]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        name: { type: string }
+        status: { type: string, enum: [ACTIVE, SUSPENDED, DELETED] }
+        role: { $ref: '#/components/schemas/FamilyRole' }
+        member_status: { $ref: '#/components/schemas/MemberStatus' }
+    FamilyResponse:
+      allOf:
+        - $ref: '#/components/schemas/FamilySummary'
+        - type: object
+          properties:
+            created_by_user_id: { $ref: '#/components/schemas/Id' }
+            created_at: { $ref: '#/components/schemas/Timestamp' }
+            updated_at: { $ref: '#/components/schemas/Timestamp' }
+    FamilyMemberResponse:
+      type: object
+      required: [id, family_id, user_id, role, status, version]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        family_id: { $ref: '#/components/schemas/Id' }
+        user_id: { $ref: '#/components/schemas/Id' }
+        display_name: { type: string }
+        role: { $ref: '#/components/schemas/FamilyRole' }
+        status: { $ref: '#/components/schemas/MemberStatus' }
+        permission_codes: { type: array, items: { type: string } }
+        version: { $ref: '#/components/schemas/Version' }
+        joined_at: { $ref: '#/components/schemas/Timestamp' }
+    FamilyMemberUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        role: { $ref: '#/components/schemas/FamilyRole' }
+        status: { $ref: '#/components/schemas/MemberStatus' }
+        permission_codes: { type: array, items: { type: string }, maxItems: 50 }
+    InvitationCreate:
+      type: object
+      required: [target_role, expires_at]
+      properties:
+        target_role: { $ref: '#/components/schemas/FamilyRole' }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+        max_usage: { type: integer, minimum: 1, maximum: 10, default: 1 }
+        requested_scopes: { type: array, items: { $ref: '#/components/schemas/ConsentScope' } }
+    InvitationResponse:
+      type: object
+      required: [id, family_id, target_role, status, expires_at, token]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        family_id: { $ref: '#/components/schemas/Id' }
+        target_role: { $ref: '#/components/schemas/FamilyRole' }
+        status: { type: string, enum: [ACTIVE, USED, REVOKED, EXPIRED] }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+        token: { type: string, writeOnly: true, description: Returned once for QR/deep link display }
+    InvitationAccept:
+      type: object
+      properties:
+        confirm_identity: { type: boolean, const: true }
+        requested_display_name: { type: string, maxLength: 120 }
+    MeResponse:
+      type: object
+      required: [user, family_memberships]
+      properties:
+        user: { $ref: '#/components/schemas/UserResponse' }
+        family_memberships: { type: array, items: { $ref: '#/components/schemas/FamilyMemberResponse' } }
+        active_device_session: { $ref: '#/components/schemas/DeviceSessionResponse' }
+    ConsentCreate:
+      type: object
+      required: [family_id, subject_user_id, grantee_user_id, scope, source]
+      properties:
+        family_id: { $ref: '#/components/schemas/Id' }
+        subject_user_id: { $ref: '#/components/schemas/Id' }
+        grantee_user_id: { $ref: '#/components/schemas/Id' }
+        scope: { $ref: '#/components/schemas/ConsentScope' }
+        source: { type: string, enum: [ONBOARDING, SETTINGS, IMPORT] }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+        confirmation_text: { type: string, maxLength: 500 }
+    ConsentRevoke:
+      type: object
+      properties: { reason: { type: string, maxLength: 240 } }
+    ConsentResponse:
+      type: object
+      required: [id, family_id, subject_user_id, grantee_user_id, scope, status, version]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        family_id: { $ref: '#/components/schemas/Id' }
+        subject_user_id: { $ref: '#/components/schemas/Id' }
+        grantee_user_id: { $ref: '#/components/schemas/Id' }
+        scope: { $ref: '#/components/schemas/ConsentScope' }
+        status: { type: string, enum: [GRANTED, REVOKED, EXPIRED] }
+        version: { $ref: '#/components/schemas/Version' }
+        source: { type: string, enum: [ONBOARDING, SETTINGS, IMPORT] }
+        granted_at: { $ref: '#/components/schemas/Timestamp' }
+        revoked_at: { $ref: '#/components/schemas/Timestamp' }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+    AttachmentRef:
+      type: object
+      required: [id, media_type, status]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        media_type: { type: string, enum: [PHOTO, AUDIO, OTHER] }
+        status: { type: string, enum: [PENDING_UPLOAD, AVAILABLE, QUARANTINED, DELETE_REQUESTED, DELETED, FAILED] }
+        download_url: { type: string, format: uri, readOnly: true }
+    MemoryCreate:
+      type: object
+      required: [family_id, subject_user_id, type, title, content, required_consent_scope]
+      properties:
+        family_id: { $ref: '#/components/schemas/Id' }
+        subject_user_id: { $ref: '#/components/schemas/Id' }
+        type: { $ref: '#/components/schemas/MemoryType' }
+        title: { type: string, maxLength: 240 }
+        content: { type: string, maxLength: 10000 }
+        source: { type: string, enum: [FAMILY_MEMBER, USER, AI_CANDIDATE, IMPORT] }
+        required_consent_scope: { $ref: '#/components/schemas/ConsentScope' }
+        visibility: { type: string, enum: [OWNER_ONLY, AUTHORIZED_SCOPE, SPECIFIC_CONSENT], default: AUTHORIZED_SCOPE }
+        verification_status: { $ref: '#/components/schemas/MemoryStatus', default: PENDING }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+        attachment_ids: { type: array, items: { $ref: '#/components/schemas/Id' } }
+    MemoryUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        title: { type: string, maxLength: 240 }
+        content: { type: string, maxLength: 10000 }
+        type: { $ref: '#/components/schemas/MemoryType' }
+        visibility: { type: string, enum: [OWNER_ONLY, AUTHORIZED_SCOPE, SPECIFIC_CONSENT] }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+        attachment_ids: { type: array, items: { $ref: '#/components/schemas/Id' } }
+    MemoryResponse:
+      type: object
+      required: [id, family_id, subject_user_id, type, title, content, verification_status, visibility, required_consent_scope, version]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        family_id: { $ref: '#/components/schemas/Id' }
+        subject_user_id: { $ref: '#/components/schemas/Id' }
+        type: { $ref: '#/components/schemas/MemoryType' }
+        title: { type: string }
+        content: { type: string }
+        source: { type: string }
+        verification_status: { $ref: '#/components/schemas/MemoryStatus' }
+        visibility: { type: string, enum: [OWNER_ONLY, AUTHORIZED_SCOPE, SPECIFIC_CONSENT] }
+        required_consent_scope: { $ref: '#/components/schemas/ConsentScope' }
+        verified_by: { $ref: '#/components/schemas/Id' }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+        version: { $ref: '#/components/schemas/Version' }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        updated_at: { $ref: '#/components/schemas/Timestamp' }
+    MemoryDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/MemoryResponse'
+        - type: object
+          properties:
+            attachments: { type: array, items: { $ref: '#/components/schemas/AttachmentRef' } }
+            source_label: { type: string }
+            access_scope_label: { type: string }
+    MemoryFeedbackRequest:
+      type: object
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [INCORRECT, UNKNOWN, OUTDATED] }
+        note: { type: string, maxLength: 500 }
+    FileUploadRequest:
+      type: object
+      required: [media_type, mime_type, size_bytes, checksum]
+      properties:
+        media_type: { type: string, enum: [PHOTO, AUDIO, OTHER] }
+        mime_type: { type: string, maxLength: 120 }
+        size_bytes: { type: integer, minimum: 1, maximum: 104857600 }
+        checksum: { type: string, pattern: '^[a-fA-F0-9]{64}$' }
+        memory_id: { $ref: '#/components/schemas/Id' }
+    SignedUploadResponse:
+      type: object
+      required: [file, upload_url, expires_at, required_headers]
+      properties:
+        file: { $ref: '#/components/schemas/FileAssetResponse' }
+        upload_url: { type: string, format: uri, writeOnly: true }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+        required_headers: { type: object, additionalProperties: { type: string } }
+    FileUploadConfirm:
+      type: object
+      required: [checksum]
+      properties: { checksum: { type: string, pattern: '^[a-fA-F0-9]{64}$' } }
+    FileAssetResponse:
+      type: object
+      required: [id, media_type, mime_type, size_bytes, checksum, status]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        media_type: { type: string, enum: [PHOTO, AUDIO, OTHER] }
+        mime_type: { type: string }
+        size_bytes: { type: integer, minimum: 0 }
+        checksum: { type: string }
+        status: { type: string, enum: [PENDING_UPLOAD, AVAILABLE, QUARANTINED, DELETE_REQUESTED, DELETED, FAILED] }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+    SignedDownloadResponse:
+      type: object
+      required: [download_url, expires_at]
+      properties:
+        download_url: { type: string, format: uri, readOnly: true }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+    QuietHours:
+      type: object
+      required: [start, end, timezone]
+      properties:
+        start: { $ref: '#/components/schemas/TimeOfDay' }
+        end: { $ref: '#/components/schemas/TimeOfDay' }
+        timezone: { type: string }
+    ReminderCreate:
+      type: object
+      required: [owner_user_id, type, title, content, schedule_time_local, timezone, start_date, recurrence_kind]
+      properties:
+        owner_user_id: { $ref: '#/components/schemas/Id' }
+        type: { $ref: '#/components/schemas/ReminderType' }
+        title: { type: string, maxLength: 240 }
+        content: { type: string, maxLength: 2000 }
+        schedule_time_local: { $ref: '#/components/schemas/TimeOfDay' }
+        timezone: { type: string, example: Asia/Shanghai }
+        start_date: { $ref: '#/components/schemas/LocalDate' }
+        end_date: { $ref: '#/components/schemas/LocalDate' }
+        recurrence_kind: { type: string, enum: [ONCE, DAILY, WEEKLY, INTERVAL] }
+        recurrence_interval: { type: integer, minimum: 1, default: 1 }
+        days_of_week: { type: array, items: { type: integer, minimum: 0, maximum: 6 } }
+        quiet_hours: { $ref: '#/components/schemas/QuietHours' }
+        escalation_policy: { type: object, additionalProperties: true }
+    ReminderUpdate:
+      allOf: [{ $ref: '#/components/schemas/ReminderCreate' }]
+    ReminderResponse:
+      allOf:
+        - $ref: '#/components/schemas/ReminderCreate'
+        - type: object
+          required: [id, active, version]
+          properties:
+            id: { $ref: '#/components/schemas/Id' }
+            active: { type: boolean }
+            next_due_at: { $ref: '#/components/schemas/Timestamp' }
+            version: { $ref: '#/components/schemas/Version' }
+            created_at: { $ref: '#/components/schemas/Timestamp' }
+            updated_at: { $ref: '#/components/schemas/Timestamp' }
+    ReminderExecutionResponse:
+      type: object
+      required: [id, reminder_id, scheduled_at, feedback_status, source]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        reminder_id: { $ref: '#/components/schemas/Id' }
+        scheduled_at: { $ref: '#/components/schemas/Timestamp' }
+        triggered_at: { $ref: '#/components/schemas/Timestamp' }
+        feedback_status: { $ref: '#/components/schemas/ReminderFeedbackStatus' }
+        feedback_at: { $ref: '#/components/schemas/Timestamp' }
+        feedback_note: { type: string }
+        source: { type: string, enum: [ONLINE, OFFLINE] }
+        next_due_at: { $ref: '#/components/schemas/Timestamp' }
+    ReminderFeedbackRequest:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [DONE, LATER, SKIPPED] }
+        note: { type: string, maxLength: 500 }
+        next_due_at: { $ref: '#/components/schemas/Timestamp' }
+    ConversationCreate:
+      type: object
+      required: [input_mode]
+      properties:
+        family_id: { $ref: '#/components/schemas/Id' }
+        device_id: { $ref: '#/components/schemas/Id' }
+        input_mode: { type: string, enum: [VOICE, TEXT, LOCAL_WAKEWORD] }
+    ConversationEndRequest:
+      type: object
+      properties: { reason: { type: string, enum: [USER, TIMEOUT, ERROR] } }
+    ConversationResponse:
+      type: object
+      required: [id, owner_user_id, family_id, status, backend_state, summary_status]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        owner_user_id: { $ref: '#/components/schemas/Id' }
+        family_id: { $ref: '#/components/schemas/Id' }
+        status: { type: string, enum: [ACTIVE, COMPLETED, INTERRUPTED, FAILED, DELETED] }
+        backend_state: { type: string, enum: [IDLE, LISTENING, THINKING, SPEAKING, WARNING, OFFLINE, ERROR] }
+        summary_status: { type: string, enum: [NOT_REQUESTED, PENDING, READY, FAILED, DELETED] }
+        summary: { type: string, nullable: true }
+        started_at: { $ref: '#/components/schemas/Timestamp' }
+        ended_at: { $ref: '#/components/schemas/Timestamp' }
+    ConversationSummaryJob:
+      type: object
+      required: [conversation_id, status]
+      properties:
+        conversation_id: { $ref: '#/components/schemas/Id' }
+        status: { type: string, enum: [PENDING, RUNNING, READY, FAILED] }
+    ExplainReason:
+      type: object
+      required: [category, display_text]
+      properties:
+        category: { type: string, example: TRANSFER_AND_SECRECY }
+        display_text: { type: string, example: 交流中同时出现了转账和要求保密的信息 }
+    SignalEventResponse:
+      type: object
+      required: [id, type, severity, summary, status, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        owner_user_id: { $ref: '#/components/schemas/Id' }
+        family_id: { $ref: '#/components/schemas/Id' }
+        type: { $ref: '#/components/schemas/SignalType' }
+        severity: { $ref: '#/components/schemas/SignalSeverity' }
+        summary: { type: string }
+        reason: { $ref: '#/components/schemas/ExplainReason' }
+        status: { $ref: '#/components/schemas/SignalStatus' }
+        recommended_action: { type: string }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+    SignalEventDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/SignalEventResponse'
+        - type: object
+          properties:
+            source_conversation_id: { $ref: '#/components/schemas/Id' }
+            occurred_at: { $ref: '#/components/schemas/Timestamp' }
+            actioned_at: { $ref: '#/components/schemas/Timestamp' }
+            withheld_reason: { type: string }
+    SignalContactRequest:
+      type: object
+      properties:
+        contact_id: { $ref: '#/components/schemas/Id' }
+        channel: { $ref: '#/components/schemas/NotificationChannel' }
+    FalsePositiveRequest:
+      type: object
+      required: [reason]
+      properties: { reason: { type: string, maxLength: 500 } }
+    NotificationResponse:
+      type: object
+      required: [id, channel, status, summary, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        signal_event_id: { $ref: '#/components/schemas/Id' }
+        channel: { $ref: '#/components/schemas/NotificationChannel' }
+        status: { $ref: '#/components/schemas/NotificationStatus' }
+        summary: { type: string }
+        action: { type: string, enum: [NONE, ACKNOWLEDGED, CONTACTED, FALSE_POSITIVE] }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        read_at: { $ref: '#/components/schemas/Timestamp' }
+    NotificationActionRequest:
+      type: object
+      required: [action]
+      properties: { action: { type: string, enum: [ACKNOWLEDGED, CONTACTED, FALSE_POSITIVE] } }
+    WeeklyReportRequest:
+      type: object
+      required: [owner_user_id, family_id, period_start, period_end]
+      properties:
+        owner_user_id: { $ref: '#/components/schemas/Id' }
+        family_id: { $ref: '#/components/schemas/Id' }
+        period_start: { $ref: '#/components/schemas/LocalDate' }
+        period_end: { $ref: '#/components/schemas/LocalDate' }
+    WeeklyMetrics:
+      type: object
+      properties:
+        interaction_count: { type: integer, minimum: 0 }
+        conversation_duration_seconds: { type: integer, minimum: 0 }
+        reminder_done_count: { type: integer, minimum: 0 }
+        reminder_later_count: { type: integer, minimum: 0 }
+        reminder_skipped_count: { type: integer, minimum: 0 }
+        reminder_no_response_count: { type: integer, minimum: 0 }
+        signal_counts: { type: object, additionalProperties: { type: integer, minimum: 0 } }
+        interaction_time_distribution: { type: object, additionalProperties: { type: integer, minimum: 0 } }
+        repeated_topic_stats: { type: object, additionalProperties: true }
+    WeeklyReportResponse:
+      type: object
+      required: [id, family_id, owner_user_id, period_start, period_end, version, status, metrics, missing_data]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        family_id: { $ref: '#/components/schemas/Id' }
+        owner_user_id: { $ref: '#/components/schemas/Id' }
+        period_start: { $ref: '#/components/schemas/LocalDate' }
+        period_end: { $ref: '#/components/schemas/LocalDate' }
+        version: { type: integer, minimum: 1 }
+        status: { type: string, enum: [GENERATING, READY, FAILED, REDACTED] }
+        metrics: { $ref: '#/components/schemas/WeeklyMetrics' }
+        observations: { type: array, items: { type: string } }
+        narrative: { type: string, nullable: true }
+        missing_data: { type: array, items: { type: string } }
+        generated_at: { $ref: '#/components/schemas/Timestamp' }
+    EmergencyContactCreate:
+      type: object
+      required: [name, priority, channel]
+      properties:
+        contact_user_id: { $ref: '#/components/schemas/Id' }
+        name: { type: string, maxLength: 120 }
+        phone: { type: string, writeOnly: true, maxLength: 40 }
+        priority: { type: integer, minimum: 1, maximum: 20 }
+        channel: { type: string, enum: [PHONE, PUSH, SMS, IN_APP] }
+    EmergencyContactUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        name: { type: string, maxLength: 120 }
+        priority: { type: integer, minimum: 1, maximum: 20 }
+        channel: { type: string, enum: [PHONE, PUSH, SMS, IN_APP] }
+        enabled: { type: boolean }
+    EmergencyContactResponse:
+      type: object
+      required: [id, name, priority, channel, enabled, verified]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        contact_user_id: { $ref: '#/components/schemas/Id' }
+        name: { type: string }
+        phone_last4: { type: string, pattern: '^[0-9]{4}$' }
+        priority: { type: integer }
+        channel: { type: string, enum: [PHONE, PUSH, SMS, IN_APP] }
+        enabled: { type: boolean }
+        verified: { type: boolean }
+    EmergencyCallCreate:
+      type: object
+      required: [source]
+      properties:
+        source: { type: string, enum: [VOICE, BLE, SCREEN, SIGNAL_EVENT] }
+        contact_id: { $ref: '#/components/schemas/Id' }
+        signal_event_id: { $ref: '#/components/schemas/Id' }
+    EmergencyCallResponse:
+      type: object
+      required: [id, status, source, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        status: { type: string, enum: [INITIATED, CONNECTING, CONNECTED, NO_ANSWER, FAILED, CANCELLED] }
+        source: { type: string, enum: [VOICE, BLE, SCREEN, SIGNAL_EVENT] }
+        contact_id: { $ref: '#/components/schemas/Id' }
+        failure_reason: { type: string }
+        next_action: { type: string }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        updated_at: { $ref: '#/components/schemas/Timestamp' }
+    DeviceRegister:
+      type: object
+      required: [device_id, device_type, app_version, os_version]
+      properties:
+        device_id: { type: string, maxLength: 160 }
+        device_type: { type: string, enum: [ANDROID_TABLET, ANDROID_PHONE, OTHER] }
+        app_version: { type: string, maxLength: 64 }
+        os_version: { type: string, maxLength: 64 }
+        capabilities: { type: object, additionalProperties: true }
+    DeviceHeartbeat:
+      type: object
+      required: [online, app_version, kiosk, ble, wakeword, critical_permissions]
+      properties:
+        online: { type: boolean }
+        app_version: { type: string }
+        kiosk: { type: string, enum: [UNKNOWN, ACTIVE, CONFIG_ERROR, DISABLED] }
+        ble: { type: string, enum: [DISCONNECTED, CONNECTING, CONNECTED, LOW_BATTERY, ERROR] }
+        wakeword: { type: string, enum: [UNKNOWN, READY, DISABLED, ERROR] }
+        critical_permissions: { type: object, additionalProperties: { type: string, enum: [UNKNOWN, GRANTED, DENIED] } }
+    DeviceSettingsUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        quiet_hours: { $ref: '#/components/schemas/QuietHours' }
+        camera_proximity_enabled: { type: boolean }
+        wakeword_enabled: { type: boolean }
+    DeviceResponse:
+      type: object
+      required: [id, device_type, app_version, kiosk_status, wakeword_status, ble_status, camera_permission, phone_permission, status]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        device_type: { type: string, enum: [ANDROID_TABLET, ANDROID_PHONE, OTHER] }
+        app_version: { type: string }
+        os_version: { type: string }
+        kiosk_status: { type: string, enum: [UNKNOWN, ACTIVE, CONFIG_ERROR, DISABLED] }
+        wakeword_status: { type: string, enum: [UNKNOWN, READY, DISABLED, ERROR] }
+        ble_status: { type: string, enum: [DISCONNECTED, CONNECTING, CONNECTED, LOW_BATTERY, ERROR] }
+        camera_permission: { type: string, enum: [UNKNOWN, GRANTED, DENIED] }
+        phone_permission: { type: string, enum: [UNKNOWN, GRANTED, DENIED] }
+        status: { type: string, enum: [ACTIVE, UNBOUND, LOST, DISABLED] }
+        last_seen_at: { $ref: '#/components/schemas/Timestamp' }
+        updated_at: { $ref: '#/components/schemas/Timestamp' }
+    AuditLogResponse:
+      type: object
+      required: [id, action, target_type, result, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        actor_display_name_masked: { type: string }
+        action: { type: string, maxLength: 64 }
+        target_type: { type: string, maxLength: 48 }
+        target_label: { type: string }
+        reason: { type: string }
+        result: { type: string, enum: [SUCCEEDED, FAILED, DENIED] }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+    DataExportRequest:
+      type: object
+      required: [scope, format]
+      properties:
+        scope: { type: string, enum: [ACCOUNT, FAMILY_DATA] }
+        format: { type: string, enum: [JSON, ZIP] }
+    DataJobResponse:
+      type: object
+      required: [id, status, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        status: { type: string, enum: [PENDING, RUNNING, READY, FAILED, EXPIRED] }
+        stage: { type: string }
+        download_url: { type: string, format: uri, readOnly: true }
+        error_code: { type: string }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        completed_at: { $ref: '#/components/schemas/Timestamp' }
+    AccountDeletionRequest:
+      type: object
+      required: [confirm]
+      properties:
+        confirm: { type: boolean, const: true }
+        reason: { type: string, maxLength: 240 }
+    AccountDeletionResponse:
+      type: object
+      required: [id, status, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        status: { type: string, enum: [PENDING, RUNNING, PARTIAL_FAILURE, COMPLETED, CANCELLED] }
+        stage: { type: string }
+        result_message: { type: string }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        completed_at: { $ref: '#/components/schemas/Timestamp' }
+    WebSocketEnvelope:
+      type: object
+      required: [type, conversation_id, sequence, occurred_at, payload]
+      properties:
+        type: { type: string }
+        conversation_id: { $ref: '#/components/schemas/Id' }
+        sequence: { type: integer, minimum: 1 }
+        occurred_at: { $ref: '#/components/schemas/Timestamp' }
+        payload: { type: object, additionalProperties: true }
+    WebSocketClientMessage:
+      allOf:
+        - $ref: '#/components/schemas/WebSocketEnvelope'
+        - type: object
+          properties:
+            type:
+              type: string
+              enum: [session.start, audio.chunk, audio.end, text.input, interrupt, repeat, slow_down, session.end, ping]
+    WebSocketServerMessage:
+      allOf:
+        - $ref: '#/components/schemas/WebSocketEnvelope'
+        - type: object
+          properties:
+            type:
+              type: string
+              enum: [session.ready, asr.partial, asr.final, assistant.state, assistant.text, tts.start, tts.end, signal.created, warning, error, pong]
+    Page:
+      type: object
+      required: [items, page, request_id]
+      properties:
+        items: { type: array, items: {} }
+        page: { $ref: '#/components/schemas/PageInfo' }
+        request_id: { type: string }
+    FamilySummaryPage:
+      allOf: [{ $ref: '#/components/schemas/Page' }]
+      properties: { items: { type: array, items: { $ref: '#/components/schemas/FamilySummary' } } }
+    FamilyMemberPage:
+      allOf: [{ $ref: '#/components/schemas/Page' }]
+      properties: { items: { type: array, items: { $ref: '#/components/schemas/FamilyMemberResponse' } } }
+    ConsentPage:
+      allOf: [{ $ref: '#/components/schemas/Page' }]
+      properties: { items: { type: array, items: { $ref: '#/components/schemas/ConsentResponse' } } }
+    MemoryPage:
+      allOf: [{ $ref: '#/components/schemas/Page' }]
+      properties: { items: { type: array, items: { $ref: '#/components/schemas/MemoryResponse' } } }
+    ReminderPage:
+      allOf: [{ $ref: '#/components/schemas/Page' }]
+      properties: { items: { type: array, items: { $ref: '#/components/schemas/ReminderResponse' } } }
+    ReminderExecutionPage:
+      allOf: [{ $ref: '#/components/schemas/Page' }]
+      properties: { items: { type: array, items: { $ref: '#/components/schemas/ReminderExecutionResponse' } } }
+    SignalEventPage:
+      allOf: [{ $ref: '#/components/schemas/Page' }]
+      properties: { items: { type: array, items: { $ref: '#/components/schemas/SignalEventResponse' } } }
+    NotificationPage:
+      allOf: [{ $ref: '#/components/schemas/Page' }]
+      properties: { items: { type: array, items: { $ref: '#/components/schemas/NotificationResponse' } } }
+    WeeklyReportPage:
+      allOf: [{ $ref: '#/components/schemas/Page' }]
+      properties: { items: { type: array, items: { $ref: '#/components/schemas/WeeklyReportResponse' } } }
+    EmergencyContactPage:
+      allOf: [{ $ref: '#/components/schemas/Page' }]
+      properties: { items: { type: array, items: { $ref: '#/components/schemas/EmergencyContactResponse' } } }
+    DevicePage:
+      allOf: [{ $ref: '#/components/schemas/Page' }]
+      properties: { items: { type: array, items: { $ref: '#/components/schemas/DeviceResponse' } } }
+    AuditLogPage:
+      allOf: [{ $ref: '#/components/schemas/Page' }]
+      properties: { items: { type: array, items: { $ref: '#/components/schemas/AuditLogResponse' } } }
