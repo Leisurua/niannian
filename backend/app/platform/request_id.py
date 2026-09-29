@@ -1,13 +1,8 @@
-import re
 from uuid import uuid4
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app.platform.logging import correlation_id_context, request_id_context
-
-
-_CORRELATION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
-_PHONE_LIKE = re.compile(r"\d{10,}")
+from app.platform.logging import correlation_id_context, is_safe_identifier, request_id_context
 
 
 class RequestIdMiddleware:
@@ -23,7 +18,7 @@ class RequestIdMiddleware:
 
         headers = dict(scope.get("headers", []))
         supplied = headers.get(b"x-request-id", b"").decode("ascii", errors="ignore")
-        request_id = supplied if _CORRELATION_ID.fullmatch(supplied) and not _PHONE_LIKE.search(supplied) else str(uuid4())
+        request_id = supplied if is_safe_identifier(supplied) else str(uuid4())
         scope["state"] = {**scope.get("state", {}), "request_id": request_id}
         request_token = request_id_context.set(request_id)
         correlation_token = correlation_id_context.set(request_id)

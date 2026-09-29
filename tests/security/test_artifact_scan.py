@@ -2,6 +2,7 @@
 
 import os
 import re
+import subprocess
 import unittest
 import zipfile
 from pathlib import Path
@@ -56,6 +57,40 @@ class ArtifactScanTest(unittest.TestCase):
     def test_no_sensitive_artifacts_in_source_trees(self) -> None:
         for path in repository_files():
             self.assertNotIn(path.suffix.lower(), FORBIDDEN_ARTIFACTS, str(path.relative_to(ROOT)))
+
+    def test_git_history_contains_no_secret_patterns(self) -> None:
+        if not (ROOT / ".git").exists():
+            self.skipTest("Git history unavailable")
+        git = ["git", "-c", f"safe.directory={ROOT.as_posix()}"]
+        listing = subprocess.run(
+            [*git, "rev-list", "--objects", "--all"],
+            cwd=ROOT, check=True, capture_output=True,
+        ).stdout
+        object_ids = [line.split(b" ", 1)[0] for line in listing.splitlines()]
+        self.assertTrue(object_ids, "Git history has no objects to scan")
+        batch = subprocess.run(
+            [*git, "cat-file", "--batch"],
+            cwd=ROOT, check=True, input=b"\n".join(object_ids) + b"\n", capture_output=True,
+        ).stdout
+        secret_patterns = tuple(re.compile(pattern.pattern.encode("ascii")) for pattern in PATTERNS)
+        offset = 0
+        scanned_blobs = 0
+        for object_id in object_ids:
+            header_end = batch.index(b"\n", offset)
+            resolved_id, object_type, size_text = batch[offset:header_end].split()
+            self.assertEqual(resolved_id, object_id)
+            size = int(size_text)
+            content_start = header_end + 1
+            content_end = content_start + size
+            if object_type == b"blob":
+                self.assertFalse(
+                    scan_bytes(batch[content_start:content_end], secret_patterns),
+                    f"Sensitive pattern in Git blob {object_id.decode('ascii')}",
+                )
+                scanned_blobs += 1
+            offset = content_end + 1
+        self.assertGreater(scanned_blobs, 0)
+        self.assertEqual(offset, len(batch))
 
     def test_built_apks_contain_no_secret_patterns(self) -> None:
         apks = [

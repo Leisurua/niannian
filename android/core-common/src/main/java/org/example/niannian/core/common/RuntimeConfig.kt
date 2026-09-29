@@ -19,7 +19,7 @@ data class RuntimeConfig(
             val environmentLabel = when (environment) {
                 AppEnvironment.DEV -> "开发环境"
                 AppEnvironment.TEST -> "测试环境"
-                AppEnvironment.DEMO -> "演示数据"
+                AppEnvironment.DEMO -> "DEMO · 演示数据"
             }
             val providerLabel = when (providerMode) {
                 ProviderMode.MOCK -> "演示能力（Mock）"

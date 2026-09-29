@@ -21,6 +21,11 @@ def test_allowlisted_fields_and_unknown_content_are_not_logged() -> None:
         "SAFE_EVENT",
         request_id="req-test",
         correlation_id="corr-test",
+        user_id="user-1",
+        family_id="family-1",
+        conversation_id="conversation-1",
+        event_id="event-1",
+        device_id="device-1",
         provider="mock",
         latency_ms=12,
         result="FAILED",
@@ -31,6 +36,13 @@ def test_allowlisted_fields_and_unknown_content_are_not_logged() -> None:
     assert payload["event"] == "SAFE_EVENT"
     assert payload["request_id"] == "req-test"
     assert payload["correlation_id"] == "corr-test"
+    assert payload["user_id"] == "user-1"
+    assert payload["family_id"] == "family-1"
+    assert payload["conversation_id"] == "conversation-1"
+    assert payload["event_id"] == "event-1"
+    assert payload["device_id"] == "device-1"
+    assert payload["provider"] == "mock"
+    assert payload["result"] == "FAILED"
     assert payload["error_code"] == "PROVIDER_TIMEOUT"
     assert payload["latency_ms"] == 12
     assert canary not in json.dumps(payload)
@@ -97,3 +109,19 @@ def test_request_context_correlates_event_and_resets_between_requests() -> None:
     finally:
         logger.removeHandler(capture)
         app.router.routes.pop()
+
+
+def test_logger_name_and_credential_shaped_metadata_are_suppressed() -> None:
+    private = "private" + "content"
+    credential = "sk-" + "A" * 24
+    record = logging.LogRecord(private, logging.ERROR, __file__, 1, "SAFE_EVENT", (), None)
+    record._structured_event = True
+    record.user_id = credential
+    record.error_code = credential
+    payload = json.loads(StructuredFormatter().format(record))
+    assert payload["logger"] == "external"
+    assert payload["event"] == "SAFE_EVENT"
+    assert "user_id" not in payload
+    assert "error_code" not in payload
+    assert private not in json.dumps(payload)
+    assert credential not in json.dumps(payload)

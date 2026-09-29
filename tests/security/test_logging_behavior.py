@@ -3,6 +3,7 @@
 import io
 import json
 import logging
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -45,6 +46,48 @@ class LoggingBehaviorTest(unittest.TestCase):
         self.assertEqual(payload["event"], "UNSTRUCTURED_LOG")
         self.assertNotIn(content, json.dumps(payload))
         self.assertNotIn("request_id", payload)
+
+    def test_uncaught_process_crash_emits_redacted_event(self) -> None:
+        private = "private" + "content"
+        code = (
+            "from app.platform.logging import configure_logging\n"
+            "configure_logging()\n"
+            f"raise RuntimeError({private!r})\n"
+        )
+        process = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=Path(__file__).resolve().parents[2] / "backend",
+            capture_output=True, text=True, check=False,
+        )
+        self.assertNotEqual(process.returncode, 0)
+        self.assertNotIn(private, process.stdout + process.stderr)
+        payload = json.loads(process.stdout.strip())
+        self.assertEqual(payload["event"], "UNHANDLED_PROCESS_ERROR")
+        self.assertEqual(payload["error_code"], "UNHANDLED_EXCEPTION")
+        self.assertEqual(process.stderr, "")
+
+
+    def test_uncaught_thread_crash_emits_redacted_event(self) -> None:
+        private = "private" + "content"
+        code = (
+            "import threading\n"
+            "from app.platform.logging import configure_logging\n"
+            "configure_logging()\n"
+            f"def fail(): raise RuntimeError({private!r})\n"
+            "thread = threading.Thread(target=fail)\n"
+            "thread.start()\n"
+            "thread.join()\n"
+        )
+        process = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=Path(__file__).resolve().parents[2] / "backend",
+            capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(process.returncode, 0)
+        self.assertNotIn(private, process.stdout + process.stderr)
+        payload = json.loads(process.stdout.strip())
+        self.assertEqual(payload["event"], "UNHANDLED_PROCESS_ERROR")
+        self.assertEqual(process.stderr, "")
 
 
 if __name__ == "__main__":

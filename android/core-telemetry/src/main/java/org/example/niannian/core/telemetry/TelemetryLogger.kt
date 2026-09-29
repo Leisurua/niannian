@@ -8,6 +8,7 @@ class TelemetryLogger(private val sink: (String) -> Unit = { Log.i("NianNian", i
     private val eventCode = Regex("[A-Z][A-Z0-9_]{2,63}")
     private val identifier = Regex("[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
     private val phoneLike = Regex("[0-9]{10,}")
+    private val secretLike = Regex("(?:sk-[A-Za-z0-9]{20,}|AKIA[A-Z0-9]{16}|eyJ[A-Za-z0-9_-]{8,}\\.eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,})")
     private val idFields = setOf("request_id", "correlation_id", "user_id", "family_id", "conversation_id", "event_id", "device_id")
     private val symbolFields = setOf("provider", "result", "error_code")
 
@@ -25,7 +26,7 @@ class TelemetryLogger(private val sink: (String) -> Unit = { Log.i("NianNian", i
                 in symbolFields -> symbol
                 else -> continue
             }
-            if (pattern.matches(value) && !phoneLike.containsMatchIn(value)) {
+            if (pattern.matches(value) && !phoneLike.containsMatchIn(value) && !secretLike.containsMatchIn(value)) {
                 values.add("\"$key\":\"$value\"")
             }
         }

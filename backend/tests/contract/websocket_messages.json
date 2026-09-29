@@ -1,0 +1,34 @@
+{
+  "path": "/ws/conversations/{conversation_id}",
+  "client_messages": [
+    "session.start",
+    "audio.chunk",
+    "audio.end",
+    "text.input",
+    "interrupt",
+    "repeat",
+    "slow_down",
+    "session.end",
+    "ping"
+  ],
+  "server_messages": [
+    "session.ready",
+    "asr.partial",
+    "asr.final",
+    "assistant.state",
+    "assistant.text",
+    "tts.start",
+    "tts.end",
+    "signal.created",
+    "warning",
+    "error",
+    "pong"
+  ],
+  "envelope_required": [
+    "type",
+    "conversation_id",
+    "sequence",
+    "occurred_at",
+    "payload"
+  ]
+}

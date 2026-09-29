@@ -1,0 +1,372 @@
+[
+  {
+    "method": "POST",
+    "path": "/auth/login",
+    "operation_id": "login"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/refresh",
+    "operation_id": "refreshAccessToken"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/logout",
+    "operation_id": "logout"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/logout-all",
+    "operation_id": "logoutAll"
+  },
+  {
+    "method": "GET",
+    "path": "/me",
+    "operation_id": "getCurrentUser"
+  },
+  {
+    "method": "GET",
+    "path": "/families",
+    "operation_id": "listFamilies"
+  },
+  {
+    "method": "POST",
+    "path": "/families",
+    "operation_id": "createFamily"
+  },
+  {
+    "method": "GET",
+    "path": "/families/{family_id}",
+    "operation_id": "getFamily"
+  },
+  {
+    "method": "POST",
+    "path": "/families/{family_id}/invitations",
+    "operation_id": "createFamilyInvitation"
+  },
+  {
+    "method": "POST",
+    "path": "/families/{family_id}/invitations/{invitation_id}/revoke",
+    "operation_id": "revokeFamilyInvitation"
+  },
+  {
+    "method": "POST",
+    "path": "/family-invitations/{token}/accept",
+    "operation_id": "acceptFamilyInvitation"
+  },
+  {
+    "method": "GET",
+    "path": "/families/{family_id}/members",
+    "operation_id": "listFamilyMembers"
+  },
+  {
+    "method": "GET",
+    "path": "/families/{family_id}/members/{member_id}",
+    "operation_id": "getFamilyMember"
+  },
+  {
+    "method": "PATCH",
+    "path": "/families/{family_id}/members/{member_id}",
+    "operation_id": "updateFamilyMember"
+  },
+  {
+    "method": "POST",
+    "path": "/families/{family_id}/members/{member_id}/leave",
+    "operation_id": "leaveFamilyMember"
+  },
+  {
+    "method": "GET",
+    "path": "/consents",
+    "operation_id": "listConsents"
+  },
+  {
+    "method": "POST",
+    "path": "/consents",
+    "operation_id": "grantConsent"
+  },
+  {
+    "method": "GET",
+    "path": "/consents/{consent_id}",
+    "operation_id": "getConsent"
+  },
+  {
+    "method": "POST",
+    "path": "/consents/{consent_id}/revoke",
+    "operation_id": "revokeConsent"
+  },
+  {
+    "method": "GET",
+    "path": "/memories",
+    "operation_id": "listMemories"
+  },
+  {
+    "method": "POST",
+    "path": "/memories",
+    "operation_id": "createMemory"
+  },
+  {
+    "method": "GET",
+    "path": "/memories/{memory_id}",
+    "operation_id": "getMemory"
+  },
+  {
+    "method": "PATCH",
+    "path": "/memories/{memory_id}",
+    "operation_id": "updateMemory"
+  },
+  {
+    "method": "DELETE",
+    "path": "/memories/{memory_id}",
+    "operation_id": "deleteMemory"
+  },
+  {
+    "method": "POST",
+    "path": "/memories/{memory_id}/confirm",
+    "operation_id": "confirmMemory"
+  },
+  {
+    "method": "POST",
+    "path": "/memories/{memory_id}/reject",
+    "operation_id": "rejectMemory"
+  },
+  {
+    "method": "POST",
+    "path": "/memories/{memory_id}/revoke",
+    "operation_id": "revokeMemory"
+  },
+  {
+    "method": "POST",
+    "path": "/memories/{memory_id}/feedback",
+    "operation_id": "reportMemoryFeedback"
+  },
+  {
+    "method": "POST",
+    "path": "/files/upload-requests",
+    "operation_id": "createFileUploadRequest"
+  },
+  {
+    "method": "POST",
+    "path": "/files/{file_id}/confirm",
+    "operation_id": "confirmFileUpload"
+  },
+  {
+    "method": "GET",
+    "path": "/files/{file_id}/download-url",
+    "operation_id": "createFileDownloadUrl"
+  },
+  {
+    "method": "DELETE",
+    "path": "/files/{file_id}",
+    "operation_id": "deleteFile"
+  },
+  {
+    "method": "GET",
+    "path": "/reminders",
+    "operation_id": "listReminders"
+  },
+  {
+    "method": "POST",
+    "path": "/reminders",
+    "operation_id": "createReminder"
+  },
+  {
+    "method": "GET",
+    "path": "/reminders/{reminder_id}",
+    "operation_id": "getReminder"
+  },
+  {
+    "method": "PATCH",
+    "path": "/reminders/{reminder_id}",
+    "operation_id": "updateReminder"
+  },
+  {
+    "method": "DELETE",
+    "path": "/reminders/{reminder_id}",
+    "operation_id": "deleteReminder"
+  },
+  {
+    "method": "GET",
+    "path": "/reminders/{reminder_id}/executions",
+    "operation_id": "listReminderExecutions"
+  },
+  {
+    "method": "POST",
+    "path": "/reminder-executions/{execution_id}/feedback",
+    "operation_id": "submitReminderFeedback"
+  },
+  {
+    "method": "POST",
+    "path": "/conversations",
+    "operation_id": "createConversation"
+  },
+  {
+    "method": "GET",
+    "path": "/conversations/{conversation_id}",
+    "operation_id": "getConversation"
+  },
+  {
+    "method": "POST",
+    "path": "/conversations/{conversation_id}/end",
+    "operation_id": "endConversation"
+  },
+  {
+    "method": "POST",
+    "path": "/conversations/{conversation_id}/summary",
+    "operation_id": "requestConversationSummary"
+  },
+  {
+    "method": "GET",
+    "path": "/signal-events",
+    "operation_id": "listSignalEvents"
+  },
+  {
+    "method": "GET",
+    "path": "/signal-events/{event_id}",
+    "operation_id": "getSignalEvent"
+  },
+  {
+    "method": "POST",
+    "path": "/signal-events/{event_id}/ack",
+    "operation_id": "acknowledgeSignalEvent"
+  },
+  {
+    "method": "POST",
+    "path": "/signal-events/{event_id}/contact",
+    "operation_id": "contactForSignalEvent"
+  },
+  {
+    "method": "POST",
+    "path": "/signal-events/{event_id}/false-positive",
+    "operation_id": "markSignalFalsePositive"
+  },
+  {
+    "method": "POST",
+    "path": "/signal-events/{event_id}/resolve",
+    "operation_id": "resolveSignalEvent"
+  },
+  {
+    "method": "GET",
+    "path": "/notifications",
+    "operation_id": "listNotifications"
+  },
+  {
+    "method": "GET",
+    "path": "/notifications/{notification_id}",
+    "operation_id": "getNotification"
+  },
+  {
+    "method": "POST",
+    "path": "/notifications/{notification_id}/read",
+    "operation_id": "markNotificationRead"
+  },
+  {
+    "method": "POST",
+    "path": "/notifications/{notification_id}/action",
+    "operation_id": "actOnNotification"
+  },
+  {
+    "method": "GET",
+    "path": "/reports/weekly",
+    "operation_id": "listWeeklyReports"
+  },
+  {
+    "method": "POST",
+    "path": "/reports/weekly",
+    "operation_id": "requestWeeklyReport"
+  },
+  {
+    "method": "GET",
+    "path": "/reports/weekly/{report_id}",
+    "operation_id": "getWeeklyReport"
+  },
+  {
+    "method": "GET",
+    "path": "/emergency/contacts",
+    "operation_id": "listEmergencyContacts"
+  },
+  {
+    "method": "POST",
+    "path": "/emergency/contacts",
+    "operation_id": "createEmergencyContact"
+  },
+  {
+    "method": "PATCH",
+    "path": "/emergency/contacts/{contact_id}",
+    "operation_id": "updateEmergencyContact"
+  },
+  {
+    "method": "DELETE",
+    "path": "/emergency/contacts/{contact_id}",
+    "operation_id": "deleteEmergencyContact"
+  },
+  {
+    "method": "POST",
+    "path": "/emergency/calls",
+    "operation_id": "createEmergencyCall"
+  },
+  {
+    "method": "GET",
+    "path": "/emergency/calls/{call_id}",
+    "operation_id": "getEmergencyCall"
+  },
+  {
+    "method": "POST",
+    "path": "/devices/register",
+    "operation_id": "registerDevice"
+  },
+  {
+    "method": "GET",
+    "path": "/devices",
+    "operation_id": "listDevices"
+  },
+  {
+    "method": "GET",
+    "path": "/devices/{device_id}",
+    "operation_id": "getDevice"
+  },
+  {
+    "method": "POST",
+    "path": "/devices/{device_id}/heartbeat",
+    "operation_id": "heartbeatDevice"
+  },
+  {
+    "method": "PATCH",
+    "path": "/devices/{device_id}/settings",
+    "operation_id": "updateDeviceSettings"
+  },
+  {
+    "method": "POST",
+    "path": "/devices/{device_id}/unbind",
+    "operation_id": "unbindDevice"
+  },
+  {
+    "method": "GET",
+    "path": "/audit-logs",
+    "operation_id": "listAuditLogs"
+  },
+  {
+    "method": "POST",
+    "path": "/data-exports",
+    "operation_id": "requestDataExport"
+  },
+  {
+    "method": "GET",
+    "path": "/data-exports/{export_id}",
+    "operation_id": "getDataExport"
+  },
+  {
+    "method": "POST",
+    "path": "/account-deletion-requests",
+    "operation_id": "requestAccountDeletion"
+  },
+  {
+    "method": "GET",
+    "path": "/account-deletion-requests/{request_id}",
+    "operation_id": "getAccountDeletionRequest"
+  },
+  {
+    "method": "POST",
+    "path": "/account-deletion-requests/{request_id}/cancel",
+    "operation_id": "cancelAccountDeletion"
+  }
+]

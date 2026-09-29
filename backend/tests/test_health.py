@@ -19,3 +19,11 @@ def test_phone_like_request_id_is_replaced() -> None:
     assert response.status_code == 200
     assert response.headers["x-request-id"] != phone_like
     assert response.json()["request_id"] == response.headers["x-request-id"]
+
+
+def test_credential_shaped_request_id_is_replaced() -> None:
+    credential = "sk-" + "A" * 24
+    response = TestClient(app).get("/health", headers={"X-Request-ID": credential})
+    assert response.status_code == 200
+    assert response.headers["x-request-id"] != credential
+    assert response.json()["request_id"] == response.headers["x-request-id"]
