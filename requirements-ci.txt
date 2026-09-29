@@ -1,0 +1,4 @@
+# Development-only checks/build tools; no additional application dependencies.
+ruff==0.11.13
+setuptools==75.8.0
+wheel==0.45.1

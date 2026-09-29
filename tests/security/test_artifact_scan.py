@@ -99,7 +99,16 @@ class ArtifactScanTest(unittest.TestCase):
             for apk in (ROOT / "android" / app / "build" / "outputs" / "apk").rglob("*.apk")
         ]
         if not apks:
+            if os.environ.get("NIANNIAN_REQUIRE_APKS") == "1":
+                self.fail("Android gate requires rebuilt APKs; an empty scan cannot pass")
             self.skipTest("No APKs built yet")
+        if os.environ.get("NIANNIAN_REQUIRE_APKS") == "1":
+            for app in ("app-elder", "app-family"):
+                for flavor in ("dev", "qa", "demo"):
+                    for variant in ("debug", "release"):
+                        directory = ROOT / "android" / app / "build/outputs/apk" / flavor / variant
+                        self.assertEqual(len(list(directory.glob("*.apk"))), 1,
+                                         f"Expected exactly one APK: {app}/{flavor}/{variant}")
         secret_patterns = tuple(re.compile(pattern.pattern.encode("ascii")) for pattern in PATTERNS)
         for apk in apks:
             with zipfile.ZipFile(apk) as package:

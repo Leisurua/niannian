@@ -2,6 +2,19 @@
 
 这是开发期间的门禁清单，不是新的设计文档。每项填写 `NOT_STARTED / IN_PROGRESS / PASS / FAIL / BLOCKED`，并附 evidence path。
 
+## Week 1 current checkout — 2026-09-29
+
+本次代码来自 GitHub `Leisurua/niannian` 的 `616d972`，与下方早期本地快照记录区分。完整结果见 [第一周交付记录](evidence/week1.md)。第一周总体为 `IN_PROGRESS`，不以历史 Android/Compose PASS 替代本机或当前提交的验证。
+
+- [x] 后端、三环境、worker、Mock/REST/WSS contract、fixture、日志/源码/历史扫描：`PASS`；本次 pytest **69 passed / 1 skipped**。
+- [x] 后端 wheel 构建及源码目录外安装运行：`PASS`；补齐三个配置文件，排除测试与 Alembic 源码。
+- [x] 第一周 CI 与统一验证入口已实现，本地工具测试 `PASS`；[运行说明](evidence/week1-tooling.md)。
+- [x] 设备基线表、Spike 责任角色与 evidence path 已建立：记录工作 `PASS`；[设备记录](evidence/week1-device-baseline.md)。用户确认暂无设备，真机操作人待设备到位后指定。
+- [ ] 当前检出 Android 构建/单测/lint/APK 扫描：`BLOCKED`，缺 JDK 17 / Android SDK 35；pytest 的唯一跳过项为 APK 扫描。
+- [ ] 当前检出 Compose 运行验收：`BLOCKED`，缺 Docker。
+- [ ] GitHub Actions 实跑：`NOT_STARTED`，工作流尚未发布。
+- [ ] 指定设备 ENV-001/002 与硬件验收：`BLOCKED`，无真机；不影响本周记录与 Mock 开发。
+
 ## Batch 0 Gate
 
 - [x] `E0-T01` 两个 Android App、backend、worker、tests skeleton 可构建 — `PASS`; Android SDK 35 / Build Tools 35.0.0 已可用；原目录与本地快照 `ba719fd` 的干净检出均执行 `android/gradlew.bat --offline --no-daemon clean build` 成功。干净检出生成 12 个 APK，共享模块单元测试 XML 为 10 次执行、0 failure、0 error；`python -m pytest backend/tests tests -q` 为 21 passed（含 APK scan）；backend wheel 构建成功，worker 输出 `WORKER_READY`，Git 工作树干净。原始远端仓库地址与历史仍不可核实，本次干净检出来源是当前源码创建的本地快照。
@@ -11,7 +24,7 @@
 - [x] OpenAPI 74 operations、WSS 9/11 message contract tests pass — PASS; evidence: backend/tests/contract/operations.json, backend/tests/contract/websocket_messages.json, python -m pytest backend/tests/contract backend/tests/test_openapi_source.py -q -p no:cacheprovider.
 - [x] MockASR/LLM/Embedding/TTS/Avatar/WakeWord/Push/Weather 标记 `provider=mock` — `PASS`; evidence: [E0-T07 adapter contracts and mocks](evidence/E0-T07.md), 15 adapter contract tests passed.
 - [ ] 日志、Git、APK、fixture secret scan pass — `IN_PROGRESS`; evidence: [E0-T02](evidence/E0-T02.md), [E0-T03 structured logging and scans](evidence/E0-T03.md). Backend runtime/crash redaction, source/fixture/reachable Git blob scan, and 12 rebuilt APK scans passed. Android Logcat/system crash inspection and PRIV-002 full app flow remain NOT VERIFIED (no device/emulator).
-- [ ] Device baseline 表、Spike owner、evidence path 已建立
+- [x] Device baseline 表、Spike owner role、evidence path 已建立 — 记录工作 `PASS`; evidence: [Week 1 device kickoff](evidence/week1-device-baseline.md)。实际硬件测试与操作人指派仍待设备到位。
 
 ## Batch 1 Gate
 

@@ -1,0 +1,6 @@
+target-version = "py312"
+extend-exclude = ["artifacts", "reports"]
+
+[lint]
+# Foundation baseline: syntax, invalid control flow and undefined names.
+select = ["E9", "F63", "F7", "F82"]

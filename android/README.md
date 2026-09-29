@@ -7,7 +7,7 @@ Two native Kotlin + Jetpack Compose applications are included:
 - `core-common` — shared stable primitives only
 - `core-telemetry` — shared redacted event logging
 
-Each app has `dev`, `qa`, and `demo` Gradle flavors with separate application IDs. `qa` supplies the `test` runtime environment because Android Gradle Plugin reserves flavor names beginning with `test`. The shared `RuntimeConfig` gives the environment and provider source a visible status label. All current flavors use `Mock`; the demo label identifies fictional data and demo capability. This is configuration only: demo seed data and provider implementations belong to later tasks.
+Each app has `dev`, `qa`, and `demo` Gradle flavors with separate application IDs. `qa` supplies the `test` runtime environment because Android Gradle Plugin reserves flavor names beginning with `test`. The shared `RuntimeConfig` gives the environment and provider source a visible status label. All current flavors use `Mock`; the demo label identifies fictional data and demo capability. Backend Mock adapters and fictional seed fixtures now exist, but these placeholder screens do not yet call them.
 
 No networking, navigation, Room schema, hardware permissions or business UI is included yet.
 
