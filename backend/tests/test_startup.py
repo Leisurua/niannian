@@ -1,5 +1,3 @@
-"""Exercise actual HTTP serving and the separate worker process in all profiles."""
-
 import json
 import os
 from pathlib import Path

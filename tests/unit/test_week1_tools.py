@@ -1,5 +1,3 @@
-"""Foundation tooling must not turn missing hardware or failed gates into PASS."""
-
 import importlib.util
 import json
 from pathlib import Path

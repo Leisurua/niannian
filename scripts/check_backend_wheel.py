@@ -1,5 +1,3 @@
-"""Verify installed profiles and health outside the source checkout."""
-
 import os
 from pathlib import Path
 import subprocess
