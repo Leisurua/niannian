@@ -35,6 +35,8 @@ def run_checks(checks: list[str], output: Path) -> dict:
             status = "PASS" if result.returncode == 0 else (
                 "NOT VERIFIED" if result.returncode == unavailable_code else "FAIL")
             record(name, status, exit_code=result.returncode, evidence=log.name)
+            if status == "FAIL":
+                print(log.read_text(encoding="utf-8", errors="replace")[-8000:], flush=True)
             return result.returncode == 0
         except (OSError, subprocess.TimeoutExpired) as error:
             record(name, "NOT VERIFIED" if isinstance(error, OSError) else "FAIL",
@@ -71,7 +73,7 @@ def run_checks(checks: list[str], output: Path) -> dict:
         if not shutil.which("docker") or not shutil.which("pwsh"):
             record("infra-smoke", "NOT VERIFIED", "Docker Compose and PowerShell 7 required")
         else:
-            execute("infra-smoke", ["pwsh", "-NoProfile", "-File", "infra/smoke.ps1"], timeout=300)
+            execute("infra-smoke", ["pwsh", "-NoProfile", "-File", "infra/smoke.ps1"], timeout=1200)
     if "device" in checks:
         execute("device-baseline", [python, "scripts/collect_device_baseline.py", "--output",
                                     str(output / "device-baseline.json")], unavailable_code=2)

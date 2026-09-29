@@ -53,11 +53,20 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
       - name: Install frozen SDK baseline
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
       - uses: gradle/actions/setup-gradle@0b6dd653ba04f4f93bf581ec31e66cbd7dcb644d # v4
       - name: Two apps, all variants, unit tests, lint and mandatory APK scan
         run: python scripts/verify_week1.py --checks android
+      - name: Record Android job outcome even when setup fails
+        if: always()
+        env:
+          ANDROID_JOB_STATUS: ${{ job.status }}
+        run: |
+          python -c "import json, os; from pathlib import Path; p = Path('artifacts/week1'); p.mkdir(parents=True, exist_ok=True); (p / 'android-job.json').write_text(json.dumps({'job_status': os.environ['ANDROID_JOB_STATUS'], 'build_evidence': (p / 'summary.json').exists()}))"
       - name: Preserve reports and demo APKs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -73,7 +82,7 @@ jobs:
 
   infrastructure:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:

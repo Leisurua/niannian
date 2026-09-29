@@ -17,7 +17,10 @@ services:
       retries: 12
 
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-02-18T16-25-55Z
+    image: niannian-minio:RELEASE.2025-02-18T16-25-55Z
+    build:
+      context: ./minio
+      target: server
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin
@@ -34,7 +37,10 @@ services:
       retries: 12
 
   bucket-init:
-    image: quay.io/minio/mc:RELEASE.2025-02-08T19-14-21Z
+    image: niannian-mc:RELEASE.2025-02-08T19-14-21Z
+    build:
+      context: ./minio
+      target: client
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
