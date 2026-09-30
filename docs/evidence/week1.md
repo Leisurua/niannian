@@ -1,100 +1,103 @@
 ## Task
 
-Complete the Week 1 scope in `docs/development-plan.md` §20: E0 engineering
-foundation, backend/Compose/Android placeholders, CI baseline, Mock contracts and
-device baseline kickoff. Date: 2026-09-29.
+Week 1 engineering foundation closeout, reviewed on 2026-09-30. Scope follows
+`docs/development-plan.md` §20: E0-T01..08, initial E11-T04 CI, E9 kickoff records.
+Week 2 Auth/Family/Consent business implementation is outside this delivery.
 
-Baseline: `Leisurua/niannian`, commit
-`616d972b8f59b0b94e5a94ae7b12c498455a8c23`, cloned from GitHub. Work is on local
-branch `feat/week1-foundation`; no push, PR or hosted CI run has been performed.
-Existing Web MVP files in the parent directory are a different project and are
-not the basis for this delivery.
-
-**Overall: implementation prepared; full Week 1 acceptance remains IN_PROGRESS.**
-Missing build/infrastructure tools prevent current-host Android/Compose evidence.
-Device kickoff records are complete; actual hardware tests are NOT_RUN by the
-project owner's confirmation that no test device is available.
+**Engineering gates: PASS on the verified CI head below.** Device acceptance and
+live business-table seed replay remain NOT VERIFIED. This record corrects the
+earlier local-only evidence; it does not claim all product capabilities are done.
 
 ## Changed
 
-- Reused existing E0-T01..08 implementations: two Android apps, FastAPI/worker,
-  three environments, redacted logging, Compose/private storage, migration plan,
-  REST/WSS inventories, eight deterministic Mock adapters and fictional seed.
-- Added three CI jobs with pinned action revisions, read-only permissions,
-  bounded runtimes and evidence upload: backend, Android, infrastructure.
-- Added `scripts/verify_week1.py` for the same local/CI gates. Missing tools return
-  NOT VERIFIED; independent executable checks still run.
-- Added actual HTTP and separate worker-process startup tests in dev/test/demo.
-- Fixed backend wheel contents: include the three environment profiles, exclude
-  tests and Alembic source. Installed-wheel smoke runs outside the checkout.
-- Made the Android gate require every one of the 12 expected APKs before scanning.
-  Source-only tests may still explicitly skip APK scanning.
-- Added a read-only, allowlisted ADB baseline collector and negative tests for
-  absent/unauthorized/multiple devices, sensitive fields and failed commands.
-- Established the [device baseline and E9 kickoff records](week1-device-baseline.md),
-  including evidence paths, responsible roles, dependencies and ten reboot slots.
-- Recorded [tool dependencies, licenses, sizes and commands](week1-tooling.md).
+- Two Android Compose placeholders and shared modules, FastAPI health endpoint
+  and independent worker, dev/test/demo profiles, redacted structured logs.
+- PostgreSQL/pgvector and private MinIO development storage; initial 22-entity
+  Alembic ordering/review/rollback plan, without creating business migrations.
+- Frozen inventory tests for 74 REST operations and 9/11 client/server WSS types;
+  eight deterministic Mock adapters and fictional seed fixtures.
+- Local/CI verification runner, lint/contract/security checks, installed-wheel
+  smoke, mandatory APK scanning and reproducible build evidence.
+- Android setup explicitly requests `platform-tools` instead of the removed
+  legacy `tools` package; setup failures still produce an outcome artifact.
+- MinIO and mc use local source builds of the original upstream release commits
+  because the original registries reject anonymous pulls. See
+  [source versions, licenses and build requirements](../../infra/minio/README.md).
+- Read-only device baseline collector and [kickoff record](week1-device-baseline.md).
 
 ## Tests
 
-Verified on this checkout using an isolated native CPython 3.12.14 environment.
+Verified remote head: `85d2fdd0bee68ad8b56fd6e173377ce96c7071b3`.
+[GitHub Actions run 36539054178](https://github.com/Leisurua/niannian/actions/runs/36539054178)
+completed successfully on 2026-09-29. All three job summaries and their downloaded
+artifacts were inspected on 2026-09-30; this is not an inference from a green badge.
 
-| Check | Current result | Evidence |
+| Check | Result | Evidence |
 | --- | --- | --- |
-| Python lint and compile | PASS | `artifacts/week1/lint.txt`, `python-compile.txt` |
-| Full pytest suites | **69 passed, 1 skipped; 0 failures/errors** | `artifacts/week1/backend-tests.xml` |
-| REST and WSS frozen inventories | PASS within pytest; 74 REST, 9 client / 11 server messages | Existing contract fixtures |
-| Mock adapter, profiles, redaction and source/history scan | PASS within pytest | Full pytest XML |
-| dev/test/demo HTTP `/health` and worker startup | PASS, three profile tests | `backend/tests/test_startup.py` and pytest XML |
-| Fictional fixture | PASS, 24 deterministic rows | `artifacts/week1/demo-seed.txt` |
-| Backend wheel build | PASS | `artifacts/week1/backend-wheel.txt` |
-| Installed wheel outside checkout | PASS, three profiles and health | `artifacts/week1/installed-wheel.txt` |
-| CI structure/pinned action references and failure handling | PASS in local tooling tests | `tests/unit/test_week1_tools.py` |
-| Android build, Android lint/unit, 12 APKs | NOT VERIFIED on this host | JDK 17 / Android SDK 35 unavailable |
-| PostgreSQL/pgvector/MinIO live smoke | NOT VERIFIED on this host | Docker unavailable |
-| Named physical device | NOT_RUN | `artifacts/week1/device-baseline.json`; no device / ADB |
-| Hosted Actions | NOT VERIFIED | Workflow exists locally only |
+| Python lint and compilation | PASS | Backend job summary and logs |
+| Backend pytest | 69 passed, 1 skipped; 0 failures/errors | `backend-tests.xml`: 70 cases; source-only APK scan skipped here |
+| Profiles, live HTTP health and separate worker startup | PASS | Full pytest includes dev/test/demo process tests |
+| Mock, REST/WSS, redaction, source/history privacy | PASS | Backend tests and frozen fixtures |
+| Fictional demo fixture | PASS, 24 deterministic rows | `demo-seed.txt`; no live business-table replay claimed |
+| Backend wheel and installed profiles/health outside checkout | PASS | `backend-wheel.txt`, `installed-wheel.txt` |
+| Android `clean build` / lint | PASS | Android job and `android-build.txt` |
+| Shared Android unit tests | 14 executions, 0 failures/errors/skips | Six debug/release JUnit XML reports |
+| APK completeness and privacy | PASS, all 12 expected variants; 7 scan tests, no skips | `apk-privacy.txt`; required-APK mode checks both apps and all variants |
+| Compose, pgvector and private object storage | PASS | `infra-smoke.txt`: healthy services, vector, private bucket and HTTP 403 anonymous denial |
+| Evidence publication | PASS | Three artifact bundles, including two demo debug APKs |
+| Device kickoff documentation | Prepared | Capability fields remain UNKNOWN; no device supplied |
 
-The unified run selects backend, Android, infrastructure and device checks.
-`artifacts/week1/summary.json` reports `NOT VERIFIED`, not a complete PASS.
-The one skipped pytest is the APK content scan because no APKs were built on this
-host. The Android gate treats missing APKs as a failure rather than a skip.
+Job evidence:
+
+- [Backend](https://github.com/Leisurua/niannian/actions/runs/36539054178/job/109309831216),
+  [artifact](https://github.com/Leisurua/niannian/actions/runs/36539054178/artifacts/11019333353).
+- [Android](https://github.com/Leisurua/niannian/actions/runs/36539054178/job/109309830932),
+  [artifact](https://github.com/Leisurua/niannian/actions/runs/36539054178/artifacts/11019294067).
+- [Infrastructure](https://github.com/Leisurua/niannian/actions/runs/36539054178/job/109309831326),
+  [artifact](https://github.com/Leisurua/niannian/actions/runs/36539054178/artifacts/11019114712).
+
+Artifacts have seven-day retention and are scheduled to expire on 2026-10-06.
+The measured results above remain in Git; binary artifacts are not committed.
+Later documentation/review commits require their own CI before merge. Use the
+current PR/run state for current-head readiness; this historical run cannot
+certify a different commit.
 
 ## Decisions
 
-- Follow the remote FastAPI/Android repository and freeze. Do not continue the
-  unrelated parent's Web MVP roadmap or begin E1/Week 2.
-- Keep E0-T05 plan-only; do not create business migrations or apply seed data to
-  a missing schema to force an artificial pass.
-- Keep all providers Mock and all fixtures fictional; real capability acceptance
-  requires separate evidence. No real provider keys are needed for this delivery.
-- Added only development check/build tools; no new application dependency.
-- Preserve historical E0 evidence as history; it does not certify this host.
+- Preserve the frozen API/WSS, database, Consent and family/security contracts.
+- Keep the first migration plan-only and the seed fixture-only until reviewed
+  business tables exist. Do not invent a temporary schema to force acceptance.
+- Retain Mock labels and fictional data. Eight adapter tests do not prove real
+  ASR/LLM/TTS/Push/Avatar availability or any actual delivery/call connection.
+- Treat the backend APK skip together with the independent, mandatory Android
+  scan. It is no longer an unverified APK gate for the verified remote head.
+- Local Windows lacking SDK/Docker does not invalidate the observed hosted build;
+  neither hosted builds nor unit tests establish physical-device behavior.
 
 ## Contract Changes
 
-None. Requirements, OpenAPI/WSS, database schemas/enums, consent/security boundaries,
-and all accepted/proposed ADR statuses are unchanged.
+None. No requirements, public DTOs/enums, DB schema, permission boundaries,
+retention rules or accepted/proposed ADR statuses are changed.
 
 ## Not Verified
 
-Current-host Android/JDK/SDK build and APK scan; Docker service smoke; hosted CI;
-device inventory, installed-app build identity, Logcat, kiosk/BLE/camera/audio/
-telephony and ten-reboot gate; real providers; seed replay against business tables.
-No mock result is substituted for these checks.
+- ENV-001/002 actual named-device inventory and installed-app build identity.
+- Android Logcat/system crash inspection and full business-flow privacy tests.
+- Kiosk/Device Owner, ten reboot/exit cycles, BLE, camera, audio ownership,
+  offline wake word and telephony on physical hardware.
+- Real AI/Push/Weather providers, actual notification delivery and call outcomes.
+- Seed replay/idempotency against a real migrated business database.
 
 ## Issues
 
-- This host has no configured JDK 17, SDK 35 or Docker. The new CI supplies those
-  toolchains for verification after authorized publication; it has not run yet.
-- No physical test device is available, as confirmed by the project owner.
-  Device operator assignment is deferred until equipment arrives.
-- Pytest reports one upstream Starlette/AnyIO deprecation warning. No dependency
-  upgrade or frozen runtime pin change is included in this Week 1 task.
+The original Android SDK and MinIO pull failures are resolved in the verified
+run. The remaining acceptance limits above are not fixed by CI and stay explicit.
+An upstream Starlette/AnyIO deprecation warning remains; no runtime dependency
+upgrade is included in this closeout.
 
 ## Next
 
-After JDK/SDK and Docker are available, run the Android and infrastructure gates;
-after publishing the branch, retain the matching Actions run URL and artifacts.
-When hardware arrives, complete the named-device record and run the matrix.
-Week 2 Auth/Family/Consent implementation has not started.
+Complete the PR review and current-head CI before merging this first-week change.
+Once equipment is available, assign the device operator and execute the existing
+matrix. Implement and review business migrations before database seed replay.
+These follow-ups do not start Week 2 automatically.
