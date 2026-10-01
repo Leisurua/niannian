@@ -4,12 +4,16 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.platform.db import Base
+from app.platform.config import get_settings
+from app.platform.models import WEEK2_MODELS
 
 config = context.config
+config.set_main_option("sqlalchemy.url", get_settings().database_url.replace("%", "%%"))
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
+assert len(WEEK2_MODELS) == 8
 
 
 def run_migrations_offline() -> None:

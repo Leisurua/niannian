@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["dev", "test", "demo"]
@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     s3_bucket: str = "nianian-private"
     s3_access_key: str | None = Field(default=None, repr=False)
     s3_secret_key: str | None = Field(default=None, repr=False)
+    auth_signing_key: SecretStr = Field(default=SecretStr(""), repr=False)
+    auth_access_seconds: int = Field(default=900, ge=60, le=3600)
+    auth_refresh_seconds: int = Field(default=604800, ge=900, le=2592000)
+    auth_login_limit: int = Field(default=10, ge=1, le=1000)
+    idempotency_seconds: int = Field(default=86400, ge=60, le=604800)
 
     model_config = SettingsConfigDict(extra="ignore", case_sensitive=False)
 

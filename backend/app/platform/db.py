@@ -7,7 +7,7 @@ from app.platform.config import get_settings
 
 
 class Base(DeclarativeBase):
-    """Metadata root for future business models; no business tables in E0-T01."""
+    pass
 
 
 settings = get_settings()
