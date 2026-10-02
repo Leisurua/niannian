@@ -13,7 +13,7 @@ class TelemetryLogger(private val sink: (String) -> Unit = { Log.i("NianNian", i
     private val symbolFields = setOf("provider", "result", "error_code")
 
     fun info(event: String, fields: Map<String, String> = emptyMap()) {
-        val safeEvent = if (eventCode.matches(event) && !phoneLike.containsMatchIn(event)) event else "UNSTRUCTURED_LOG"
+        val safeEvent = if (eventCode.matches(event) && !phoneLike.containsMatchIn(event) && !secretLike.containsMatchIn(event)) event else "UNSTRUCTURED_LOG"
         val values = mutableListOf("\"event\":\"$safeEvent\"")
         for ((key, value) in fields) {
             if (key == "latency_ms") {

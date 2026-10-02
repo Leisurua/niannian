@@ -66,7 +66,7 @@ class StructuredFormatter(logging.Formatter):
             and not record.args
             else "UNSTRUCTURED_LOG"
         )
-        if not _EVENT.fullmatch(event) or _PHONE_LIKE.search(event):
+        if not _EVENT.fullmatch(event) or _PHONE_LIKE.search(event) or _SECRET_LIKE.search(event):
             event = "UNSTRUCTURED_LOG"
         payload: dict[str, str | int] = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -92,13 +92,54 @@ def log_event(logger: logging.Logger, level: int, event: str, **fields: Any) -> 
     logger.log(level, event, extra={**metadata, "_structured_event": True})
 
 
+def _report_logging_failure() -> None:
+    """Best-effort fixed diagnostic; never format a record or sink exception."""
+    try:
+        sys.stderr.write(
+            '{"level":"ERROR","logger":"nianian.runtime",'
+            '"event":"LOGGING_FAILED","error_code":"LOG_SINK_FAILED"}\n'
+        )
+    except BaseException:
+        # A failed fallback must not reach Python's exception-hook diagnostics,
+        # which would print the original sensitive exception as well.
+        pass
+
+
+class RedactedStreamHandler(logging.StreamHandler):
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            super().emit(record)
+        except BaseException:
+            # StreamHandler only catches Exception. A sink may also raise a
+            # BaseException; neither kind may escape into crash diagnostics.
+            self.handleError(record)
+
+    def flush(self) -> None:
+        try:
+            super().flush()
+        except BaseException:
+            # logging.shutdown() flushes handlers outside emit/excepthook.
+            # Its atexit failure would otherwise expose the sink exception.
+            _report_logging_failure()
+
+    def handleError(self, record: logging.LogRecord) -> None:
+        # The standard handler prints raw message/args and the sink traceback.
+        # Do not inspect record or call the parent error handler here.
+        _report_logging_failure()
+
+
 def _redacted_excepthook(_exc_type: type[BaseException], _exc_value: BaseException, _traceback: Any) -> None:
-    log_event(
-        logging.getLogger("nianian.runtime"),
-        logging.CRITICAL,
-        "UNHANDLED_PROCESS_ERROR",
-        error_code="UNHANDLED_EXCEPTION",
-    )
+    try:
+        log_event(
+            logging.getLogger("nianian.runtime"),
+            logging.CRITICAL,
+            "UNHANDLED_PROCESS_ERROR",
+            error_code="UNHANDLED_EXCEPTION",
+        )
+    except BaseException:
+        # Filters or other configured handlers can fail before our sink runs.
+        # Never let a failed hook cause Python to print the original exception.
+        _report_logging_failure()
 
 
 def _redacted_thread_excepthook(args: threading.ExceptHookArgs) -> None:
@@ -106,7 +147,7 @@ def _redacted_thread_excepthook(args: threading.ExceptHookArgs) -> None:
 
 
 def configure_logging(level: str = "INFO") -> None:
-    handler = logging.StreamHandler(sys.stdout)
+    handler = RedactedStreamHandler(sys.stdout)
     handler.setFormatter(StructuredFormatter())
     root = logging.getLogger()
     root.handlers.clear()

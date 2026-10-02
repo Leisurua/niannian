@@ -68,4 +68,12 @@ class TelemetryLoggerTest {
         logger.info("message with spaces", mapOf("user_id" to "1" + "3".repeat(10)))
         assertEquals("{\"event\":\"UNSTRUCTURED_LOG\"}", emitted)
     }
+
+    @Test
+    fun rejectsCredentialShapedEvent() {
+        var emitted = ""
+        val logger = TelemetryLogger { emitted = it }
+        logger.info("AKIA" + "A".repeat(16))
+        assertEquals("{\"event\":\"UNSTRUCTURED_LOG\"}", emitted)
+    }
 }

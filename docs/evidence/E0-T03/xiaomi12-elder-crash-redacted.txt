@@ -1,0 +1,10 @@
+09-30 22:59:32.330 17674 17697 I NianNian: {"event":"PRIVACY_PROBE","request_id":"req-e0t03","correlation_id":"corr-e0t03","provider":"mock","result":"FAILED","error_code":"CONTROLLED_EXCEPTION","latency_ms":12}
+09-30 22:59:32.330 17674 17697 I NianNian: {"event":"PRIVACY_PROBE"}
+09-30 22:59:32.330 17674 17697 I NianNian: {"event":"UNSTRUCTURED_LOG"}
+09-30 22:59:35.335 17674 17701 E AndroidRuntime: FATAL EXCEPTION: E0T03-controlled-crash
+09-30 22:59:35.335 17674 17701 E AndroidRuntime: Process: org.example.niannian.elder.demo, PID: 17674
+09-30 22:59:35.335 17674 17701 E AndroidRuntime: java.lang.RuntimeException: [REDACTED_SYNTHETIC_TOKEN] | [REDACTED_SYNTHETIC_KEY] | [REDACTED_SYNTHETIC_AUDIO] | [REDACTED_SYNTHETIC_TRANSCRIPT]
+09-30 22:59:35.335 17674 17701 E AndroidRuntime: 	at org.example.niannian.acceptance.LogProbe$1.run(LogProbe.java:41)
+09-30 22:59:35.335 17674 17701 E AndroidRuntime: 	at java.lang.Thread.run(Thread.java:920)
+09-30 22:59:35.335 17674 17701 E AndroidRuntime: Caused by: java.lang.IllegalStateException: [REDACTED_SYNTHETIC_PHONE] | [REDACTED_SYNTHETIC_HEALTH] | [REDACTED_SYNTHETIC_MEMORY] | [REDACTED_SYNTHETIC_URL]
+09-30 22:59:35.335 17674 17701 E AndroidRuntime: 	... 2 more

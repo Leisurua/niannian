@@ -1,0 +1,4 @@
+09-30 23:31:12.251 21047 21070 I NianNian: {"event":"APP_EXECUTION_FAILED","result":"FAILED","error_code":"UNEXPECTED_FAILURE"}
+09-30 23:31:12.251 21047 21070 E AndroidRuntime: FATAL EXCEPTION: NianNian-fatal
+09-30 23:31:12.251 21047 21070 E AndroidRuntime: Process: org.example.niannian.elder.demo, PID: 21047
+09-30 23:31:12.251 21047 21070 E AndroidRuntime: org.example.niannian.core.telemetry.AppExecutionBoundary$ContentFreeFailure: APP_EXECUTION_FAILED

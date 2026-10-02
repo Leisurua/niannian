@@ -1,8 +1,13 @@
 # MinIO development storage
 
-Compose creates `nianian-private` idempotently and explicitly disables anonymous bucket access. The services bind only to localhost. Run `pwsh -File infra/smoke.ps1` from the repository root to check service health, pgvector, bucket creation, and anonymous access denial.
+Compose creates `nianian-private` idempotently and explicitly disables anonymous bucket access. The services bind only to localhost. Run `pwsh -NoProfile -File infra/smoke.ps1` from the repository root to check service health, pgvector, bucket creation, and anonymous access denial. Docker Desktop (Linux containers), Docker Compose v2 with `--wait-timeout`, and PowerShell 7 are required. The health wait defaults to 120 seconds and can be set with `-WaitTimeoutSeconds`; HTTP checks time out after 10 seconds.
+
+The smoke test uploads a unique, synthetic text probe and confirms it exists using authenticated `mc stat`. Anonymous bucket listing and a direct GET of that existing object must both return HTTP 403. A `finally` block removes only that run's probe; failed verification or cleanup prevents the final PASS. No family data or raw audio is used. Repeating the command reuses the local volumes and reapplies the private bucket policy.
+
+PostgreSQL's init script enables pgvector on first initialization of an empty volume. It does not run business migrations. `docker compose -f infra/docker-compose.yml down` stops the local services while preserving data volumes; adding `--volumes` destroys their contents and is not part of the normal smoke workflow. The checked-in credentials are public, local development defaults; these services are not a production deployment.
 
 The bucket has no fixed expiration policy: the data-retention durations are still an open privacy decision (DB §20, D-011). The future FileAsset cleanup flow must delete objects according to authorized `retention_until` and revoke/delete state. No upload or signed URL implementation is part of this infrastructure task.
+
 # Reproducible local MinIO images
 
 The original MinIO and mc release image repositories returned anonymous pull

@@ -1,0 +1,137 @@
+{
+  "task": "E0-T03 device log acceptance / PRIV-002",
+  "time": "2026-09-30T22:58:57.393794+08:00",
+  "source_commit": "616d972b8f59b0b94e5a94ae7b12c498455a8c23",
+  "device": {
+    "manufacturer": "Xiaomi",
+    "model": "2201123C",
+    "codename": "cupid",
+    "android": "12",
+    "api": "31",
+    "security_patch": "2022-09-01",
+    "os_build": "SKQ1.211006.001 test-keys"
+  },
+  "canaries": "Eight synthetic categories; no real data; raw captures held only in memory",
+  "capture_scope": "Each observed app PID only; all readable Logcat buffers; no device log clearing",
+  "apps": [
+    {
+      "role": "elder",
+      "package": "org.example.niannian.elder.demo",
+      "variant": "demoDebug",
+      "provider": "mock",
+      "version": [
+        "versionCode=1 minSdk=26 targetSdk=35",
+        "versionName=0.1.0-demo"
+      ],
+      "installed_apk_sha256": "581e153e30b0b95a22808529454cc1c5afe3c7a8f46a00bb88374cf6fc0efeb8",
+      "local_apk_sha256": "581e153e30b0b95a22808529454cc1c5afe3c7a8f46a00bb88374cf6fc0efeb8",
+      "normal_flow": [
+        "Cold launch: ok",
+        "Home then resume: ok"
+      ],
+      "normal_event_count": 1,
+      "normal_canary_hits": {
+        "token": 0,
+        "key": 0,
+        "audio": 0,
+        "transcript": 0,
+        "phone": 0,
+        "health": 0,
+        "memory": 0,
+        "url": 0
+      },
+      "normal_result": "PASS",
+      "probe_apk_sha256": "7ca86f0b4f1f649663485671c39446a278d99c9c77e2e48ca85956a5ae1e3534",
+      "telemetry_canary_hits": {
+        "token": 0,
+        "key": 0,
+        "audio": 0,
+        "transcript": 0,
+        "phone": 0,
+        "health": 0,
+        "memory": 0,
+        "url": 0
+      },
+      "telemetry_result": "PASS",
+      "uncaught_exception_observed": true,
+      "nested_cause_observed": true,
+      "crash_canary_hits": {
+        "token": 1,
+        "key": 1,
+        "audio": 1,
+        "transcript": 1,
+        "phone": 1,
+        "health": 1,
+        "memory": 1,
+        "url": 1
+      },
+      "instrumentation_process_crashed": true,
+      "crash_result": "FAIL",
+      "result": "FAIL",
+      "test_apk_removed": true,
+      "relaunch_after_crash": "ok"
+    },
+    {
+      "role": "family",
+      "package": "org.example.niannian.family.demo",
+      "variant": "demoDebug",
+      "provider": "mock",
+      "version": [
+        "versionCode=1 minSdk=26 targetSdk=35",
+        "versionName=0.1.0-demo"
+      ],
+      "installed_apk_sha256": "7deef07a04620251effbfd34caa4b3376c8745bae81f0a5772d4ef7271cafeaf",
+      "local_apk_sha256": "7deef07a04620251effbfd34caa4b3376c8745bae81f0a5772d4ef7271cafeaf",
+      "normal_flow": [
+        "Cold launch: ok",
+        "Home then resume: ok"
+      ],
+      "normal_event_count": 1,
+      "normal_canary_hits": {
+        "token": 0,
+        "key": 0,
+        "audio": 0,
+        "transcript": 0,
+        "phone": 0,
+        "health": 0,
+        "memory": 0,
+        "url": 0
+      },
+      "normal_result": "PASS",
+      "probe_apk_sha256": "ec5fe310d130bd36ecb8f1eb313d062a5675310217217cbe74f7f9add8f97189",
+      "telemetry_canary_hits": {
+        "token": 0,
+        "key": 0,
+        "audio": 0,
+        "transcript": 0,
+        "phone": 0,
+        "health": 0,
+        "memory": 0,
+        "url": 0
+      },
+      "telemetry_result": "PASS",
+      "uncaught_exception_observed": true,
+      "nested_cause_observed": true,
+      "crash_canary_hits": {
+        "token": 1,
+        "key": 1,
+        "audio": 1,
+        "transcript": 1,
+        "phone": 1,
+        "health": 1,
+        "memory": 1,
+        "url": 1
+      },
+      "instrumentation_process_crashed": true,
+      "crash_result": "FAIL",
+      "result": "FAIL",
+      "test_apk_removed": true,
+      "relaunch_after_crash": "ok"
+    }
+  ],
+  "full_business_flow": "NOT VERIFIED: current apps have only Demo/Mock entry screens",
+  "oem_crash_reports": "NOT VERIFIED: private DropBox/tombstone/upload pipeline not inspected",
+  "device_log_result": "FAIL",
+  "priv_002_result": "FAIL",
+  "local_probe_source_and_apks_removed": true
+}

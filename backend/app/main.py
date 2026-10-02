@@ -53,7 +53,13 @@ async def handle_validation_error(request: Request, exc: RequestValidationError)
 
 @app.exception_handler(Exception)
 async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
-    log_event(logger, logging.ERROR, "UNHANDLED_APPLICATION_ERROR", error_code="INTERNAL_ERROR")
+    # ServerErrorMiddleware invokes this handler after request contexts reset.
+    # The request state still holds the validated identifier for this failure.
+    request_id = getattr(request.state, "request_id", None)
+    log_event(
+        logger, logging.ERROR, "UNHANDLED_APPLICATION_ERROR",
+        request_id=request_id, correlation_id=request_id, error_code="INTERNAL_ERROR",
+    )
     return error_response(
         request,
         status_code=500,

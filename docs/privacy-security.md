@@ -210,6 +210,8 @@ Raw Audio 默认不保存；WSS 音频 chunk 只有在最终策略允许时才�
 - WSS：header bearer 优先、不把 token 放 URL；连接后重新检查 owner/family/Consent；限制消息大小、类型、sequence、重放和 flood；过期 token/断开不得继续消费。
 - 日志、crash report、AITrace 只存 request/conversation id、provider/model/prompt/rule version、延迟、状态和候选计数，不存 raw audio、full transcript、chain of thought、完整健康文本。
 
+E0-T03 Android 执行边界补充（2026-09-30，仓库所有者批准 [方案 A](evidence/E0-T03-repair-proposal.md)）：应用自有根回调/worker 的同步执行体必须在异常逃出前去掉原始 message、cause、suppressed 和敏感线程名，仅产生固定错误并终止失败执行，不恢复不一致状态。禁止检查或格式化原异常；日志 sink 失败同样不得泄露异常内容。异步回调必须在实际执行时单独包装，注册回调的外层包装不提供后续保护。当前仅两个 App 的同步启动入口已具备接入范围，完整业务流程仍需逐项接入和验收。未包装线程、framework/native/ANR 和 OEM 崩溃报告不属于此应用级保证；旧探针的泄漏 FAIL 保留为已批准且可见的残余风险，不代表通过，不授权 SDK 降级、隐藏 API 绕过或生产发布。
+
 ## 12. AI Provider and Redaction
 
 AI Provider 选择尚未确定，不写具体供应商事实。每个候选 provider 上线前必须确认：

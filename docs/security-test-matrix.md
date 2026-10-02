@@ -59,7 +59,7 @@
 | AI-006 | AI | redaction policy | Ordinary query vs Medication/Photo/Phone | Only allowlisted fields sent | request capture fixture | P0 |
 | AI-007 | Provider | provider config | Inspect training/retention/region/log policy | Real S2/S3 blocked until decision | provider approval record | P0 |
 | PRIV-001 | Notification | locked screen | Receive signal/health/emergency push | Generic/minimal; no full conversation/health/secret | screenshot + payload | P0 |
-| PRIV-002 | Logging | full app flow | Inspect normal/crash logs | No token/key/audio/transcript/phone/health/memory/URL | redaction scan | P0 |
+| PRIV-002 | Logging | full app flow; Android app-owned execution per approved E0-T03 option A | Inspect normal/crash logs; main/worker, nested/suppressed errors, hostile formatting and failed sink | No token/key/audio/transcript/phone/health/memory/URL through app-owned boundaries; content-free fatal termination; unmanaged/framework/native/OEM residual separately reported, never counted PASS | redaction scan + [approved boundary](evidence/E0-T03-repair-proposal.md); retain original unmanaged-thread FAIL | P0 |
 | PRIV-003 | Demo | demo build | Run conversation/emergency/report | Fictional fixture; no production secret/content | artifact scan | P0 |
 | PRIV-004 | Signal | PHYSICAL/EMOTION/MISS/SCAM | Read family detail | Minimum evidence; no raw conversation/diagnosis | response + audit | P1 |
 | PRIV-005 | Conversation | audio policy unset | Run voice flow | No raw audio persisted without approved policy | object/DB inspection | P0 |

@@ -1,0 +1,11 @@
+........................................................................ [ 85%]
+............                                                             [100%]
+============================== warnings summary ===============================
+backend\.venv\Lib\site-packages\starlette\testclient.py:40
+  D:\class_project\backend\.venv\Lib\site-packages\starlette\testclient.py:40: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = typing.Callable[[], typing.ContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+--- generated xml file: D:\class_project\.task-temp\e0-t08-final-tests.xml ----
+84 passed, 1 warning in 6.73s
+{"level":"ERROR","logger":"nianian.runtime","event":"LOGGING_FAILED","error_code":"LOG_SINK_FAILED"}

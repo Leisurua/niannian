@@ -21,7 +21,7 @@
 
 The API exposes `GET /health` and does not require a database connection for that endpoint.
 
-All checked-in profiles use Mock providers. The demo profile requires fictional data and Mock providers; its seed data is a later task. Android `dev`, `test`, and `demo` variants display their environment and provider source in the placeholder screen.
+All checked-in profiles use Mock providers. The demo profile requires fictional data and Mock providers. E0-T08 supplies [fictional seed fixtures](scripts/README.md); run `backend/.venv/Scripts/python.exe scripts/seed_demo_data.py --check` without a database. Applying the seed requires an existing reviewed business schema, which is currently absent. Android `dev`, `test`, and `demo` variants display their environment and provider source in the placeholder screen; they do not load business seed records yet.
 
 ## Verification commands
 
