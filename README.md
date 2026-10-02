@@ -1,6 +1,8 @@
 # 念念（NianNian）AI 陪伴系统
 
-当前仓库是 NianNian 的工程骨架，按 `docs/development-plan.md` 逐步实现。E0-T01~T03 提供可启动的 FastAPI health endpoint、数据库/迁移基础、两个 Android Compose App 占位入口、环境配置与脱敏日志。
+当前仓库是 NianNian 的第一周工程基础，按 `docs/development-plan.md` 逐步实现。包含 FastAPI health endpoint、两个 Android Compose App 占位入口、环境配置与脱敏日志、Compose 基础设施、冻结接口清单、确定性 Mock 和虚构数据 fixture。数据库业务迁移仍为计划，业务页面与真实设备能力尚未实现。
+
+第一周统一检查：安装 `backend/requirements.lock` 和 `requirements-ci.txt` 后运行 `python scripts/verify_week1.py`。缺少 Android 或 Docker 环境时会输出 `NOT VERIFIED`，不会伪装为通过。CI、运行方法与边界见 [验证工具说明](docs/evidence/week1-tooling.md)，设备记录见 [设备基线启动记录](docs/evidence/week1-device-baseline.md)。
 
 ## Repository structure
 

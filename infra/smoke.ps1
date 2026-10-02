@@ -1,6 +1,9 @@
 $ErrorActionPreference = 'Stop'
 $compose = Join-Path $PSScriptRoot 'docker-compose.yml'
 
+docker compose -f $compose build minio bucket-init
+if ($LASTEXITCODE -ne 0) { throw 'Pinned MinIO source build failed.' }
+
 docker compose -f $compose up -d --wait postgres minio
 if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL or MinIO did not become healthy.' }
 

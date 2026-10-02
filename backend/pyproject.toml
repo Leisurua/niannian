@@ -27,3 +27,7 @@ addopts = "-q"
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["app*", "config"]
+
+[tool.setuptools.package-data]
+config = ["*.env"]
