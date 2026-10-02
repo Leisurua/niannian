@@ -1,0 +1,41 @@
+ Network niannian-e0-t04-fresh-20261002_default  Creating
+ Network niannian-e0-t04-fresh-20261002_default  Created
+ Volume "niannian-e0-t04-fresh-20261002_postgres_data"  Creating
+ Volume "niannian-e0-t04-fresh-20261002_postgres_data"  Created
+ Volume "niannian-e0-t04-fresh-20261002_minio_data"  Creating
+ Volume "niannian-e0-t04-fresh-20261002_minio_data"  Created
+ Container niannian-e0-t04-fresh-20261002-postgres-1  Creating
+ Container niannian-e0-t04-fresh-20261002-minio-1  Creating
+ Container niannian-e0-t04-fresh-20261002-postgres-1  Created
+ Container niannian-e0-t04-fresh-20261002-minio-1  Created
+ Container niannian-e0-t04-fresh-20261002-minio-1  Starting
+ Container niannian-e0-t04-fresh-20261002-postgres-1  Starting
+ Container niannian-e0-t04-fresh-20261002-minio-1  Started
+ Container niannian-e0-t04-fresh-20261002-postgres-1  Started
+ Container niannian-e0-t04-fresh-20261002-minio-1  Waiting
+ Container niannian-e0-t04-fresh-20261002-postgres-1  Waiting
+ Container niannian-e0-t04-fresh-20261002-minio-1  Healthy
+ Container niannian-e0-t04-fresh-20261002-postgres-1  Healthy
+Added `local` successfully.
+Bucket created successfully `local/nianian-private`.
+Access permission for `local/nianian-private` is set to `private`
+PASS: Fresh PostgreSQL volume enabled pgvector 0.8.6.
+Added `local` successfully.
+Bucket created successfully `local/nianian-private`.
+Access permission for `local/nianian-private` is set to `private`
+PASS: Fresh private bucket exists; anonymous listing HTTP 403; repeated initialization exit 0.
+ Container niannian-e0-t04-fresh-20261002-minio-1  Stopping
+ Container niannian-e0-t04-fresh-20261002-postgres-1  Stopping
+ Container niannian-e0-t04-fresh-20261002-minio-1  Stopped
+ Container niannian-e0-t04-fresh-20261002-minio-1  Removing
+ Container niannian-e0-t04-fresh-20261002-minio-1  Removed
+ Container niannian-e0-t04-fresh-20261002-postgres-1  Stopped
+ Container niannian-e0-t04-fresh-20261002-postgres-1  Removing
+ Container niannian-e0-t04-fresh-20261002-postgres-1  Removed
+ Volume niannian-e0-t04-fresh-20261002_postgres_data  Removing
+ Volume niannian-e0-t04-fresh-20261002_minio_data  Removing
+ Network niannian-e0-t04-fresh-20261002_default  Removing
+ Volume niannian-e0-t04-fresh-20261002_postgres_data  Removed
+ Volume niannian-e0-t04-fresh-20261002_minio_data  Removed
+ Network niannian-e0-t04-fresh-20261002_default  Removed
+PASS: Only the disposable verification project and volumes were removed.

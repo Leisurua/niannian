@@ -1,0 +1,65 @@
+{
+  "task": "E0-T02 device display acceptance",
+  "acceptance_date": "2026-09-30",
+  "timezone": "Asia/Shanghai",
+  "source_commit": "616d972b8f59b0b94e5a94ae7b12c498455a8c23",
+  "device": {
+    "manufacturer": "Xiaomi",
+    "model": "2201123C",
+    "codename": "cupid",
+    "android": "12",
+    "api": 31,
+    "miui": "V13.0.41.0.SLCCNXM",
+    "screen": "1080x2400",
+    "density_dpi": 440,
+    "font_scale": 1.0
+  },
+  "data_scope": "Configuration-only skeleton; no personal or family records displayed; E0-T08 fictional fixture is not consumed by these apps.",
+  "screenshots": "Unedited adb screencap PNGs; visually reviewed; no personal content.",
+  "apps": [
+    {
+      "role": "elder",
+      "package": "org.example.niannian.elder.demo",
+      "activity": "org.example.niannian.elder.MainActivity",
+      "installed_version": [
+        "versionCode=1 minSdk=26 targetSdk=35",
+        "versionName=0.1.0-demo"
+      ],
+      "environment": "demo",
+      "provider_mode": "mock",
+      "label": "DEMO · 演示数据 · 演示能力（Mock）",
+      "label_bounds": "[128,1222][952,1288]",
+      "built_apk_sha256": "581e153e30b0b95a22808529454cc1c5afe3c7a8f46a00bb88374cf6fc0efeb8",
+      "installed_apk_sha256": "581e153e30b0b95a22808529454cc1c5afe3c7a8f46a00bb88374cf6fc0efeb8",
+      "screenshot": "xiaomi12-elder-demo.png",
+      "screenshot_sha256": "d26b7b3442ac49666a0e14c47ed0235fe3e7e24c7bb190f702151061e5e48b4a",
+      "install_result": "Success",
+      "launch_status": "ok",
+      "launch_state": "COLD",
+      "visual_result": "PASS",
+      "configuration_match": "PASS"
+    },
+    {
+      "role": "family",
+      "package": "org.example.niannian.family.demo",
+      "activity": "org.example.niannian.family.MainActivity",
+      "installed_version": [
+        "versionCode=1 minSdk=26 targetSdk=35",
+        "versionName=0.1.0-demo"
+      ],
+      "environment": "demo",
+      "provider_mode": "mock",
+      "label": "DEMO · 演示数据 · 演示能力（Mock）",
+      "label_bounds": "[128,1222][952,1288]",
+      "built_apk_sha256": "7deef07a04620251effbfd34caa4b3376c8745bae81f0a5772d4ef7271cafeaf",
+      "installed_apk_sha256": "7deef07a04620251effbfd34caa4b3376c8745bae81f0a5772d4ef7271cafeaf",
+      "screenshot": "xiaomi12-family-demo.png",
+      "screenshot_sha256": "59b6906388d33f0d0f8c5f02def1009bdc07978b054baf51af2ff7821e4b99ff",
+      "install_result": "Success",
+      "launch_status": "ok",
+      "launch_state": "COLD",
+      "visual_result": "PASS",
+      "configuration_match": "PASS"
+    }
+  ]
+}

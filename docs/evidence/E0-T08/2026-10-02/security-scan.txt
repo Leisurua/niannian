@@ -1,0 +1,20 @@
+test_apk_scan_includes_full_phone_pattern (test_artifact_scan.ArtifactScanTest.test_apk_scan_includes_full_phone_pattern) ... ok
+test_built_apks_contain_no_secret_patterns (test_artifact_scan.ArtifactScanTest.test_built_apks_contain_no_secret_patterns) ... ok
+test_fixture_scan_detects_transcript_content (test_artifact_scan.ArtifactScanTest.test_fixture_scan_detects_transcript_content) ... ok
+test_git_history_contains_no_secret_patterns (test_artifact_scan.ArtifactScanTest.test_git_history_contains_no_secret_patterns) ... ok
+test_no_secret_or_full_phone_patterns_in_sources_and_fixtures (test_artifact_scan.ArtifactScanTest.test_no_secret_or_full_phone_patterns_in_sources_and_fixtures) ... ok
+test_no_sensitive_artifacts_in_source_trees (test_artifact_scan.ArtifactScanTest.test_no_sensitive_artifacts_in_source_trees) ... ok
+test_no_transcript_or_raw_audio_content_in_fixtures (test_artifact_scan.ArtifactScanTest.test_no_transcript_or_raw_audio_content_in_fixtures) ... ok
+test_failed_crash_hook_filter_does_not_trigger_python_fallback (test_logging_behavior.LoggingBehaviorTest.test_failed_crash_hook_filter_does_not_trigger_python_fallback) ... ok
+test_failed_primary_and_fallback_streams_do_not_escape (test_logging_behavior.LoggingBehaviorTest.test_failed_primary_and_fallback_streams_do_not_escape) ... ok
+test_failed_sink_does_not_format_hostile_message_or_arguments (test_logging_behavior.LoggingBehaviorTest.test_failed_sink_does_not_format_hostile_message_or_arguments) ... ok
+test_failed_write_flush_and_formatter_never_use_raw_diagnostics (test_logging_behavior.LoggingBehaviorTest.test_failed_write_flush_and_formatter_never_use_raw_diagnostics) ... ok
+test_structured_event_drops_unapproved_fields (test_logging_behavior.LoggingBehaviorTest.test_structured_event_drops_unapproved_fields) ... ok
+test_uncaught_process_crash_emits_redacted_event (test_logging_behavior.LoggingBehaviorTest.test_uncaught_process_crash_emits_redacted_event) ... ok
+test_uncaught_thread_crash_emits_redacted_event (test_logging_behavior.LoggingBehaviorTest.test_uncaught_thread_crash_emits_redacted_event) ... ok
+test_unstructured_exception_and_phone_like_id_are_suppressed (test_logging_behavior.LoggingBehaviorTest.test_unstructured_exception_and_phone_like_id_are_suppressed) ... ok
+
+----------------------------------------------------------------------
+Ran 15 tests in 5.569s
+
+OK

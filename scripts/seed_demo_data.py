@@ -57,19 +57,19 @@ def _check_namespace(cursor) -> None:
     for table, rows in ROWS.items():
         if table in ("user", "family"):
             continue
-        marker = next((key for key in ("family_id", "owner_user_id", "user_id", "reminder_id",
-                                       "signal_event_id", "notification_id") if key in rows[0]), None)
-        if marker is None:
+        markers = [key for key in rows[0] if key.endswith("_user_id") or key in
+                   ("family_id", "user_id", "memory_id", "reminder_id", "signal_event_id", "notification_id")]
+        if not markers:
             raise RuntimeError(f"no namespace marker for {table}")
-        expected = {row["id"]: row[marker] for row in rows}
+        expected = {row["id"]: tuple(str(row[key]) for key in markers) for row in rows}
         cursor.execute(
             sql.SQL("SELECT id, {} FROM {} WHERE id = ANY(%s::uuid[])").format(
-                sql.Identifier(marker), sql.Identifier(table)
+                sql.SQL(", ").join(map(sql.Identifier, markers)), sql.Identifier(table)
             ),
             (list(expected),),
         )
-        for identifier, value in cursor.fetchall():
-            if str(value) != str(expected[str(identifier)]):
+        for identifier, *values in cursor.fetchall():
+            if tuple(map(str, values)) != expected[str(identifier)]:
                 raise RuntimeError(f"demo row ID in {table} belongs to another namespace")
 
 
@@ -78,6 +78,7 @@ def replay(connection) -> None:
     from psycopg import sql
     from psycopg.types.json import Jsonb
 
+    validate_fixture()
     with connection.transaction():
         with connection.cursor() as cursor:
             _check_schema(cursor)
@@ -109,14 +110,14 @@ def main() -> int:
     args = parser.parse_args()
     validate_fixture()
     if args.check:
-        print(f"PASS: {NAMESPACE} fixture, {sum(map(len, ROWS.values()))} deterministic rows")
+        print(f"PASS: {NAMESPACE} fixture, {sum(map(len, ROWS.values()))} deterministic rows; provider=mock, fictional=true")
         return 0
     dsn = _assert_demo_environment()
     import psycopg
 
-    with psycopg.connect(dsn, autocommit=True) as connection:
+    with psycopg.connect(dsn, autocommit=True, connect_timeout=5) as connection:
         replay(connection)
-    print(f"PASS: replayed {NAMESPACE} fixture")
+    print(f"PASS: replayed {NAMESPACE} fixture; provider=mock, fictional=true")
     return 0
 
 
@@ -125,4 +126,8 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except (AssertionError, RuntimeError) as exc:
         print(f"Seed validation failed: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
+    except Exception as exc:
+        # Driver errors may contain DSNs, failed row values or provider details.
+        print(f"Seed failed: {type(exc).__name__}; details redacted", file=sys.stderr)
         raise SystemExit(1) from None

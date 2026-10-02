@@ -1,0 +1,5 @@
+services:
+  postgres:
+    ports: !override []
+  minio:
+    ports: !override []
