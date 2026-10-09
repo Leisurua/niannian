@@ -57,9 +57,10 @@ Android additionally uploads test/lint reports and the two demo debug APKs.
 The backend/Android checkout includes history for the repository privacy scan.
 
 Action revisions were resolved from official repository tags on 2026-09-29.
-The local workflow definition is not a hosted run. A successful Actions URL and
-matching commit are required before claiming remote CI PASS. No branch-protection
-settings or publication are changed by adding this file.
+The hosted run for commit `85d2fdd` passed all three jobs; see
+[the verified run](https://github.com/Leisurua/niannian/actions/runs/36539054178)
+and [closeout evidence](week1.md). Every later commit must still pass its own
+checks. Branch protection settings are not changed by this workflow.
 
 ## Development-only dependencies
 

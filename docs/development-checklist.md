@@ -17,18 +17,21 @@
 - [ ] Android 实际 UI、Keystore/退出擦除、杀进程恢复、断网重试：`BLOCKED`，ADB 检测结果 NO_AUTHORIZED_DEVICE。
 - [ ] 指定设备 kiosk/BLE/camera/wake/telephony Spike：`BLOCKED`，设备未提供；部分依赖 E4-T01/E8-T01 后续任务。
 
-## Week 1 current checkout — 2026-09-29
+## Week 1 closeout — 2026-09-30
 
-本次代码来自 GitHub `Leisurua/niannian` 的 `616d972`，与下方早期本地快照记录区分。完整结果见 [第一周交付记录](evidence/week1.md)。第一周总体为 `IN_PROGRESS`，不以历史 Android/Compose PASS 替代本机或当前提交的验证。
+第一周工程门禁已通过；真机和业务数据库重放保留为未验证。已核验 GitHub 提交 `85d2fdd0bee68ad8b56fd6e173377ce96c7071b3` 的 [完整 CI](https://github.com/Leisurua/niannian/actions/runs/36539054178) 及下载产物。收尾提交的合并资格还需以其自身 CI/PR 状态为准。完整边界见 [第一周交付记录](evidence/week1.md)。
 
-- [x] 后端、三环境、worker、Mock/REST/WSS contract、fixture、日志/源码/历史扫描：`PASS`；本次 pytest **69 passed / 1 skipped**。
-- [x] 后端 wheel 构建及源码目录外安装运行：`PASS`；补齐三个配置文件，排除测试与 Alembic 源码。
-- [x] 第一周 CI 与统一验证入口已实现，本地工具测试 `PASS`；[运行说明](evidence/week1-tooling.md)。
-- [x] 设备基线表、Spike 责任角色与 evidence path 已建立：记录工作 `PASS`；[设备记录](evidence/week1-device-baseline.md)。用户确认暂无设备，真机操作人待设备到位后指定。
-- [ ] 当前检出 Android 构建/单测/lint/APK 扫描：`BLOCKED`，缺 JDK 17 / Android SDK 35；pytest 的唯一跳过项为 APK 扫描。
-- [ ] 当前检出 Compose 运行验收：`BLOCKED`，缺 Docker。
-- [ ] GitHub Actions 实跑：`NOT_STARTED`，工作流尚未发布。
-- [ ] 指定设备 ENV-001/002 与硬件验收：`BLOCKED`，无真机；不影响本周记录与 Mock 开发。
+- [x] 后端、三环境 HTTP health、独立 worker、Mock/REST/WSS contract、fixture、日志/源码/历史扫描：`PASS`；后端 pytest **69 passed / 1 skipped**。跳过的 APK 扫描由独立 Android job 实际执行。
+- [x] 后端 wheel 构建及源码目录外安装运行：`PASS`；三个配置文件随包提供，测试与 Alembic 源码不打入包。
+- [x] Android `clean build`、lint、共享模块单测：`PASS`；单测 XML 共 14 次执行、0 失败/错误。
+- [x] 两个 App 的 dev/qa/demo × debug/release 共 12 个 APK 及隐私扫描：`PASS`；扫描套件 7 项通过、无跳过。
+- [x] PostgreSQL/pgvector/MinIO：`PASS`；服务健康、vector 扩展、私有桶初始化、匿名访问 HTTP 403 已验证。
+- [x] GitHub Actions 后端、Android、基础设施三项：`PASS`；报告及两份 demo debug APK 已生成。
+- [x] 设备基线表、Spike 责任角色及 evidence path 已建立：记录工作 `PASS`；[设备记录](evidence/week1-device-baseline.md)。
+- [ ] 指定设备 ENV-001/002、Android Logcat、硬件能力：`BLOCKED`，用户暂无测试设备；操作人待设备到位后指定，不把记录完成当作真机通过。
+- [ ] Seed 对真实业务表的重复写入验收：`NOT_STARTED`，依赖后续已审查的业务迁移；第一周仅 fixture/命名空间与安全检查通过。
+
+下方 Batch 0 的旧命令与本地快照结果保留为历史；设备/完整业务流程相关综合门禁仍未关闭。
 
 ## Batch 0 Gate
 
