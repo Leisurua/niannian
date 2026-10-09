@@ -1,0 +1,1 @@
+PASS: DEMO_DATA:E0-T08 fixture, 28 deterministic rows; provider=mock, fictional=true

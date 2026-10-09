@@ -25,6 +25,7 @@ REPORT_READY, REPORT_FAILED, METRIC = uid(16), uid(17), uid(18)
 CONSENT_MEMORY, CONSENT_NOTIFY, CONSENT_REVOKED = uid(19), uid(20), uid(21)
 MEMBER_ELDER, MEMBER_CHILD = uid(22), uid(23)
 METRIC_DONE = uid(24)
+MEMORY_DELETED, DEVICE_DEGRADED, ASSET_DELETE_PENDING, SIGNAL_MISS_FAILED = (uid(n) for n in range(25, 29))
 
 # Only documented data-dictionary columns are used. Table order follows FK order.
 ROWS: dict[str, list[dict[str, object]]] = {
@@ -48,6 +49,13 @@ ROWS: dict[str, list[dict[str, object]]] = {
          "grantee_user_id": CHILD, "scope": "HEALTH_MEDICATION", "status": "REVOKED", "version": 1,
          "source": "SETTINGS", "revoked_at": STAMP},
     ],
+    "device_binding": [
+        {"id": DEVICE_DEGRADED, "device_id_hash": "d" * 64, "owner_user_id": ELDER,
+         "device_type": "ANDROID_TABLET", "app_version": "demo-mock", "os_version": "demo-mock",
+         "kiosk_status": "DISABLED", "wakeword_status": "ERROR", "ble_status": "DISCONNECTED",
+         "camera_permission": "DENIED", "phone_permission": "DENIED", "status": "ACTIVE",
+         "capabilities": {"provider": "mock", "demo": True}, "last_state_change_at": STAMP},
+    ],
     "memory": [
         {"id": MEMORY_OK, "family_id": FAMILY, "subject_user_id": ELDER, "source_user_id": CHILD,
          "type": "PREFERENCE", "title": "演示：喜欢的活动", "content": "演示人物喜欢在公园散步。",
@@ -59,6 +67,16 @@ ROWS: dict[str, list[dict[str, object]]] = {
         {"id": MEMORY_REVOKED, "family_id": FAMILY, "subject_user_id": ELDER, "source_user_id": CHILD,
          "type": "PLACE", "title": "演示：已撤回的地点", "content": "演示地点已撤回。",
          "required_consent_scope": "FAMILY_MEMORY", "verification_status": "REVOKED", "revoked_at": STAMP},
+        {"id": MEMORY_DELETED, "family_id": FAMILY, "subject_user_id": ELDER, "source_user_id": CHILD,
+         "type": "EVENT", "title": "演示：已删除记忆", "content": "演示删除占位；不保留原始内容。",
+         "required_consent_scope": "FAMILY_MEMORY", "verification_status": "DELETED", "deleted_at": STAMP},
+    ],
+    "file_asset": [
+        {"id": ASSET_DELETE_PENDING, "owner_user_id": ELDER, "family_id": FAMILY,
+         "memory_id": MEMORY_DELETED, "object_key": "demo/E0-T08/fictional-cleanup-placeholder",
+         "media_type": "OTHER", "mime_type": "application/octet-stream", "size_bytes": 0,
+         "checksum": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+         "status": "DELETE_REQUESTED", "deleted_at": STAMP},
     ],
     "reminder": [
         {"id": REMINDER, "owner_user_id": ELDER, "created_by_user_id": CHILD, "type": "WATER",
@@ -93,14 +111,18 @@ ROWS: dict[str, list[dict[str, object]]] = {
          "consent_check_result": "WITHHELD", "status": "WITHHELD", "detected_at": STAMP},
         {"id": SIGNAL_PHYSICAL, "owner_user_id": ELDER, "family_id": FAMILY, "type": "PHYSICAL_DISCOMFORT",
          "severity": "L1", "evidence_summary": "演示：表达身体不适；不作诊断。", "policy_version": "demo-1",
-         "consent_check_result": "ALLOWED", "status": "NOTIFICATION_FAILED", "detected_at": STAMP},
+         "consent_check_result": "WITHHELD", "status": "WITHHELD", "detected_at": STAMP},
+        {"id": SIGNAL_MISS_FAILED, "owner_user_id": ELDER, "family_id": FAMILY, "type": "MISS_FAMILY",
+         "severity": "L1", "evidence_summary": "演示：另一条想念家人的动态，Mock 推送失败。",
+         "policy_version": "demo-1", "consent_check_result": "ALLOWED",
+         "status": "NOTIFICATION_FAILED", "detected_at": STAMP},
     ],
     "notification": [
         {"id": NOTIFICATION_READ, "signal_event_id": SIGNAL_MISS, "recipient_user_id": CHILD,
          "channel": "IN_APP", "status": "READ", "summary": "演示：有一条家人关注动态。",
          "policy_version": "demo-1", "provider": "mock", "action": "NONE", "sent_at": STAMP,
          "delivered_at": STAMP, "read_at": STAMP},
-        {"id": NOTIFICATION_FAILED, "signal_event_id": SIGNAL_PHYSICAL, "recipient_user_id": CHILD,
+        {"id": NOTIFICATION_FAILED, "signal_event_id": SIGNAL_MISS_FAILED, "recipient_user_id": CHILD,
          "channel": "PUSH", "status": "FAILED", "summary": "演示：有一条待查看的关注动态。",
          "policy_version": "demo-1", "provider": "mock", "action": "NONE", "error_code": "MOCK_FAILURE"},
     ],
@@ -123,24 +145,54 @@ ROWS: dict[str, list[dict[str, object]]] = {
     ],
 }
 
-JSON_COLUMNS = {"metrics_snapshot", "missing_data", "accessibility_settings", "permission_codes", "attributes"}
+JSON_COLUMNS = {"metrics_snapshot", "missing_data", "accessibility_settings", "permission_codes", "attributes", "capabilities"}
+
+# Local fixture descriptions, not API DTOs or additional database columns.
+# No media object is created and no hardware/provider/cleanup operation is performed.
+SCENARIOS = {
+    "device_degraded": {"provider": "mock", "demo": True, "device_id": DEVICE_DEGRADED},
+    "provider_failure": {"provider": "mock", "demo": True, "attempt_id": ATTEMPT_FAILED},
+    "deletion_partial_failure": {"provider": "mock", "demo": True,
+                                 "memory_id": MEMORY_DELETED, "file_asset_id": ASSET_DELETE_PENDING,
+                                 "error_code": "MOCK_FAILURE", "label": "演示：已不可见，模拟物理清理失败；尚未完成"},
+}
 
 
 def validate_fixture() -> None:
     """Fail closed if a future edit weakens the demo-only fixture boundary."""
+    def require(condition: bool, message: str) -> None:
+        if not condition:
+            raise RuntimeError(message)
+
     all_ids: set[str] = set()
     for table, rows in ROWS.items():
-        assert rows, table
+        require(bool(rows), f"empty fixture table: {table}")
         for row in rows:
             identifier = str(row["id"])
-            assert UUID(identifier).version == 7, (table, identifier)
-            assert identifier not in all_ids, identifier
+            require(UUID(identifier).version == 7, f"fixture ID must be UUIDv7: {table}")
+            require(identifier not in all_ids, "duplicate fixture ID")
             all_ids.add(identifier)
-    assert ROWS["family"][0]["name"] == FAMILY_NAME
-    assert {row["role"] for row in ROWS["family_member"]} == {"ELDER", "CHILD"}
-    assert {row["verification_status"] for row in ROWS["memory"]} == {"CONFIRMED", "PENDING", "REVOKED"}
-    assert {row["feedback_status"] for row in ROWS["reminder_execution"]} == {"DONE", "NO_RESPONSE"}
-    assert {row["status"] for row in ROWS["notification"]} == {"READ", "FAILED"}
-    assert {row["status"] for row in ROWS["weekly_report"]} == {"READY", "FAILED"}
-    assert all(row["provider"] == "mock" for table in ("notification", "notification_attempt") for row in ROWS[table])
-    assert all(row.get("phone_ciphertext") is None for row in ROWS["user"])
+    require(ROWS["family"][0]["name"] == FAMILY_NAME, "fictional family label required")
+    require({row["role"] for row in ROWS["family_member"]} == {"ELDER", "CHILD"}, "demo roles missing")
+    require({row["verification_status"] for row in ROWS["memory"]} ==
+            {"CONFIRMED", "PENDING", "REVOKED", "DELETED"}, "demo memory states missing")
+    for table, field, states in (
+        ("reminder_execution", "feedback_status", {"DONE", "NO_RESPONSE"}),
+        ("notification", "status", {"READ", "FAILED"}),
+        ("weekly_report", "status", {"READY", "FAILED"}),
+    ):
+        require({row[field] for row in ROWS[table]} == states, f"demo states missing: {table}")
+    require(all(row["provider"] == "mock" for table in ("notification", "notification_attempt")
+                for row in ROWS[table]), "only Mock providers allowed")
+    for rows in ROWS.values():
+        for row in rows:
+            require(not any(("phone" in key and key != "phone_permission") or "audio" in key or "photo" in key
+                            for key in row), "contact or media fields forbidden")
+            for key, value in row.items():
+                if key == "family_id":
+                    require(value == FAMILY, "cross-family fixture reference")
+                if key.endswith("_user_id") or key in ("user_id", "verified_by"):
+                    require(value in (ELDER, CHILD), "external user fixture reference")
+                if key in ("memory_id", "reminder_id", "signal_event_id", "notification_id"):
+                    target = key.removesuffix("_id")
+                    require(value in {item["id"] for item in ROWS[target]}, "external resource fixture reference")

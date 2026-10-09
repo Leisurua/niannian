@@ -1,0 +1,2 @@
+minio running healthy 127.0.0.1:9000-9001->9000-9001/tcp
+postgres running healthy 127.0.0.1:5432->5432/tcp
