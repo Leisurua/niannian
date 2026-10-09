@@ -1,10 +1,12 @@
 import json
 import logging
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import app, handle_unexpected_error
 from app.platform.logging import StructuredFormatter, configure_logging, log_event
+from app.platform.request_id import RequestIdMiddleware
 
 
 def _format(message: str, *, args: tuple[object, ...] = (), structured: bool = True, **extra: object) -> dict[str, object]:
@@ -124,4 +126,44 @@ def test_logger_name_and_credential_shaped_metadata_are_suppressed() -> None:
     assert "user_id" not in payload
     assert "error_code" not in payload
     assert private not in json.dumps(payload)
+    assert credential not in json.dumps(payload)
+
+
+def test_unexpected_error_keeps_request_correlation_without_exception_content() -> None:
+    seen: list[dict[str, object]] = []
+    private = "synthetic" + " transcript"
+    isolated_app = FastAPI()
+    isolated_app.add_middleware(RequestIdMiddleware)
+    isolated_app.add_exception_handler(Exception, handle_unexpected_error)
+
+    @isolated_app.get("/fail")
+    async def fail() -> None:
+        raise RuntimeError(private)
+
+    class Capture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            seen.append(json.loads(StructuredFormatter().format(record)))
+
+    logger = logging.getLogger("nianian.api")
+    capture = Capture()
+    logger.addHandler(capture)
+    try:
+        with TestClient(isolated_app, raise_server_exceptions=False) as client:
+            response = client.get("/fail", headers={"X-Request-ID": "req-error-1"})
+            second = client.get("/fail", headers={"X-Request-ID": "req-error-2"})
+        assert response.status_code == second.status_code == 500
+        assert response.json()["request_id"] == "req-error-1"
+        assert second.json()["request_id"] == "req-error-2"
+        assert [item["request_id"] for item in seen] == ["req-error-1", "req-error-2"]
+        assert [item["correlation_id"] for item in seen] == ["req-error-1", "req-error-2"]
+        assert all(item["error_code"] == "INTERNAL_ERROR" for item in seen)
+        assert private not in json.dumps(seen) + response.text + second.text
+    finally:
+        logger.removeHandler(capture)
+
+
+def test_credential_shaped_event_is_suppressed() -> None:
+    credential = "AKIA" + "A" * 16
+    payload = _format(credential)
+    assert payload["event"] == "UNSTRUCTURED_LOG"
     assert credential not in json.dumps(payload)

@@ -1,0 +1,5 @@
+10-02 12:44:06.314 30927 30927 I NianNian: {"event":"APP_EXECUTION_FAILED","result":"FAILED","error_code":"UNEXPECTED_FAILURE"}
+10-02 12:44:06.314 30927 30927 D AndroidRuntime: Shutting down VM
+10-02 12:44:06.314 30927 30927 E AndroidRuntime: FATAL EXCEPTION: NianNian-fatal
+10-02 12:44:06.314 30927 30927 E AndroidRuntime: Process: org.example.niannian.family.demo, PID: 30927
+10-02 12:44:06.314 30927 30927 E AndroidRuntime: org.example.niannian.core.telemetry.AppExecutionBoundary$ContentFreeFailure: APP_EXECUTION_FAILED

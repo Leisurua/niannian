@@ -25,6 +25,8 @@ The API exposes `GET /health` and does not require a database connection for tha
 
 All checked-in profiles use Mock providers. Only fictional `demo-child`, `demo-elder`, `demo-caregiver` and `demo-other` identifiers are accepted by DEMO login. SMS/OAuth and real-provider login are unavailable. Android `dev`, `test`, and `demo` variants display their environment and provider source throughout the auth/family/consent screens.
 
+The demo profile requires fictional data and Mock providers. E0-T08 supplies [fictional seed fixtures](scripts/README.md); run `python scripts/seed_demo_data.py --check` without a database. Applying the complete seed requires its reviewed business schema; the current eight-table Auth/Family/Consent migration does not yet cover the remaining seed entities. The Android apps do not load those business seed records yet.
+
 ## Verification commands
 
 - Backend tests: `python -m pytest backend/tests tests`

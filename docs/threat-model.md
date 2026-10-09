@@ -97,7 +97,7 @@ flowchart LR
 | T-014 | WSS hijack/flood | Conversation | wrong id/token、malformed/flood | transcript leak/DoS | token header、owner recheck、sequence | frame/type/size/replay limits | WS-001..009 | P1 |
 | T-015 | EXIF/malicious upload | Photo/Object | fake MIME/GPS/oversize/path | malware/privacy leak | checksum/quarantine/private object | sniffing、EXIF policy、orphan cleanup | FILE-002..006 | P1 |
 | T-016 | WeeklyReport overexposure | Report/metrics | Contact/denied metric reads | health/behavior disclosure | per-metric consent/report-read | redacted/missing data、export review | PRIV-006 | P1 |
-| T-017 | Secret/log leak | JWT/API/phone/content | inspect Git/log/crash | system takeover/privacy breach | logging prohibition/.env guidance | secret scan + fixture inspection | PRIV-002、008 | P0 |
+| T-017 | Secret/log leak | JWT/API/phone/content | inspect Git/log/crash | system takeover/privacy breach | logging prohibition/.env guidance; approved Android app-owned fatal execution boundary | secret scan + fixture inspection + main/worker crash checks; unmanaged/framework/native/OEM risk remains visible under [approved E0-T03 option A](evidence/E0-T03-repair-proposal.md), not a platform-wide PASS | PRIV-002、008 | P0 |
 | T-018 | Backup residual | all S2/S3 | restore old backup after delete | deletion claim false | backup acknowledged separate | decide encrypted backup retention/restore evidence | DEL-006 | P1 |
 | T-019 | AI provider retention | audio/text/embedding | provider trains/logs/keeps data | external disclosure | provider-neutral adapter/redaction | provider checklist/contract gate | AI-007 | P0 |
 | T-020 | Kiosk/physical escape | Device/token | Settings/ADB/USB/unlocked tablet | local takeover/listening | Device Owner target + gate | real-device provisioning、Keystore、wipe/lost procedure | DEV-005..008 | P1 |
@@ -148,4 +148,3 @@ flowchart LR
 7. Camera/Microphone/BLE/Kiosk 在指定设备通过或记录已批准的可见 fallback。
 8. Raw audio、provider retention、backup 和 retention 值在使用类生产数据前完成决定。
 9. 不宣称正式法律/行业合规。
-

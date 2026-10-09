@@ -1,0 +1,213 @@
+{
+  "task": "E0-T03 approved option A app execution boundary",
+  "time": "2026-10-02T12:43:17.012866+08:00",
+  "source_commit": "616d972b8f59b0b94e5a94ae7b12c498455a8c23",
+  "source_sha256": {
+    "android\\app-elder\\src\\main\\java\\org\\example\\niannian\\elder\\MainActivity.kt": "68aa2c23e90056e0088b781f6768f28af87e975ee7c1e7c7bf0b8c9dcf9c8eea",
+    "android\\app-family\\src\\main\\java\\org\\example\\niannian\\family\\MainActivity.kt": "490debf18374803bfd08fe8706496bff01cc90c55e4691f74481367cc2c9094d",
+    "android\\core-common\\src\\main\\java\\org\\example\\niannian\\core\\common\\BuildInfo.kt": "7e171b3b3892f2fbcaf8693ff11781fb1826dc4f06a1277ce3b02c90b34169d8",
+    "android\\core-common\\src\\main\\java\\org\\example\\niannian\\core\\common\\RuntimeConfig.kt": "fc492ec7f70c8e5b54851a76abbb83670170fea1abd79e09b61b5d7a95dd2243",
+    "android\\core-common\\src\\test\\java\\org\\example\\niannian\\core\\common\\BuildInfoTest.kt": "b932a82d92a8712f7d090b8ef1e09a65082c66b0acbd21d86ea8d4b6c85e1042",
+    "android\\core-common\\src\\test\\java\\org\\example\\niannian\\core\\common\\RuntimeConfigTest.kt": "7ddfe023ac0d41c11595cd31ac10ca50758bc23d0a95b3b8d821b031e1cd29a6",
+    "android\\core-telemetry\\src\\main\\java\\org\\example\\niannian\\core\\telemetry\\AppExecutionBoundary.kt": "bfb0f2db0d8865577c3c694947c57a6e90d8e8e9e8abbd51815abaf56b79e23f",
+    "android\\core-telemetry\\src\\main\\java\\org\\example\\niannian\\core\\telemetry\\TelemetryLogger.kt": "47257e9c7294600fdde72e6a29d2b9781dac189e14d237ca96808c212ca3f5e2",
+    "android\\core-telemetry\\src\\test\\java\\org\\example\\niannian\\core\\telemetry\\AppExecutionBoundaryTest.kt": "405eb764c717a376dd9f7e5fd2daecfe6f5b7e6e7259a01fbf4480ebe94ff741",
+    "android\\core-telemetry\\src\\test\\java\\org\\example\\niannian\\core\\telemetry\\TelemetryLoggerTest.kt": "95e9793248cb08b234d4515aca64347ad33db5dd37ca783a73bb9de7dd2380e0"
+  },
+  "device": {
+    "model": "2201123C",
+    "android": "12",
+    "api": "31",
+    "os_build": "SKQ1.211006.001 test-keys",
+    "security_patch": "2022-09-01"
+  },
+  "scope": "Installed production boundary executes throwing Runnable on main/worker; synthetic inputs only",
+  "capture": "All readable buffers, observed PID only; original captures scanned in memory before masking",
+  "limits": "Not full business flow, unmanaged/framework/native/ANR or private OEM reports; no global crash guarantee",
+  "apps": [
+    {
+      "role": "elder",
+      "variant": "demoDebug",
+      "provider": "mock",
+      "local_apk_sha256": "c1cadf446900df1b2019a7daaf33247df621fcba1f79cf7257ecb7b667221db7",
+      "installed_apk_sha256": "c1cadf446900df1b2019a7daaf33247df621fcba1f79cf7257ecb7b667221db7",
+      "checks": [
+        {
+          "mode": "main",
+          "result": "PASS",
+          "canary_hits": {
+            "token": 0,
+            "key": 0,
+            "audio": 0,
+            "transcript": 0,
+            "phone": 0,
+            "health": 0,
+            "memory": 0,
+            "url": 0
+          },
+          "process_terminated": true,
+          "safe_fatal_observed": true,
+          "telemetry_matches": true
+        },
+        {
+          "mode": "worker",
+          "result": "PASS",
+          "canary_hits": {
+            "token": 0,
+            "key": 0,
+            "audio": 0,
+            "transcript": 0,
+            "phone": 0,
+            "health": 0,
+            "memory": 0,
+            "url": 0
+          },
+          "process_terminated": true,
+          "safe_fatal_observed": true,
+          "telemetry_matches": true
+        },
+        {
+          "mode": "sink_failure",
+          "result": "PASS",
+          "canary_hits": {
+            "token": 0,
+            "key": 0,
+            "audio": 0,
+            "transcript": 0,
+            "phone": 0,
+            "health": 0,
+            "memory": 0,
+            "url": 0
+          },
+          "process_terminated": true,
+          "safe_fatal_observed": true,
+          "telemetry_matches": true
+        },
+        {
+          "mode": "hostile",
+          "result": "PASS",
+          "canary_hits": {
+            "token": 0,
+            "key": 0,
+            "audio": 0,
+            "transcript": 0,
+            "phone": 0,
+            "health": 0,
+            "memory": 0,
+            "url": 0
+          },
+          "process_terminated": true,
+          "safe_fatal_observed": true,
+          "telemetry_matches": true
+        }
+      ],
+      "normal_result": "PASS",
+      "normal_canary_hits": {
+        "token": 0,
+        "key": 0,
+        "audio": 0,
+        "transcript": 0,
+        "phone": 0,
+        "health": 0,
+        "memory": 0,
+        "url": 0
+      },
+      "probe_apk_sha256": "fc22683dd07100604f60734e3b95f4eccb200300dfde18184e31a33c8e3d762a",
+      "test_apk_removed": true,
+      "recovered": true
+    },
+    {
+      "role": "family",
+      "variant": "demoDebug",
+      "provider": "mock",
+      "local_apk_sha256": "6b7d0884dc64eb4c2dbe8ef5e4bf8c74bf4d85cc63f93a5a8c5738f343bce5f4",
+      "installed_apk_sha256": "6b7d0884dc64eb4c2dbe8ef5e4bf8c74bf4d85cc63f93a5a8c5738f343bce5f4",
+      "checks": [
+        {
+          "mode": "main",
+          "result": "PASS",
+          "canary_hits": {
+            "token": 0,
+            "key": 0,
+            "audio": 0,
+            "transcript": 0,
+            "phone": 0,
+            "health": 0,
+            "memory": 0,
+            "url": 0
+          },
+          "process_terminated": true,
+          "safe_fatal_observed": true,
+          "telemetry_matches": true
+        },
+        {
+          "mode": "worker",
+          "result": "PASS",
+          "canary_hits": {
+            "token": 0,
+            "key": 0,
+            "audio": 0,
+            "transcript": 0,
+            "phone": 0,
+            "health": 0,
+            "memory": 0,
+            "url": 0
+          },
+          "process_terminated": true,
+          "safe_fatal_observed": true,
+          "telemetry_matches": true
+        },
+        {
+          "mode": "sink_failure",
+          "result": "PASS",
+          "canary_hits": {
+            "token": 0,
+            "key": 0,
+            "audio": 0,
+            "transcript": 0,
+            "phone": 0,
+            "health": 0,
+            "memory": 0,
+            "url": 0
+          },
+          "process_terminated": true,
+          "safe_fatal_observed": true,
+          "telemetry_matches": true
+        },
+        {
+          "mode": "hostile",
+          "result": "PASS",
+          "canary_hits": {
+            "token": 0,
+            "key": 0,
+            "audio": 0,
+            "transcript": 0,
+            "phone": 0,
+            "health": 0,
+            "memory": 0,
+            "url": 0
+          },
+          "process_terminated": true,
+          "safe_fatal_observed": true,
+          "telemetry_matches": true
+        }
+      ],
+      "normal_result": "PASS",
+      "normal_canary_hits": {
+        "token": 0,
+        "key": 0,
+        "audio": 0,
+        "transcript": 0,
+        "phone": 0,
+        "health": 0,
+        "memory": 0,
+        "url": 0
+      },
+      "probe_apk_sha256": "245fccf841d105f65f855c6f9683579e05875d797e32d26fbf8eb357d84ca415",
+      "test_apk_removed": true,
+      "recovered": true
+    }
+  ],
+  "result": "PASS",
+  "local_probe_files_removed": true
+}
