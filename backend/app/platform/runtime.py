@@ -1,5 +1,3 @@
-"""Configure the event loop before starting the async PostgreSQL runtime."""
-
 import asyncio
 import sys
 

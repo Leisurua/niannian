@@ -118,6 +118,23 @@ class FamilyRepository(
             .put("refresh_token", result.getString("refresh_token")))
     }
 
+    private suspend fun refreshSessionOrRequireLogin(origin: String, session: JSONObject) {
+        try {
+            val pair = exchange(origin, "/v1/auth/refresh", "POST",
+                JSONObject().put("refresh_token", session.getString("refresh_token")), null, null)
+            currentCoroutineContext().ensureActive()
+            session.put("access_token", pair.getString("access_token")).put("refresh_token", pair.getString("refresh_token"))
+            store.save(session)
+        } catch (cancelled: CancellationException) {
+            store.clear()
+            throw cancelled
+        } catch (failure: Exception) {
+            store.clear()
+            if (failure is ApiFailure && failure.status == 401) throw failure
+            throw ApiFailure(401, "AUTH_REFRESH_UNCONFIRMED", "登录更新结果未确认，请重新登录。")
+        }
+    }
+
     suspend fun call(path: String, method: String = "GET", body: JSONObject? = null, idempotent: Boolean = false, expectedVersion: Long? = null): JSONObject = withContext(Dispatchers.IO) {
         var session = store.load()
         val origin = ConnectionPolicy.origin(session.getString("origin"), debug)
@@ -139,26 +156,10 @@ class FamilyRepository(
                 exchange(origin, path, method, body, session.getString("access_token"), key, expectedVersion?.toString())
             } catch (error: ApiFailure) {
                 if (error.status != 401 || error.code != "AUTH_TOKEN_EXPIRED") throw error
-                try {
-                    val pair = exchange(origin, "/v1/auth/refresh", "POST",
-                        JSONObject().put("refresh_token", session.getString("refresh_token")), null, null)
-                    currentCoroutineContext().ensureActive()
-                    session.put("access_token", pair.getString("access_token")).put("refresh_token", pair.getString("refresh_token"))
-                    store.save(session)
-                } catch (cancelled: CancellationException) {
-                    store.clear()
-                    throw cancelled
-                } catch (failure: Exception) {
-                    // A lost refresh response may already have rotated the token on the server.
-                    // Reusing that token could revoke the user's sessions on other devices.
-                    store.clear()
-                    if (failure is ApiFailure && failure.status == 401) throw failure
-                    throw ApiFailure(401, "AUTH_REFRESH_UNCONFIRMED", "登录更新结果未确认，请重新登录。")
-                }
+                refreshSessionOrRequireLogin(origin, session)
                 exchange(origin, path, method, body, session.getString("access_token"), key, expectedVersion?.toString())
             }
         } catch (error: ApiFailure) {
-            // Initial requests, refresh failures and replay failures use the same cleanup rules.
             if (error.status == 401) store.clear()
             else if (idempotent && error.status in 400..499 && error.status !in listOf(408, 429)) clearPending()
             throw error

@@ -70,13 +70,11 @@ def run_checks(output: Path, *, device: bool = False) -> dict:
             if ready:
                 execute("migration-parity", [python, "-m", "alembic", "check"], ROOT / "backend")
         report = output / "backend-tests.xml"
-        # Do not reuse evidence left by an earlier invocation.
         report.unlink(missing_ok=True)
         command = [python, "-m", "pytest", "backend/tests", "tests", "-q", "--junitxml", str(report),
             "-k", "not test_built_apks_contain_no_secret_patterns"]
         if not ready:
             command += ["--ignore=backend/tests/integration"]
-        # Never let an invalid DB URL reach fixtures that truncate business tables.
         if not ready:
             environment.pop("WEEK2_TEST_DATABASE_URL", None)
         if execute("backend-tests", command):
