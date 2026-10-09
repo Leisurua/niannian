@@ -3,28 +3,29 @@ package org.example.niannian.elder
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import java.util.UUID
 import org.example.niannian.core.common.RuntimeConfig
-import org.example.niannian.core.telemetry.TelemetryLogger
+import org.example.niannian.feature.auth.CompanionModel
+import org.example.niannian.feature.auth.CompanionScreen
+import org.example.niannian.feature.auth.FamilyRepository
+import org.example.niannian.feature.auth.SecureSession
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val runtimeConfig = RuntimeConfig.fromBuildValues(BuildConfig.ENVIRONMENT, BuildConfig.PROVIDER_MODE)
-        TelemetryLogger().info("APP_STARTED", mapOf("provider" to BuildConfig.PROVIDER_MODE))
-        setContent {
-            MaterialTheme {
-                Column(Modifier.fillMaxSize(), Arrangement.Center, Alignment.CenterHorizontally) {
-                    Text("NianNian")
-                    Text(runtimeConfig.statusLabel)
-                }
-            }
+        val preferences = getSharedPreferences("device-config", MODE_PRIVATE)
+        val deviceId = preferences.getString("device-id", null) ?: UUID.randomUUID().toString().also {
+            preferences.edit().putString("device-id", it).apply()
         }
+        val factory = object : ViewModelProvider.Factory {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T = modelClass.cast(
+                CompanionModel(FamilyRepository(SecureSession(applicationContext), BuildConfig.DEBUG), true, deviceId)
+            )!!
+        }
+        val model = ViewModelProvider(this, factory)[CompanionModel::class.java]
+        val runtime = RuntimeConfig.fromBuildValues(BuildConfig.ENVIRONMENT, BuildConfig.PROVIDER_MODE)
+        setContent { CompanionScreen(model, runtime.statusLabel) }
     }
 }

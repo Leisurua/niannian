@@ -221,7 +221,8 @@ async def update_member(db: AsyncSession, actor: Identity, family_id: UUID, memb
         raise AppError("ETAG_MISMATCH", "信息已变化，请刷新后重试。", 409)
     if not body.model_fields_set or any(getattr(body, key) is None for key in body.model_fields_set):
         raise AppError("VALIDATION_ERROR", "请提供需要修改的有效字段。", 422)
-    if member.status != "ACTIVE" or body.status in ("PENDING", "LEFT"):
+    pending_revoke = member.status == "PENDING" and body.model_fields_set == {"status"} and body.status == "REVOKED"
+    if member.status != "ACTIVE" and not pending_revoke or body.status in ("PENDING", "LEFT"):
         raise AppError("FAMILY_MEMBER_STATE_INVALID", "请由受邀者确认加入；离开家庭请使用本人退出操作。", 409)
     if body.permission_codes is not None and not set(body.permission_codes) <= PERMISSIONS:
         raise AppError("PERMISSION_DENIED", "包含未支持的权限代码。", 403)

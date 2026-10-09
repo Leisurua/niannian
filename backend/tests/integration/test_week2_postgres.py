@@ -1,10 +1,17 @@
 import asyncio
 import os
+import re
+from pathlib import Path
+import socket
+import subprocess
+import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from uuid import UUID, uuid4
 
 import pytest
+import httpx
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import make_url
@@ -28,8 +35,10 @@ TABLES = ['consent','family_member','family_invitation','device_session','audit_
 
 @pytest.fixture
 def system(monkeypatch):
-    if not make_url(URL).database.endswith('_week2_test'):
-        pytest.fail('Refusing to reset a database without the _week2_test suffix')
+    parsed = make_url(URL)
+    if (parsed.drivername != 'postgresql+psycopg' or parsed.query
+            or not re.fullmatch(r'[A-Za-z0-9_]+_week2_test', parsed.database or '')):
+        pytest.fail('Refusing to reset a database without a safe _week2_test name or with connection query overrides')
     monkeypatch.setenv('AUTH_SIGNING_KEY', KEY)
     monkeypatch.setenv('AUTH_LOGIN_LIMIT', '1000')
     monkeypatch.setenv('APP_ENV', 'test')
@@ -205,6 +214,26 @@ def test_invitation_expiry_revoke_and_concurrent_use(system):
                        {'target_role':'ELDER','expires_at':(utcnow()+timedelta(hours=1)).isoformat()}).json()
     assert client.post(f"/v1/families/{fid}/invitations/{invitation2['id']}/revoke",headers=ch).status_code==204
     assert post(client,'/v1/family-invitations/'+invitation2['token']+'/accept',eh,{'confirm_identity':True}).status_code==404
+    expired=post(client,f'/v1/families/{fid}/invitations',ch,
+                 {'target_role':'CAREGIVER','expires_at':(utcnow()+timedelta(hours=1)).isoformat()}).json()
+    with engine.begin() as connection:
+        connection.execute(text("UPDATE family_invitation SET created_at=now()-interval '2 hours', expires_at=now()-interval '1 hour' WHERE id=:id"), {'id':expired['id']})
+    assert post(client,'/v1/family-invitations/'+expired['token']+'/accept',eh,{'confirm_identity':True}).status_code==404
+
+
+def test_admin_can_revoke_expired_pending_membership_without_activating(system):
+    client, _, _=system
+    _, ch=login(client,'demo-child');_, eh=login(client,'demo-elder')
+    fid=post(client,'/v1/families',ch,{'name':'待确认演示家庭'}).json()['id']
+    invite=post(client,f'/v1/families/{fid}/invitations',ch,
+                {'target_role':'ELDER','expires_at':(utcnow()+timedelta(hours=1)).isoformat()}).json()
+    pending=post(client,'/v1/family-invitations/'+invite['token']+'/accept',eh,{}).json()
+    path=f"/v1/families/{fid}/members/{pending['id']}"
+    assert client.patch(path,headers={**ch,'If-Match':str(pending['version'])},json={'status':'REVOKED'}).status_code==200
+    assert post(client,'/v1/family-invitations/'+invite['token']+'/accept',eh,{'confirm_identity':True}).status_code==404
+    replacement=post(client,f'/v1/families/{fid}/invitations',ch,
+                {'target_role':'ELDER','expires_at':(utcnow()+timedelta(hours=1)).isoformat()}).json()
+    assert post(client,'/v1/family-invitations/'+replacement['token']+'/accept',eh,{'confirm_identity':True}).status_code==200
 
 
 def test_cursor_is_bound_to_user_and_filter(system):
@@ -237,3 +266,126 @@ def test_database_constraints_exist(system):
     assert any(index['name']=='uq_member_current' and index['unique'] for index in schema.get_indexes('family_member'))
     assert any(check['name']=='ck_invitation_usage' for check in schema.get_check_constraints('family_invitation'))
     assert any(check['name']=='ck_consent_revoked' for check in schema.get_check_constraints('consent'))
+
+
+def test_refresh_concurrency_detects_reuse_and_revokes_replacement(system):
+    client, engine, _ = system
+    session, _ = login(client, 'demo-child')
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: client.post('/v1/auth/refresh',
+            json={'refresh_token': session['refresh_token']}), range(2)))
+    assert sorted(response.status_code for response in results) == [200, 401]
+    replacement = next(response.json() for response in results if response.status_code == 200)
+    assert client.get('/v1/me', headers={'Authorization': 'Bearer ' + replacement['access_token']}).status_code == 401
+    with engine.connect() as connection:
+        assert connection.execute(text('SELECT count(*) FROM device_session WHERE revoked_at IS NULL')).scalar() == 0
+
+
+def test_scope_expiry_grantee_and_membership_are_checked_on_each_decision(system):
+    client, engine, factory = system
+    fam, child, ch, elder, eh, member = family_with_elder(client)
+    third, th = login(client, 'demo-caregiver')
+    invite = post(client, f"/v1/families/{fam['id']}/invitations", ch,
+        {'target_role': 'CAREGIVER', 'expires_at': (utcnow() + timedelta(hours=1)).isoformat()}).json()
+    assert post(client, '/v1/family-invitations/' + invite['token'] + '/accept', th, {'confirm_identity': True}).status_code == 200
+    granted = post(client, '/v1/consents', eh, {'family_id': fam['id'], 'subject_user_id': elder['user']['id'],
+        'grantee_user_id': child['user']['id'], 'scope': 'FAMILY_MEMORY', 'source': 'SETTINGS',
+        'expires_at': (utcnow() + timedelta(hours=1)).isoformat()}).json()
+
+    async def decision(grantee, scope, allowed=False):
+        async with factory() as db:
+            if allowed:
+                await require_scope(db, UUID(fam['id']), UUID(elder['user']['id']), UUID(grantee), scope)
+            else:
+                with pytest.raises(AppError):
+                    await require_scope(db, UUID(fam['id']), UUID(elder['user']['id']), UUID(grantee), scope)
+    asyncio.run(decision(child['user']['id'], 'FAMILY_MEMORY', True))
+    asyncio.run(decision(third['user']['id'], 'FAMILY_MEMORY'))
+    asyncio.run(decision(child['user']['id'], 'HEALTH_MEDICATION'))
+    with engine.begin() as connection:
+        connection.execute(text("UPDATE consent SET expires_at=now()-interval '1 second' WHERE id=:id"), {'id': granted['id']})
+    asyncio.run(decision(child['user']['id'], 'FAMILY_MEMORY'))
+    assert post(client, '/v1/consents', eh, {'family_id': fam['id'], 'subject_user_id': elder['user']['id'],
+        'grantee_user_id': child['user']['id'], 'scope': 'FAMILY_MEMORY', 'source': 'SETTINGS'}).status_code == 201
+    assert client.patch(f"/v1/families/{fam['id']}/members/{member['id']}", headers={**ch, 'If-Match': str(member['version'])},
+        json={'status': 'REVOKED'}).status_code == 200
+    asyncio.run(decision(child['user']['id'], 'FAMILY_MEMORY'))
+    assert client.get('/v1/consents/' + granted['id'], headers=eh).status_code == 404
+
+
+def test_consent_cross_family_and_invitation_do_not_grant_data_access(system):
+    client, _, factory = system
+    fam, child, ch, elder, eh, _ = family_with_elder(client)
+    _, outside = login(client, 'demo-other')
+    another = post(client, '/v1/families', outside, {'name': '另一演示家庭'}).json()
+    body = {'family_id': another['id'], 'subject_user_id': elder['user']['id'],
+        'grantee_user_id': child['user']['id'], 'scope': 'FAMILY_MEMORY', 'source': 'SETTINGS'}
+    assert post(client, '/v1/consents', eh, body).status_code == 404
+    assert client.get(f"/v1/families/{fam['id']}/members", headers=outside).status_code == 404
+
+    async def no_implicit_consent():
+        async with factory() as db:
+            with pytest.raises(AppError) as denied:
+                await require_scope(db, UUID(fam['id']), UUID(elder['user']['id']), UUID(child['user']['id']), 'FAMILY_MEMORY')
+            assert denied.value.code == 'PERMISSION_CONSENT_REQUIRED'
+    asyncio.run(no_implicit_consent())
+
+
+def test_demo_allowlist_rate_limit_and_suspended_identity(system, monkeypatch):
+    client, engine, _ = system
+    payload = {'credential': {'type': 'DEMO', 'identifier': 'not-a-demo-user'},
+        'device': {'device_id': 'fictional-device', 'name': '演示设备', 'app_version': '0.1.0'}}
+    assert client.post('/v1/auth/login', json=payload).status_code == 401
+    payload['credential'] = {'type': 'VERIFICATION_CODE', 'identifier': 'demo-child', 'proof': 'fictional-proof'}
+    assert client.post('/v1/auth/login', json=payload).status_code == 401
+    session, headers = login(client, 'demo-child')
+    with engine.begin() as connection:
+        connection.execute(text('UPDATE "user" SET global_status=\'SUSPENDED\' WHERE id=:id'), {'id': session['user']['id']})
+    assert client.get('/v1/me', headers=headers).status_code == 401
+    assert client.post('/v1/auth/refresh', json={'refresh_token': session['refresh_token']}).status_code == 401
+    monkeypatch.setenv('AUTH_LOGIN_LIMIT', '1')
+    get_settings.cache_clear()
+    _attempts.clear()
+    payload['credential'] = {'type': 'DEMO', 'identifier': 'not-a-demo-user'}
+    assert client.post('/v1/auth/login', json=payload).status_code == 401
+    assert client.post('/v1/auth/login', json=payload).status_code == 429
+
+
+def test_live_api_login_family_consent_slice_uses_portable_entrypoint(system):
+    root = Path(__file__).resolve().parents[3]
+    with socket.socket() as probe:
+        probe.bind(('127.0.0.1', 0))
+        port = probe.getsockname()[1]
+    environment = {**os.environ, 'DATABASE_URL': URL, 'PYTHONPATH': str(root / 'backend'), 'PYTHONUTF8': '1'}
+    process = subprocess.Popen([sys.executable, '-m', 'app', '--port', str(port)], cwd=root,
+        env=environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        with httpx.Client(base_url=f'http://127.0.0.1:{port}', timeout=5) as client:
+            deadline = time.monotonic() + 15
+            while True:
+                assert process.poll() is None, 'API exited before readiness'
+                try:
+                    if client.get('/health').status_code == 200:
+                        break
+                except httpx.TransportError:
+                    pass
+                assert time.monotonic() < deadline, 'API readiness timeout'
+                time.sleep(.05)
+            fam, child, ch, elder, eh, _ = family_with_elder(client)
+            body = {'family_id': fam['id'], 'subject_user_id': elder['user']['id'],
+                'grantee_user_id': child['user']['id'], 'scope': 'FAMILY_MEMORY', 'source': 'SETTINGS'}
+            granted = post(client, '/v1/consents', eh, body)
+            assert granted.status_code == 201
+            revoked = post(client, '/v1/consents/' + granted.json()['id'] + '/revoke', eh, {})
+            assert revoked.status_code == 201 and revoked.json()['status'] == 'REVOKED'
+            rows = client.get('/v1/consents', headers=ch, params={'family_id': fam['id']}).json()['items']
+            assert [row['status'] for row in rows] == ['REVOKED', 'GRANTED']
+            assert client.post('/v1/auth/logout-all', headers=eh).status_code == 204
+            assert client.get('/v1/me', headers=eh).status_code == 401
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)

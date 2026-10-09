@@ -1,6 +1,8 @@
 # 念念（NianNian）AI 陪伴系统
 
-当前仓库是 NianNian 的第一周工程基础，按 `docs/development-plan.md` 逐步实现。包含 FastAPI health endpoint、两个 Android Compose App 占位入口、环境配置与脱敏日志、Compose 基础设施、冻结接口清单、确定性 Mock 和虚构数据 fixture。数据库业务迁移仍为计划，业务页面与真实设备能力尚未实现。
+当前仓库按 `docs/development-plan.md` 推进到第二周。后端已实现虚构 DEMO 登录、刷新轮换与重用检测、退出、家庭邀请与本人确认、分项授权及不可变撤回历史；两个 Android Compose App 提供对应流程。现有迁移覆盖 Auth/Family/Consent 及审计、设备关联的 8 张基础表。聊天、记忆、提醒等后续业务及真实设备能力尚未实现。
+
+第二周验证与双端演示步骤见 [第二周交付记录](docs/evidence/week2.md)。使用显式的一次性 PostgreSQL 测试库运行 `python scripts/verify_week2.py`；未配置数据库会报告 `NOT VERIFIED`，不以跳过集成测试作为通过。硬件与 Android UI 真机验收独立记录。
 
 第一周统一检查：安装 `backend/requirements.lock` 和 `requirements-ci.txt` 后运行 `python scripts/verify_week1.py`。缺少 Android 或 Docker 环境时会输出 `NOT VERIFIED`，不会伪装为通过。CI、运行方法与边界见 [验证工具说明](docs/evidence/week1-tooling.md)，设备记录见 [设备基线启动记录](docs/evidence/week1-device-baseline.md)。
 
@@ -17,11 +19,11 @@
 1. Set `APP_ENV` to `dev`, `test`, or `demo` in the process environment. The backend loads `backend/config/<environment>.env`. Copy `.env.example` to `.env` only for local overrides or secrets; `.env` is ignored by Git.
 2. Create a native CPython 3.12 environment and install `backend/requirements.lock` for the verified dependency set. `backend/requirements.txt` lists the direct dependencies.
 3. Start services with `docker compose -f infra/docker-compose.yml up -d` when testing infrastructure tasks.
-4. Start the API with `uvicorn app.main:app --app-dir backend --reload`.
+4. Configure `AUTH_SIGNING_KEY` with a locally generated random value of at least 32 characters; keep it in the ignored `.env` or process environment. From `backend/`, start the API with `python -m app --reload`. This entry point sets the selector event loop needed for async psycopg on Windows before starting Uvicorn.
 
 The API exposes `GET /health` and does not require a database connection for that endpoint.
 
-All checked-in profiles use Mock providers. The demo profile requires fictional data and Mock providers; its seed data is a later task. Android `dev`, `test`, and `demo` variants display their environment and provider source in the placeholder screen.
+All checked-in profiles use Mock providers. Only fictional `demo-child`, `demo-elder`, `demo-caregiver` and `demo-other` identifiers are accepted by DEMO login. SMS/OAuth and real-provider login are unavailable. Android `dev`, `test`, and `demo` variants display their environment and provider source throughout the auth/family/consent screens.
 
 ## Verification commands
 
