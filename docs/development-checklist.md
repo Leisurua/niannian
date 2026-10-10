@@ -2,6 +2,21 @@
 
 这是开发期间的门禁清单，不是新的设计文档。每项填写 `NOT_STARTED / IN_PROGRESS / PASS / FAIL / BLOCKED`，并附 evidence path。
 
+## Week 2 current checkout — 2026-10-09
+
+软件实现已交付；整周验收为 `IN_PROGRESS`，因为指定设备与 Android UI/Keystore 真机 smoke 尚未执行。完整证据、运行与双端演示步骤见 [第二周交付记录](evidence/week2.md)。下方 Week 1 内容为带日期的历史记录。
+
+同日复查已修复断网恢复、刷新凭证、普通成员页面与分页问题，并加强测试库及报告检查；后端更新为 **110 tests 全通过**。最新 Android 和本地证据见 [复查与优化记录](evidence/week2-review.md)，下方数字保留首次交付基线。
+
+- [x] E1-T01..05 Auth/Family/Consent 服务与权限负例：`PASS`；后端 100 tests、0 failure/error/skip，包含 15 项实际 PostgreSQL 与真实 HTTP 集成案例。
+- [x] 迁移 upgrade/模型一致性、独立空库 downgrade/re-upgrade、虚构数据备份恢复：`PASS`。
+- [x] E1-T06 双端软件实现、12 个 APK、24 次 JVM 单测执行、lint、源码副本 SHA-256 比对：`PASS`。
+- [x] 12 个 APK 与源码/fixture/Git 历史隐私门禁：`PASS`；7 tests。
+- [x] 第二周统一检查入口与 CI 更新：实现 `PASS`；本轮 GitHub Actions 未执行。
+- [x] E9-T01..05 设备基线、依赖、证据与关闭状态记录：记录工作 `PASS`；[设备 Spike 记录](evidence/week2-device-spikes.md)。
+- [ ] Android 实际 UI、Keystore/退出擦除、杀进程恢复、断网重试：`BLOCKED`，ADB 检测结果 NO_AUTHORIZED_DEVICE。
+- [ ] 指定设备 kiosk/BLE/camera/wake/telephony Spike：`BLOCKED`，设备未提供；部分依赖 E4-T01/E8-T01 后续任务。
+
 ## Week 1 closeout — 2026-09-30
 
 第一周工程门禁已通过；真机和业务数据库重放保留为未验证。已核验 GitHub 提交 `85d2fdd0bee68ad8b56fd6e173377ce96c7071b3` 的 [完整 CI](https://github.com/Leisurua/niannian/actions/runs/36539054178) 及下载产物。收尾提交的合并资格还需以其自身 CI/PR 状态为准。完整边界见 [第一周交付记录](evidence/week1.md)。
@@ -35,12 +50,12 @@
 
 ## Batch 1 Gate
 
-- [ ] DEMO login/refresh/logout/logout-all 和 session revoke pass
-- [ ] Family invitation token hash、过期、重放、双方确认 pass
-- [ ] `FamilyRole` 使用 `ELDER/CHILD/CAREGIVER/EMERGENCY_CONTACT`
-- [ ] Consent immutable grant/revoke and audit pass
-- [ ] 跨家庭、缺 permission、缺 Consent 的 negative tests pass
-- [ ] VS-01 Login → Family → Consent → Elder/Family Home smoke pass
+- [x] DEMO login/refresh/logout/logout-all 和 session revoke — `PASS`; [Week 2](evidence/week2.md)。设备本地擦除另行验收。
+- [x] Family invitation token hash、过期、重放、双方确认 — `PASS`; PostgreSQL 并发与待确认拒绝测试。
+- [x] `FamilyRole` 使用 `ELDER/CHILD/CAREGIVER/EMERGENCY_CONTACT` — `PASS`; 冻结 contract 与 DTO。
+- [x] Consent immutable grant/revoke and audit — `PASS`; PostgreSQL 历史与下一次权限判定。
+- [x] 当前 E1 表面跨家庭、缺 permission、缺 Consent 的 negative tests — `PASS`; 不代表未来 Memory/File/Report 等 endpoint 已验收。
+- [ ] VS-01 Login → Family → Consent → Elder/Family Home UI smoke — `IN_PROGRESS`; backend live HTTP slice PASS，Android 构建 PASS；实际双端 UI smoke NOT VERIFIED。
 
 ## P0 Security Gate
 

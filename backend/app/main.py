@@ -17,6 +17,15 @@ logger = logging.getLogger("nianian.api")
 app = FastAPI(title="NianNian API", version="0.1.0", docs_url="/docs", redoc_url="/redoc")
 app.add_middleware(RequestIdMiddleware)
 
+from app.modules.auth.api import router as auth_router
+from app.modules.family.api import router as family_router
+from app.modules.consent.api import router as consent_router
+from app.platform.models import WEEK2_MODELS
+app.state.domain_models = WEEK2_MODELS
+app.include_router(auth_router)
+app.include_router(family_router)
+app.include_router(consent_router)
+
 
 @app.exception_handler(AppError)
 async def handle_app_error(request: Request, exc: AppError) -> JSONResponse:

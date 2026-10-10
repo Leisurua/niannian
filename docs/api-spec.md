@@ -212,7 +212,7 @@ Authenticated
 | --- | --- | --- | --- |
 | POST | `/families` | `FamilyCreate` -> `FamilyResponse` (201) | 登录用户成为创建者；幂等 |
 | GET | `/families` | 分页 `FamilySummary` | 只列当前用户的成员关系 |
-| GET | `/families/{family_id}` | `FamilyResponse` | ACTIVE/PENDING membership |
+| GET | `/families/{family_id}` | `FamilyResponse` | ACTIVE membership; confirmed in [Week 2 visibility decision](plan/week2-family-visibility-decision.md) |
 | POST | `/families/{family_id}/invitations` | `InvitationCreate` -> `InvitationResponse` (201) | 允许角色由 caller 权限决定；token 只返回一次、过期/次数限制 |
 | POST | `/family-invitations/{token}/accept` | `InvitationAccept` -> `FamilyMemberResponse` | token 兑换后创建/更新 PENDING；双方确认后 ACTIVE |
 | GET | `/families/{family_id}/members` | 分页 | 隐藏被撤销成员的敏感资料 |
