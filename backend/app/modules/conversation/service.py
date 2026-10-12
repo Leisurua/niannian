@@ -106,8 +106,6 @@ def handle(row, message):
     if message.type == 'interrupt':
         row.backend_state = 'LISTENING'
         return [event(row, 'assistant.state', {'state': 'LISTENING'})]
-    # Week 4 owns the AI orchestrator and speech playback; never pretend a
-    # model answered, an audio stream played, or transcript content was saved.
     row.backend_state = 'IDLE'
     return [event(row, 'error', {'code': 'PROVIDER_TEMPORARILY_UNAVAILABLE', 'retryable': False}),
             event(row, 'assistant.state', {'state': 'IDLE'})]

@@ -154,7 +154,6 @@ def test_memory_authorization_candidate_confirmation_version_and_revocation(syst
     assert post(client, '/v1/consents/' + consent_id + '/revoke', eh).status_code == 201
     assert client.get(path, headers=ch).status_code == 404
     assert client.get('/v1/memories', headers=ch).json()['items'] == []
-    # Data subject can still delete without granting fresh family read consent.
     deleted = client.delete(path, headers={**eh, 'Idempotency-Key': 'delete-once'})
     assert deleted.status_code == 202
     assert client.delete(path, headers={**eh, 'Idempotency-Key': 'delete-once'}).json() == deleted.json()
@@ -221,7 +220,7 @@ def test_file_decode_metadata_strip_signed_proxy_revoke_and_cleanup(system):
     storage.objects[storage.keys[-1]] = b'<script>fictional hostile replacement</script>'
     assert client.get(path, headers=home[2]).content == fetched.content
     assert client.get(path).status_code == 401
-    assert client.get(path, headers=home[4]).status_code == 404  # signer is bound to child
+    assert client.get(path, headers=home[4]).status_code == 404
     assert post(client, '/v1/consents/' + cid + '/revoke', home[4]).status_code == 201
     assert client.get(path, headers=home[2]).status_code == 404
     deletion = client.delete('/v1/memories/' + item['id'], headers={**home[4], 'Idempotency-Key': 'erase-memory'})
@@ -329,7 +328,7 @@ def test_wss_owner_identity_reconnect_replay_and_end(system):
         ws.send_json(ws_frame(cid, 'session.start', 3, {'client_session_id':'fictional-client', 'input_mode':'TEXT'}))
         assert ws.receive_json()['type'] == 'session.ready'
         ws.send_json(ws_frame(cid, 'ping', 4))
-        assert ws.receive_json()['type'] == 'pong'  # no repeated identity message
+        assert ws.receive_json()['type'] == 'pong'
         ws.send_json(ws_frame(cid, 'ping', 4))
         assert ws.receive_json()['payload']['code'] == 'WS_SEQUENCE_REPLAY'
     with client.websocket_connect(path, headers=home[4]) as ws:

@@ -40,7 +40,6 @@ class UploadDeclaration:
 @dataclass(frozen=True)
 class PreflightReceipt:
     size_bytes: int
-    # Deliberately no availability flag: matching bytes are not a safe image.
     needs_content_inspection: bool = True
 
 

@@ -73,7 +73,6 @@ async def detail(db, actor, memory_id, request_id):
 
 
 async def attachments(db, row, ids):
-    # Existing uploaded assets may only stay attached to their authorized memory.
     for file_id in ids:
         asset = await db.get(FileAsset, file_id)
         if not asset or asset.memory_id != row.id or asset.family_id != row.family_id or asset.status != 'AVAILABLE' or asset.deleted_at:
@@ -122,7 +121,6 @@ async def update(db, actor, memory_id, body, expected, request_id):
         await attachments(db, row, values.pop('attachment_ids'))
     for key, value in values.items():
         setattr(row, key, value)
-    # Editing a fact requires explicit reconfirmation, preserving provenance.
     if {'title', 'content', 'type'} & values.keys():
         row.verification_status, row.verified_by, row.verified_at = 'PENDING', None, None
     row.version += 1
@@ -173,7 +171,6 @@ async def feedback(db, actor, memory_id, body, key, settings, request_id):
     idem = audit.Idempotency(key, f'memory-feedback:{memory_id}', body.model_dump(mode='json'))
     if await idem.previous(db, actor.user_id, settings.idempotency_seconds):
         return {'status': 'RECEIVED'}
-    # Store the structured reason only; never copy a free-text note into audit.
     await audit.record(db, actor.user_id, 'MEMORY_FEEDBACK', 'MEMORY', row.id, row.family_id,
                        request_id, metadata={'kind': body.kind, **idem.metadata})
     return {'status': 'RECEIVED'}

@@ -25,7 +25,6 @@ def test_model_candidate_is_pending_and_cannot_self_confirm():
     assert draft(source='AI_CANDIDATE').verification_status == 'PENDING'
     with pytest.raises(ValidationError):
         draft(source='AI_CANDIDATE', verification_status='CONFIRMED')
-    # Human confirmation remains a later service authorization decision.
     assert draft(source='USER', verification_status='CONFIRMED').source == 'USER'
     assert draft().source is None
 

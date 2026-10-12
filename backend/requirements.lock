@@ -34,7 +34,6 @@ uvicorn==0.34.0
 watchfiles==1.3.0
 websockets==17.1
 
-# Week 3 image/storage/scheduler dependencies, verified on CPython 3.12.
 Pillow==12.3.0
 boto3==1.43.111
 botocore==1.43.111

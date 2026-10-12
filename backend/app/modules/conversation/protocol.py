@@ -85,7 +85,6 @@ def parse_client_frame(
 ) -> ClientEnvelope:
     if not isinstance(frame, str):
         raise ProtocolError('WS_BINARY_NOT_ALLOWED')
-    # Reject oversized strings before allocating their UTF-8 representation.
     if len(frame) > limits.max_frame_bytes:
         raise ProtocolError('WS_FRAME_TOO_LARGE')
     try:

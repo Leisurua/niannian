@@ -74,7 +74,6 @@ async def confirm(db, actor, file_id, body, key, storage, settings, request_id):
     except FilePreflightError:
         row.status = 'QUARANTINED'
         await audit.record(db, actor.user_id, 'FILE_QUARANTINED', 'FILE', row.id, row.family_id, request_id, metadata=idem.metadata)
-        # A committed quarantine response is explicit and is never AVAILABLE.
         return memory.file_view(row)
     await storage.write(row.object_key + '.safe', clean, row.mime_type)
     await storage.delete(row.object_key)
@@ -134,7 +133,6 @@ async def cleanup(db, storage, now=None):
             await storage.delete(row.object_key + '.safe')
             row.status, row.deleted_at = 'DELETED', now
         except AppError:
-            # Leave a durable non-readable state for the next bounded cleanup run.
             await audit.record(db, None, 'FILE_CLEANUP_FAILED', 'FILE', row.id, row.family_id, result='FAILED')
     # A still-live signed PUT may recreate the raw upload after confirmation.
     # Sweep it once the maximum configured URL lifetime (300s) plus clock
