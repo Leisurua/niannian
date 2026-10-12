@@ -161,6 +161,11 @@
   },
   {
     "method": "GET",
+    "path": "/files/{file_id}/content",
+    "operation_id": "downloadFileContent"
+  },
+  {
+    "method": "GET",
     "path": "/reminders",
     "operation_id": "listReminders"
   },

@@ -1,6 +1,12 @@
 # 念念（NianNian）AI 陪伴系统
 
-当前仓库按 `docs/development-plan.md` 推进到第二周。后端已实现虚构 DEMO 登录、刷新轮换与重用检测、退出、家庭邀请与本人确认、分项授权及不可变撤回历史；两个 Android Compose App 提供对应流程。现有迁移覆盖 Auth/Family/Consent 及审计、设备关联的 8 张基础表。聊天、记忆、提醒等后续业务及真实设备能力尚未实现。
+当前推进到**第三周软件交付**。登录/家庭/授权基础上，新增家庭记忆的候选、确认、编辑、撤回、删除与照片流程；双端 Android 提供记忆页面。提醒已有后端周期、时区、执行及反馈骨架；会话已支持 REST 元数据和 TEXT/Mock WSS 状态、重连序号及撤销检查。数据库现有 13 张业务表。
+
+第三周验证与演示步骤见 [交付记录](docs/evidence/week3.md)。本地后端 241 项测试、双端离线构建和 68 次 JVM 测试、真实 MinIO 文件链路均已通过。**真机 UI/照片选择器/Keystore 和硬件验收仍未完成**；AI 回复、语音、摘要、完整 RAG 与 Android 离线提醒按后续周计划推进。
+
+第三周合同修订已由项目负责人批准，见 [W3-01..05](docs/plan/week3-contract-review.md)。新迁移为 `20261010_week3_core`；部署前备份，在 `backend/` 执行 `python -m alembic upgrade head`。回滚只允许空的隔离库，已有业务数据应使用前向修复。
+
+照片需要私有 S3/MinIO 配置 `S3_ENDPOINT/S3_BUCKET/S3_ACCESS_KEY/S3_SECRET_KEY`。`PUBLIC_BASE_URL` 是客户端可访问的 API 地址；上传地址的存储主机也必须能被设备访问。默认照片上限 5 MiB、1200 万像素；下载每次重新校验登录与授权，不使用永久公开 URL。生产使用 HTTPS。另开终端在 `backend/` 执行 `python -m app.worker.main --serve`，每 15 秒生成提醒执行并清理文件；`--once` 用于单次运行。无参数只检查 worker 启动。
 
 第二周验证与双端演示步骤见 [第二周交付记录](docs/evidence/week2.md)。使用显式的一次性 PostgreSQL 测试库运行 `python scripts/verify_week2.py`；未配置数据库会报告 `NOT VERIFIED`，不以跳过集成测试作为通过。硬件与 Android UI 真机验收独立记录。
 
@@ -25,7 +31,7 @@ The API exposes `GET /health` and does not require a database connection for tha
 
 All checked-in profiles use Mock providers. Only fictional `demo-child`, `demo-elder`, `demo-caregiver` and `demo-other` identifiers are accepted by DEMO login. SMS/OAuth and real-provider login are unavailable. Android `dev`, `test`, and `demo` variants display their environment and provider source throughout the auth/family/consent screens.
 
-The demo profile requires fictional data and Mock providers. E0-T08 supplies [fictional seed fixtures](scripts/README.md); run `python scripts/seed_demo_data.py --check` without a database. Applying the complete seed requires its reviewed business schema; the current eight-table Auth/Family/Consent migration does not yet cover the remaining seed entities. The Android apps do not load those business seed records yet.
+The demo profile requires fictional data and Mock providers. E0-T08 supplies [fictional seed fixtures](scripts/README.md); run `python scripts/seed_demo_data.py --check` without a database. Applying the complete seed requires its reviewed business schema; the current 13-table migration still does not cover later Signal/Notification/Report entities. Android creates and reads authorized Memory records through the API; complete seed replay remains a later vertical-slice gate.
 
 ## Verification commands
 

@@ -36,6 +36,18 @@ async def require_scope(db, family_id: UUID, subject: UUID, grantee: UUID, scope
         raise AppError('PERMISSION_CONSENT_REQUIRED', '尚未获得此项授权，或授权已撤回。', 403)
 
 
+async def granted_subjects(db, family_id, grantee, scope):
+    # Select the latest history FIRST; filtering GRANTED before DISTINCT would
+    # resurrect a revoked authorization. Callers intersect ACTIVE membership.
+    rows = (await db.scalars(select(Consent).where(
+        Consent.family_id == family_id, Consent.grantee_user_id == grantee, Consent.scope == scope,
+    ).distinct(Consent.subject_user_id).order_by(
+        Consent.subject_user_id, Consent.created_at.desc(), Consent.id.desc()))).all()
+    now = utcnow()
+    return [row.subject_user_id for row in rows if row.status == 'GRANTED' and (
+        row.expires_at is None or row.expires_at > now)]
+
+
 async def visible(db, actor, row: Consent):
     fam, member = await family.context(db, actor.user_id, row.family_id)
     admin = fam.created_by_user_id == actor.user_id or member.permission_codes.get('MEMBER_ADMIN') is True

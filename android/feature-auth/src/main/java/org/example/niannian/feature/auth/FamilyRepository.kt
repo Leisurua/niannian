@@ -11,6 +11,9 @@ import java.net.URL
 import java.net.URLEncoder
 import java.security.MessageDigest
 import java.util.UUID
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.io.ByteArrayOutputStream
 
 class ApiFailure(val status: Int, val code: String, message: String) : Exception(message)
 
@@ -21,6 +24,7 @@ class FamilyRepository(
     private val debug: Boolean,
     private val connectionFactory: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection }
 ) {
+    private val requestMutex = Mutex()
     fun hasSession() = store.load().has("access_token")
     fun savedOrigin() = store.load().optString("origin", "http://10.0.2.2:8000")
     fun clear() = store.clear()
@@ -47,6 +51,12 @@ class FamilyRepository(
         val path = session.getString("pending_path")
         return RetriedWrite(path, call(path, session.getString("pending_method"),
             JSONObject(session.getString("pending_body")), true))
+    }
+
+    suspend fun retryMemoryPending() {
+        val path = store.load().optString("pending_path")
+        require(path.startsWith("/v1/memories") || path.startsWith("/v1/files")) { "请先在家庭设置中重试上次请求。" }
+        retryPending()
     }
 
     suspend fun readAll(path: String): List<JSONObject> {
@@ -135,7 +145,11 @@ class FamilyRepository(
         }
     }
 
-    suspend fun call(path: String, method: String = "GET", body: JSONObject? = null, idempotent: Boolean = false, expectedVersion: Long? = null): JSONObject = withContext(Dispatchers.IO) {
+    suspend fun call(path: String, method: String = "GET", body: JSONObject? = null, idempotent: Boolean = false, expectedVersion: Long? = null): JSONObject = requestMutex.withLock {
+        executeCall(path, method, body, idempotent, expectedVersion)
+    }
+
+    private suspend fun executeCall(path: String, method: String, body: JSONObject?, idempotent: Boolean, expectedVersion: Long?): JSONObject = withContext(Dispatchers.IO) {
         var session = store.load()
         val origin = ConnectionPolicy.origin(session.getString("origin"), debug)
         var key: String? = null
@@ -169,5 +183,61 @@ class FamilyRepository(
             clearPending()
         }
         result
+    }
+
+    suspend fun uploadPhoto(url: String, headers: JSONObject, bytes: ByteArray) = withContext(Dispatchers.IO) {
+        val target = URL(url)
+        require(target.protocol == "https" || debug && target.protocol == "http") { "照片上传需要安全地址。" }
+        require(target.userInfo == null && bytes.size <= 5 * 1024 * 1024)
+        val connection = connectionFactory(target)
+        try {
+            connection.instanceFollowRedirects = false
+            connection.connectTimeout = 10000
+            connection.readTimeout = 20000
+            connection.requestMethod = "PUT"
+            connection.doOutput = true
+            connection.setFixedLengthStreamingMode(bytes.size)
+            val names = headers.keys()
+            while (names.hasNext()) {
+                val name = names.next()
+                require(name.lowercase() in listOf("content-type", "content-length"))
+                connection.setRequestProperty(name, headers.getString(name))
+            }
+            connection.outputStream.use { it.write(bytes) }
+            if (connection.responseCode !in 200..299) throw ApiFailure(connection.responseCode, "UPLOAD_FAILED", "照片上传未完成，请重试。")
+        } finally { connection.disconnect() }
+    }
+
+    suspend fun downloadPhoto(url: String): ByteArray {
+        call("/v1/me") // refresh an expired login before attempting the binary request
+        return requestMutex.withLock { withContext(Dispatchers.IO) {
+            val supplied = URL(url)
+            require(Regex("/v1/files/[0-9a-fA-F-]{36}/content").matches(supplied.path)) { "照片地址无效。" }
+            require(supplied.query != null && supplied.query.length < 512)
+            val session = store.load()
+            // Always send the Bearer to the configured API origin, never an
+            // arbitrary host carried in a download response.
+            val origin = ConnectionPolicy.origin(session.getString("origin"), debug)
+            val connection = connectionFactory(URL(origin + supplied.path + "?" + supplied.query))
+            try {
+                connection.instanceFollowRedirects = false
+                connection.connectTimeout = 10000
+                connection.readTimeout = 20000
+                connection.setRequestProperty("Authorization", "Bearer " + session.getString("access_token"))
+                if (connection.responseCode != 200) throw ApiFailure(connection.responseCode, "PHOTO_UNAVAILABLE", "照片不可用，授权可能已撤回，请重新读取。")
+                val output = ByteArrayOutputStream()
+                connection.inputStream.use { stream ->
+                    val buffer = ByteArray(8192)
+                    while (true) {
+                        val count = stream.read(buffer)
+                        if (count < 0) break
+                        require(output.size() + count <= 5 * 1024 * 1024) { "照片超出显示限制。" }
+                        output.write(buffer, 0, count)
+                    }
+                }
+                currentCoroutineContext().ensureActive()
+                output.toByteArray()
+            } finally { connection.disconnect() }
+        } }
     }
 }

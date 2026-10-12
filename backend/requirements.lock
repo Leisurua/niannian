@@ -33,3 +33,15 @@ tzdata==2026.4
 uvicorn==0.34.0
 watchfiles==1.3.0
 websockets==17.1
+
+# Week 3 image/storage/scheduler dependencies, verified on CPython 3.12.
+Pillow==12.3.0
+boto3==1.43.111
+botocore==1.43.111
+jmespath==1.1.0
+s3transfer==0.19.2
+APScheduler==3.11.3
+tzlocal==5.4.4
+python-dateutil==2.9.0.post0
+urllib3==2.8.0
+six==1.17.0

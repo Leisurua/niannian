@@ -57,6 +57,11 @@ async def require_member(db: AsyncSession, family_id: UUID, user_id: UUID) -> Fa
     return member
 
 
+async def active_subjects(db: AsyncSession, family_id: UUID) -> list[UUID]:
+    return list((await db.scalars(select(FamilyMember.user_id).where(
+        FamilyMember.family_id == family_id, FamilyMember.status == 'ACTIVE'))).all())
+
+
 async def own_memberships(db: AsyncSession, user_id: UUID) -> list[dict]:
     rows = (await db.scalars(select(FamilyMember).join(Family).where(FamilyMember.user_id == user_id,
             FamilyMember.status.in_(["PENDING", "ACTIVE"]), Family.deleted_at.is_(None),

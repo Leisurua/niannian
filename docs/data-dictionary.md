@@ -142,6 +142,8 @@ Purpose：家庭事实、来源、确认状态和 RAG 权限入口。
 | deleted_at | timestamptz | yes | null | - | 业务删除时间 | S2 |
 | created_at | timestamptz | no | now() | - | 创建时间 | S0 |
 | updated_at | timestamptz | no | now() | - | 更新时间 | S0 |
+| source | varchar(24) | no | - | CHECK FAMILY_MEMBER/USER/AI_CANDIDATE/IMPORT | 输入来源，已批准 W3-01 | S1 |
+| version | integer | no | 1 | CHECK > 0 | If-Match 乐观锁，W3-01 | S0 |
 
 ## 9. memory_chunk
 
@@ -224,6 +226,9 @@ Purpose：可查询的提醒规则、时间、周期和升级配置。
 | created_at | timestamptz | no | now() | - | 创建时间 | S0 |
 | updated_at | timestamptz | no | now() | - | 更新时间 | S0 |
 | deleted_at | timestamptz | yes | null | - | 删除标记 | S1 |
+| family_id | uuid | no | - | FK family.id RESTRICT | 明确家庭边界，W3-03 | S2 |
+| version | integer | no | 1 | CHECK > 0 | If-Match 乐观锁，W3-02 | S0 |
+| next_due_at | timestamptz | yes | null | - | 下次计划触发，W3-02 | S1 |
 
 ## 13. reminder_execution
 
@@ -265,6 +270,10 @@ Purpose：会话生命周期、摘要和 AI 调用上下文。
 | summary_retention_until | timestamptz | yes | null | - | 摘要清理时间，TBD | S3 |
 | provider_metadata | jsonb | no | `{}` | redacted JSON | provider/model/prompt/latency | S1 |
 | deleted_at | timestamptz | yes | null | - | 业务删除 | S2 |
+| backend_state | varchar(16) | no | IDLE | CHECK IDLE/LISTENING/THINKING/SPEAKING/WARNING/OFFLINE/ERROR | 会话状态，W3-05 | S1 |
+| input_mode | varchar(24) | no | TEXT | CHECK VOICE/TEXT/LOCAL_WAKEWORD | 输入模式，W3-05 | S1 |
+| client_sequence | bigint | no | 0 | CHECK >= 0 | 已接受客户端序号，跨重连保留 | S0 |
+| server_sequence | bigint | no | 0 | CHECK >= 0 | 服务端序号，跨重连保留 | S0 |
 
 ## 15. conversation_message
 

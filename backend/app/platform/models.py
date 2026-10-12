@@ -5,3 +5,9 @@ from app.modules.device.models import DeviceBinding
 from app.modules.family.models import Family, FamilyInvitation, FamilyMember
 
 WEEK2_MODELS = (User, Family, AuditLog, FamilyMember, FamilyInvitation, Consent, DeviceBinding, DeviceSession)
+
+from app.modules.memory.models import Memory, FileAsset
+from app.modules.reminder.models import Reminder, ReminderExecution
+from app.modules.conversation.models import Conversation
+
+DOMAIN_MODELS = WEEK2_MODELS + (Memory, FileAsset, Reminder, ReminderExecution, Conversation)

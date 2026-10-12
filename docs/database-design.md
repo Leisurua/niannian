@@ -431,3 +431,7 @@ model change -> Alembic revision YYYYMMDD_<short_slug>
 - [x] WeeklyReport 从结构化数据生成，不从 narrative 反算。
 - [x] Memory 删除覆盖业务、vector、cache、object storage 和最终清理。
 - [x] 未执行迁移、未编写业务代码、Controller、OpenAPI 或 Android 代码。
+
+## 29. 第三周已批准增补
+
+见 [W3-01..05](plan/week3-contract-review.md)。`memory` 增加 source/version；`reminder` 增加 family_id/version/next_due_at；`conversation` 增加 backend_state/input_mode/client_sequence/server_sequence。精确类型和约束以更新的数据字典为准。第三周迁移 `20261010_week3_core` 在原八表迁移之后建立 memory/file_asset/reminder/reminder_execution/conversation，不提前建立第五周向量和第六周消息分析表。下载由鉴权代理逐次校验授权，取代对已签 S3 下载链接立即撤销的不成立假设。
