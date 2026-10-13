@@ -2,7 +2,7 @@
 
 这是开发期间的门禁清单，不是新的设计文档。每项填写 `NOT_STARTED / IN_PROGRESS / PASS / FAIL / BLOCKED`，并附 evidence path。
 
-## Week 3 current checkout — 2026-10-12
+## Week 3 current checkout — 2026-10-13
 
 **第三周软件交付 PASS；含真机的整周验收仍为 IN_PROGRESS。** 继承第二周的设备待验项，不启动第四周。具体证据见 [第三周交付记录](evidence/week3.md)。
 
@@ -10,7 +10,7 @@
 - [x] 记忆/文件后端与 Android 列表、详情、候选确认、编辑、反馈、撤回、删除、照片流程：软件实现完成。
 - [x] 提醒时区/周期/执行唯一性、稍后/完成/跳过/尚未收到反馈骨架：实际 PostgreSQL 验证 PASS。
 - [x] Conversation REST 与 TEXT/Mock WSS 状态、序号恢复、连接互斥及即时撤销检查：集成验证 PASS；AI/音频/摘要尚未开放。
-- [x] 总后端回归：241 tests，0 failure/error/skip；包括第二周基线、第三周 PostgreSQL 和实际 MinIO。
+- [x] 总后端回归：243 tests，0 failure/error/skip；包括第二周基线、第三周 PostgreSQL 和实际 MinIO。
 - [x] 13 表迁移一致性、空库升级→回滚→重升级、虚构数据备份恢复：PASS。
 - [x] 双端 12 APK、68 次 JVM 测试、6 份 lint 报告无错误、57 个源码文件 SHA-256 一致：PASS。
 - [x] 源码/fixture/Git/APK 隐私检查 7 tests：PASS；后端 wheel 源码目录外三环境验证：PASS。

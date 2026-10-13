@@ -1,6 +1,6 @@
 # 第三周交付记录
 
-完成日期：2026-10-12。软件交付 **PASS**；含真机的整周验收 **IN_PROGRESS**。
+完成日期：2026-10-13。软件交付 **PASS**；含真机的整周验收 **IN_PROGRESS**。
 
 ## Task
 
@@ -28,10 +28,10 @@
 
 | 检查 | 结果 | Evidence |
 | --- | --- | --- |
-| 后端总回归，含第二/三周 | **241 tests，0 failure/error/skip**；APK 独立验收 | `verification/summary.json` / `backend-tests.xml` |
+| 后端总回归，含第二/三周 | **243 tests，0 failure/error/skip**；APK 独立验收 | `ci-fix-verification/summary.json` / `backend-tests.xml` |
 | PostgreSQL API/权限/并发/worker/WSS | PASS，包含在总回归；同 key 并发写和 occurrence 唯一、撤权拒绝、重连/重放/连接互斥实际执行 | `backend/tests/integration/test_week3_postgres.py` |
 | 真实 MinIO | PASS：签名 PUT、匿名读取 403、确认/去元数据、代理下载、已签链接撤权 404、物理清理 | `backend/tests/integration/test_week3_storage.py` 与总回归 XML |
-| Ruff | PASS | `verification/lint.txt` |
+| Ruff | PASS | `ci-fix-verification/lint.txt` |
 | 13 表迁移 | upgrade/模型一致性 PASS；独立空库升级→回滚→重升级 PASS，回滚后业务表为 0 | `migration-summary.json` / `migration-rehearsal.txt` |
 | 虚构数据备份恢复 | pg_dump→独立空库 pg_restore PASS，13 表行数一致 | `backup-restore.json` |
 | Android 离线锁定构建 | 12 APK，**68 次 JVM 测试执行，0 failure/error/skip**；6 份 lint 报告无 error | `android-summary.json` / `android-build.txt` / `android-tests/` |
@@ -43,6 +43,8 @@
 Windows 使用英文路径构建副本，最终源码 hash 绑定报告。新增模块锁文件已交付，最终构建不使用 `--write-locks`。既有依赖版本和应用图标 lint 警告未屏蔽。
 
 已修复：幂等响应时区差异统一为 UTC；旧 fixture 补齐明确的虚构 source/family_id。跨会话停止的测试服务已恢复并重新验证。官方 MinIO 二进制地址返回 410，未下载成功；实际验收使用官方固定源码 `7aac2a2c5b7c` 构建的隔离服务。
+
+2026-10-13 CI 补验：远端 push 工作流曾暴露 WSS 取消清理竞争。断开时的异步 rollback/close 可能再次被取消，遗留连接计数与租约。现以屏蔽外层取消的清理作用域释放数据库资源，计数在 finally 中释放；新增两条回归均已证明在旧提交清理代码上失败、修复后通过。完整 243 项回归和真实 MinIO 再次通过。机制参考 [AnyIO finalization](https://anyio.readthedocs.io/en/stable/cancellation.html#finalization)。
 
 ## Decisions
 

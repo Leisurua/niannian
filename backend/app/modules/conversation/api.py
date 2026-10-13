@@ -3,6 +3,7 @@ import hashlib
 import time
 from uuid import UUID
 
+from anyio import CancelScope
 from fastapi import APIRouter, Depends, Request, WebSocket, WebSocketDisconnect
 from sqlalchemy import text
 
@@ -18,6 +19,22 @@ from app.platform.uow import transaction
 
 router = APIRouter(prefix='/v1', tags=['Conversations'])
 _connections = {}
+
+
+async def release_connection_lease(lease, actor_id):
+    try:
+        with CancelScope(shield=True):
+            try:
+                await lease.rollback()
+            finally:
+                await lease.close()
+    finally:
+        if actor_id:
+            remaining = _connections.get(actor_id, 0) - 1
+            if remaining > 0:
+                _connections[actor_id] = remaining
+            else:
+                _connections.pop(actor_id, None)
 
 
 @router.post('/conversations', status_code=201, operation_id='createConversation')
@@ -122,9 +139,4 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
         else:
             await websocket.close(code=4403)
     finally:
-        await lease.rollback()
-        await lease.close()
-        if actor_id:
-            _connections[actor_id] -= 1
-            if not _connections[actor_id]:
-                _connections.pop(actor_id, None)
+        await release_connection_lease(lease, actor_id)
