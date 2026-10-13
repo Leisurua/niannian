@@ -1,0 +1,583 @@
+{
+  "schema_version": 1,
+  "status": "PAUSED",
+  "overall_acceptance": "INCOMPLETE",
+  "report_generated_at": "2026-10-13T10:10:55.096809+00:00",
+  "client_timezone": "Asia/Shanghai",
+  "test_date": "2026-10-13",
+  "source_sha": "a1948c2702d3117e0185abb6cf47a736d59698f1",
+  "ci_run_id": 38334535070,
+  "operator_mode": "manual",
+  "device_inventory": {
+    "status": "PASS",
+    "recorded_at": "2026-10-13T08:30:34.589581+00:00",
+    "device": {
+      "manufacturer": "Xiaomi",
+      "model": "24129PN74C",
+      "sku": "dada",
+      "android_version": "16",
+      "api_level": "36",
+      "security_patch": "2026-08-01"
+    },
+    "hardware_gate": "NOT VERIFIED"
+  },
+  "installed_builds": [
+    {
+      "Role": "elder",
+      "Package": "org.example.niannian.elder.demo",
+      "Installed": true,
+      "SHA256": "346C1BE20311CCDC7FB28FBE3FE5B35029241B189E04D04369B5765975A4BF0A",
+      "MatchesCI": true
+    },
+    {
+      "Role": "family",
+      "Package": "org.example.niannian.family.demo",
+      "Installed": true,
+      "SHA256": "FBA0B7155D52CE831FE7C84CA60BCC7E330B23D1B8580BB5FDF1C2CE571E1A59",
+      "MatchesCI": true
+    }
+  ],
+  "local_service_checks": {
+    "recorded_at": "2026-10-13T09:04:36.899463+00:00",
+    "checks": {
+      "api_health": "PASS",
+      "demo_login": "PASS",
+      "authenticated_me": "PASS",
+      "logout": "PASS",
+      "private_object_anonymous_denied": "PASS",
+      "private_bucket_anonymous_denied": "PASS"
+    },
+    "scope": "Local demo service readiness; not phone UI acceptance"
+  },
+  "database_snapshot": {
+    "source_sha": "a1948c2702d3117e0185abb6cf47a736d59698f1",
+    "database": "niannian_phone_demo_a1948c2",
+    "host": "127.0.0.1",
+    "port": 59032,
+    "migration": "20261010_week3_core",
+    "business_tables": 13,
+    "provider": "mock",
+    "data": "fictional-demo"
+  },
+  "scenario_snapshots": {
+    "family-binding": {
+      "recorded_at": "2026-10-13T09:20:11.846014+00:00",
+      "family_status": "ACTIVE",
+      "matching_fake_family_count": 2,
+      "members": [
+        {
+          "role": "CHILD",
+          "status": "ACTIVE"
+        },
+        {
+          "role": "ELDER",
+          "status": "ACTIVE"
+        }
+      ],
+      "consents": [],
+      "memories": [],
+      "files": []
+    },
+    "memory-pending": {
+      "recorded_at": "2026-10-13T09:25:03.673077+00:00",
+      "family_status": "ACTIVE",
+      "matching_fake_family_count": 2,
+      "members": [
+        {
+          "role": "CHILD",
+          "status": "ACTIVE"
+        },
+        {
+          "role": "ELDER",
+          "status": "ACTIVE"
+        }
+      ],
+      "consents": [
+        {
+          "scope": "FAMILY_MEMORY",
+          "status": "GRANTED",
+          "count": 1
+        }
+      ],
+      "memories": [
+        {
+          "title": "DEMO-memory-20261013",
+          "status": "PENDING"
+        },
+        {
+          "title": "DEMO-memory-20261013",
+          "status": "CONFIRMED"
+        }
+      ],
+      "files": []
+    },
+    "photo-confirmed": {
+      "recorded_at": "2026-10-13T09:32:29.055345+00:00",
+      "family_status": "ACTIVE",
+      "matching_fake_family_count": 2,
+      "members": [
+        {
+          "role": "CHILD",
+          "status": "ACTIVE"
+        },
+        {
+          "role": "ELDER",
+          "status": "ACTIVE"
+        }
+      ],
+      "consents": [
+        {
+          "scope": "FAMILY_MEMORY",
+          "status": "GRANTED",
+          "count": 1
+        }
+      ],
+      "memories": [
+        {
+          "title": "DEMO-memory-20261013",
+          "status": "CONFIRMED",
+          "subject_role": "ELDER",
+          "source": "FAMILY_MEMBER",
+          "version": 2,
+          "human_confirmation_recorded": true
+        },
+        {
+          "title": "DEMO-memory-20261013",
+          "status": "CONFIRMED",
+          "subject_role": "ELDER",
+          "source": "FAMILY_MEMBER",
+          "version": 2,
+          "human_confirmation_recorded": true
+        }
+      ],
+      "files": [
+        {
+          "status": "AVAILABLE",
+          "count": 1
+        }
+      ]
+    },
+    "consent-revoked-confirmed": {
+      "recorded_at": "2026-10-13T09:46:04.042131+00:00",
+      "family_status": "ACTIVE",
+      "matching_fake_family_count": 2,
+      "members": [
+        {
+          "role": "CHILD",
+          "status": "ACTIVE"
+        },
+        {
+          "role": "ELDER",
+          "status": "ACTIVE"
+        }
+      ],
+      "consents": [
+        {
+          "scope": "FAMILY_MEMORY",
+          "status": "GRANTED",
+          "count": 1
+        },
+        {
+          "scope": "FAMILY_MEMORY",
+          "status": "REVOKED",
+          "count": 1
+        }
+      ],
+      "memories": [
+        {
+          "title": "DEMO-memory-20261013",
+          "status": "CONFIRMED",
+          "subject_role": "ELDER",
+          "source": "FAMILY_MEMBER",
+          "version": 2,
+          "human_confirmation_recorded": true
+        },
+        {
+          "title": "DEMO-memory-20261013",
+          "status": "CONFIRMED",
+          "subject_role": "ELDER",
+          "source": "FAMILY_MEMBER",
+          "version": 2,
+          "human_confirmation_recorded": true
+        },
+        {
+          "title": "DEMO-memory-20261013-edited\n",
+          "status": "PENDING",
+          "subject_role": "ELDER",
+          "source": "FAMILY_MEMBER",
+          "version": 1,
+          "human_confirmation_recorded": false
+        },
+        {
+          "title": "DEMO-memory-20261013-edited\n",
+          "status": "REVOKED",
+          "subject_role": "ELDER",
+          "source": "FAMILY_MEMBER",
+          "version": 2,
+          "human_confirmation_recorded": false
+        }
+      ],
+      "files": [
+        {
+          "status": "AVAILABLE",
+          "count": 1
+        }
+      ]
+    },
+    "photo-memory-edited": {
+      "recorded_at": "2026-10-13T09:50:37.080202+00:00",
+      "family_status": "ACTIVE",
+      "matching_fake_family_count": 2,
+      "members": [
+        {
+          "role": "CHILD",
+          "status": "ACTIVE"
+        },
+        {
+          "role": "ELDER",
+          "status": "ACTIVE"
+        }
+      ],
+      "consents": [
+        {
+          "scope": "FAMILY_MEMORY",
+          "status": "GRANTED",
+          "count": 1
+        },
+        {
+          "scope": "FAMILY_MEMORY",
+          "status": "REVOKED",
+          "count": 1
+        }
+      ],
+      "memories": [
+        {
+          "title": "DEMO-memory-20261013",
+          "status": "CONFIRMED",
+          "subject_role": "ELDER",
+          "source": "FAMILY_MEMBER",
+          "version": 2,
+          "human_confirmation_recorded": true
+        },
+        {
+          "title": "DEMO-memory-20261013",
+          "status": "CONFIRMED",
+          "subject_role": "ELDER",
+          "source": "FAMILY_MEMBER",
+          "version": 2,
+          "human_confirmation_recorded": true
+        },
+        {
+          "title": "DEMO-memory-20261013-edited\n",
+          "status": "PENDING",
+          "subject_role": "ELDER",
+          "source": "FAMILY_MEMBER",
+          "version": 1,
+          "human_confirmation_recorded": false
+        },
+        {
+          "title": "DEMO-memory-20261013-edited\n",
+          "status": "REVOKED",
+          "subject_role": "ELDER",
+          "source": "FAMILY_MEMBER",
+          "version": 2,
+          "human_confirmation_recorded": false
+        },
+        {
+          "title": "DEMO-memory-edited-20261013",
+          "status": "PENDING",
+          "subject_role": "ELDER",
+          "source": "USER",
+          "version": 2,
+          "human_confirmation_recorded": false
+        },
+        {
+          "title": "DEMO-memory-edited-20261013",
+          "status": "PENDING",
+          "subject_role": "ELDER",
+          "source": "USER",
+          "version": 1,
+          "human_confirmation_recorded": false
+        }
+      ],
+      "files": [
+        {
+          "status": "AVAILABLE",
+          "count": 1
+        }
+      ],
+      "photo_memories": [
+        {
+          "title": "DEMO-memory-20261013",
+          "memory_status": "CONFIRMED",
+          "version": 2,
+          "file_status": "AVAILABLE"
+        }
+      ]
+    },
+    "memory-deleted": {
+      "recorded_at": "2026-10-13T09:57:48.787785+00:00",
+      "family_status": "ACTIVE",
+      "matching_fake_family_count": 2,
+      "members": [
+        {
+          "role": "CHILD",
+          "status": "ACTIVE"
+        },
+        {
+          "role": "ELDER",
+          "status": "ACTIVE"
+        }
+      ],
+      "consents": [
+        {
+          "scope": "FAMILY_MEMORY",
+          "status": "GRANTED",
+          "count": 1
+        },
+        {
+          "scope": "FAMILY_MEMORY",
+          "status": "REVOKED",
+          "count": 1
+        }
+      ],
+      "memories": [
+        {
+          "title": "DEMO-memory-20261013",
+          "status": "DELETED",
+          "subject_role": "ELDER",
+          "source": "FAMILY_MEMBER",
+          "version": 3,
+          "human_confirmation_recorded": true
+        },
+        {
+          "title": "DEMO-memory-20261013",
+          "status": "CONFIRMED",
+          "subject_role": "ELDER",
+          "source": "FAMILY_MEMBER",
+          "version": 2,
+          "human_confirmation_recorded": true
+        },
+        {
+          "title": "DEMO-memory-20261013-edited\n",
+          "status": "PENDING",
+          "subject_role": "ELDER",
+          "source": "FAMILY_MEMBER",
+          "version": 1,
+          "human_confirmation_recorded": false
+        },
+        {
+          "title": "DEMO-memory-20261013-edited\n",
+          "status": "REVOKED",
+          "subject_role": "ELDER",
+          "source": "FAMILY_MEMBER",
+          "version": 2,
+          "human_confirmation_recorded": false
+        },
+        {
+          "title": "DEMO-memory-edited-20261013",
+          "status": "PENDING",
+          "subject_role": "ELDER",
+          "source": "USER",
+          "version": 2,
+          "human_confirmation_recorded": false
+        },
+        {
+          "title": "DEMO-memory-edited-20261013",
+          "status": "PENDING",
+          "subject_role": "ELDER",
+          "source": "USER",
+          "version": 1,
+          "human_confirmation_recorded": false
+        }
+      ],
+      "files": [
+        {
+          "status": "DELETED",
+          "count": 1
+        }
+      ],
+      "photo_memories": [
+        {
+          "title": "DEMO-memory-20261013",
+          "memory_status": "DELETED",
+          "version": 3,
+          "file_status": "DELETED"
+        }
+      ]
+    }
+  },
+  "photo_access_checks": {
+    "granted": {
+      "recorded_at": "2026-10-13T09:37:26.968911+00:00",
+      "results": [
+        {
+          "actor": "child",
+          "download_url_status": 200,
+          "content_status": 200,
+          "matches_fictional_fixture": true
+        },
+        {
+          "actor": "elder",
+          "download_url_status": 200,
+          "content_status": 200,
+          "matches_fictional_fixture": true
+        }
+      ],
+      "scope": "Independent API corroboration; phone display is operator-observed"
+    },
+    "first_revoke_attempt": {
+      "recorded_at": "2026-10-13T09:42:13.340703+00:00",
+      "results": [
+        {
+          "actor": "child",
+          "download_url_status": 200,
+          "content_status": 200,
+          "matches_fictional_fixture": true
+        },
+        {
+          "actor": "elder",
+          "download_url_status": 200,
+          "content_status": 200,
+          "matches_fictional_fixture": true
+        }
+      ],
+      "scope": "Independent API corroboration; phone display is operator-observed"
+    },
+    "revoked": {
+      "recorded_at": "2026-10-13T09:46:05.499943+00:00",
+      "status": "PASS",
+      "results": [
+        {
+          "actor": "child",
+          "download_url_status": 404,
+          "content_status": null,
+          "matches_fictional_fixture": null
+        },
+        {
+          "actor": "elder",
+          "download_url_status": 200,
+          "content_status": 200,
+          "matches_fictional_fixture": true
+        }
+      ],
+      "scope": "Independent API corroboration; phone display is operator-observed"
+    },
+    "deleted": {
+      "recorded_at": "2026-10-13T09:57:50.211518+00:00",
+      "status": "PASS",
+      "results": [
+        {
+          "actor": "child",
+          "download_url_status": 404,
+          "content_status": null,
+          "matches_fictional_fixture": null
+        },
+        {
+          "actor": "elder",
+          "download_url_status": 404,
+          "content_status": null,
+          "matches_fictional_fixture": null
+        }
+      ],
+      "scope": "Independent API corroboration; phone display is operator-observed"
+    }
+  },
+  "generated_credential_log_scan": [
+    {
+      "Log": "api.stdout.log",
+      "GeneratedCredentialHits": 0,
+      "Status": "PASS"
+    },
+    {
+      "Log": "api.stderr.log",
+      "GeneratedCredentialHits": 0,
+      "Status": "PASS"
+    },
+    {
+      "Log": "worker.stdout.log",
+      "GeneratedCredentialHits": 0,
+      "Status": "PASS"
+    },
+    {
+      "Log": "worker.stderr.log",
+      "GeneratedCredentialHits": 0,
+      "Status": "PASS"
+    },
+    {
+      "Log": "minio.stdout.log",
+      "GeneratedCredentialHits": 0,
+      "Status": "PASS"
+    },
+    {
+      "Log": "minio.stderr.log",
+      "GeneratedCredentialHits": 0,
+      "Status": "PASS"
+    }
+  ],
+  "operator_confirmations": [
+    {
+      "scenario": "login_family_binding",
+      "reported": "completed",
+      "corroboration": "ACTIVE child and elder; initial consent absent"
+    },
+    {
+      "scenario": "pending_hidden_in_confirmed_list",
+      "reported": "hidden",
+      "assessment": "Full independent UI evidence insufficient; NOT VERIFIED"
+    },
+    {
+      "scenario": "photo_display",
+      "reported": "displayed on both apps",
+      "corroboration": "Authenticated downloads and fictional pixel equality"
+    },
+    {
+      "scenario": "original_photo_memory_edit",
+      "reported": "saved",
+      "assessment": "Original linked memory unchanged; other candidates created/edited; NOT VERIFIED"
+    },
+    {
+      "scenario": "family_memory_revoke",
+      "reported": "confirmed in My Consent",
+      "corroboration": "Append-only revoke record and child photo access 404"
+    },
+    {
+      "scenario": "photo_memory_delete",
+      "reported": "deleted and hidden",
+      "corroboration": "Memory and file DELETED; both actors photo access 404"
+    }
+  ],
+  "not_verified": [
+    "original photo memory edit",
+    "complete pending UI isolation",
+    "independent S3 HEAD after cleanup",
+    "phone Keystore/wipe",
+    "system or OEM log privacy",
+    "complete device/hardware acceptance"
+  ],
+  "not_run": [
+    "network failure/recovery",
+    "full force-stop/cold-start recovery",
+    "phone logout/wipe acceptance",
+    "hardware/performance suites"
+  ],
+  "paused_runtime": {
+    "api": "STOPPED",
+    "worker": "STOPPED",
+    "minio": "STOPPED",
+    "postgresql": "STOPPED",
+    "adb": "STOPPED",
+    "data_preserved": true
+  },
+  "publication_excludes": [
+    "APKs",
+    "database files",
+    "test image",
+    "raw logs",
+    "serials",
+    "invitation codes",
+    "access/refresh tokens",
+    "signed URLs",
+    "temporary credentials"
+  ]
+}
