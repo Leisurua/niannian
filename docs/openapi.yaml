@@ -548,6 +548,26 @@ paths:
       parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
       responses:
         '202': { description: File deletion queued }
+  /files/{file_id}/content:
+    parameters:
+      - $ref: '#/components/parameters/FileId'
+    get:
+      tags: [Files]
+      operationId: downloadFileContent
+      summary: Authenticated short-lived photo download; current Consent rechecked
+      parameters:
+        - { name: expires, in: query, required: true, schema: { type: integer, minimum: 1 } }
+        - { name: signature, in: query, required: true, schema: { type: string, maxLength: 128 } }
+      responses:
+        '200':
+          description: Re-encoded photo without metadata; Cache-Control no-store
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+        '401': { description: Authentication required }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
   /reminders:
     get:
       tags: [Reminders]
@@ -1528,7 +1548,7 @@ components:
         note: { type: string, maxLength: 500 }
     FileUploadRequest:
       type: object
-      required: [media_type, mime_type, size_bytes, checksum]
+      required: [media_type, mime_type, size_bytes, checksum, memory_id]
       properties:
         media_type: { type: string, enum: [PHOTO, AUDIO, OTHER] }
         mime_type: { type: string, maxLength: 120 }
@@ -1575,6 +1595,7 @@ components:
       type: object
       required: [owner_user_id, type, title, content, schedule_time_local, timezone, start_date, recurrence_kind]
       properties:
+        family_id: { $ref: '#/components/schemas/Id' }
         owner_user_id: { $ref: '#/components/schemas/Id' }
         type: { $ref: '#/components/schemas/ReminderType' }
         title: { type: string, maxLength: 240 }

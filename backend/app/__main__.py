@@ -13,7 +13,9 @@ def main() -> None:
     args = parser.parse_args()
     configure_event_loop()
     import uvicorn
-    uvicorn.run("app.main:app", host=args.host, port=args.port, reload=args.reload, log_config=None)
+    from app.platform.config import get_settings
+    uvicorn.run("app.main:app", host=args.host, port=args.port, reload=args.reload, log_config=None,
+                ws_max_size=get_settings().ws_max_frame_bytes)
 
 
 if __name__ == "__main__":

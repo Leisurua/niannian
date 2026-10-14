@@ -28,6 +28,16 @@ async def event_target(db: AsyncSession, actor: UUID, action: str, key: str, val
                            .order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).limit(1))
 
 
+async def performed(db, actor, action, target_id):
+    return bool(await db.scalar(select(AuditLog.id).where(AuditLog.actor_user_id == actor,
+        AuditLog.action == action, AuditLog.target_id == target_id).limit(1)))
+
+
+def recorded_targets(action, target_type):
+    return select(AuditLog.target_id).where(AuditLog.action == action,
+        AuditLog.target_type == target_type, AuditLog.target_id.is_not(None))
+
+
 class Idempotency:
     def __init__(self, key: str, operation: str, payload: dict):
         if not 1 <= len(key) <= 128 or not key.isascii() or any(ord(c) < 32 or ord(c) > 126 for c in key):

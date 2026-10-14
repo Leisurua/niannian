@@ -72,7 +72,9 @@ def run_checks(output: Path, *, device: bool = False) -> dict:
         report = output / "backend-tests.xml"
         report.unlink(missing_ok=True)
         command = [python, "-m", "pytest", "backend/tests", "tests", "-q", "--junitxml", str(report),
-            "-k", "not test_built_apks_contain_no_secret_patterns"]
+            "-k", "not test_built_apks_contain_no_secret_patterns",
+            "--ignore=backend/tests/integration/test_week3_postgres.py",
+            "--ignore=backend/tests/integration/test_week3_storage.py"]
         if not ready:
             command += ["--ignore=backend/tests/integration"]
         if not ready:

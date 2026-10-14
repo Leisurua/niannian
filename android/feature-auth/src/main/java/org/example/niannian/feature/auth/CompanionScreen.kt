@@ -36,7 +36,8 @@ private val scopeLabels = linkedMapOf("VOICE" to "语音处理", "PORTRAIT" to "
 private data class ConsentChange(val familyId: String, val scope: String, val revokeId: String? = null)
 
 @Composable
-fun CompanionScreen(model: CompanionModel, environmentLabel: String) {
+fun CompanionScreen(model: CompanionModel, environmentLabel: String,
+    businessContent: @Composable (CompanionState, Boolean) -> Unit = { _, _ -> }) {
     val state by model.state.collectAsState()
     val mutationUnavailable = state.busy || state.offline || state.pendingWrite
     var address by remember(state.address) { mutableStateOf(state.address) }
@@ -108,7 +109,8 @@ fun CompanionScreen(model: CompanionModel, environmentLabel: String) {
                 if (selected?.status == "ACTIVE") {
                     Text(selected.name, fontSize = 24.sp)
                     Text(if (model.elder) "今日 · 家庭已连接" else "家庭动态 · 已连接", fontSize = 20.sp)
-                    Text("当前先完成家庭与授权设置。聊天、记忆、提醒和动态内容将在后续阶段开放。")
+                    Text("家庭记忆已开放；聊天和提醒展示将按后续周计划接入。")
+                    businessContent(state, mutationUnavailable)
                     if (!model.elder) {
                         if (state.canManageMembers) Action("生成长辈邀请码", mutationUnavailable) { model.invite("ELDER") }
                         if (state.invite.isNotEmpty()) SelectionContainer { Text(state.invite, fontSize = 18.sp) }

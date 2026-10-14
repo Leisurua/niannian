@@ -302,7 +302,7 @@ REST 不用于上传大量音频 chunk；实时状态见 WSS。Conversation resp
 }
 ```
 
-`sequence` 按会话单调递增；客户端发现间隙应 REST GET session 后重连。服务端不保证音频消息必达，断线后可结束或恢复 metadata。
+`sequence` 在同一会话的客户端/服务端两个方向各自严格递增，跨重连持久化；客户端发现间隙应 REST GET session 后重连。服务端不保证音频消息必达，断线后可结束或恢复 metadata。
 
 ### 20.1 Client -> Server
 
@@ -560,3 +560,11 @@ BLE button event 若本地直接进入 Emergency，不创建公共 `/button-even
 - WSS 音频 chunk 契约依赖最终 raw audio 保留与 Android 端 ASR 位置；若 ASR 在本地，删掉 `audio.chunk` 并只传状态/文本。
 - Push、电话和短信均可能失败，Notification/Call 状态必须与事件事实分离。
 - 12 周内不应给 MemoryChunk、Embedding、DeviceSession、NotificationAttempt、Provider config 增加公共 CRUD。
+
+## 36. 第三周已批准修订（2026-10-10）
+
+依据 [已批准方案](plan/week3-contract-review.md)：Memory 持久化 source/version；Reminder 持久化 family_id/version/next_due_at。ReminderCreate 可显式提供 family_id，省略仅可唯一推导。首期照片上传必须提供已授权 memory_id，不支持无归属的孤儿上传请求。下载 URL 指向 `GET /files/{file_id}/content`，短签名绑定文件、用户、到期时间，且每次读取必须提供当前有效 Bearer 并重查 Consent/Memory/File；返回 no-store。原图经限像素解码并重编码为独立对象，保留上传 checksum 为原对象校验值，不把它声称为重编码后字节的 hash。
+
+WSS 两方向序号独立持久化；客户端可以递增跳号，旧序号拒绝；重连不重播内容。默认 TEXT/Mock，音频拒绝；默认帧 16 KiB、文本 2000 字符、每秒 20 条（可配置），每用户每进程最多 2 连接、同一会话数据库锁保证单连接。空闲每秒重新验证身份；本周摘要及 AI 回复明确返回 503/不可用，不接受成功但永远不执行的摘要作业。第四周会话编排与第六周摘要不提前实施。
+
+提醒日历策略：星期一=0，WEEKLY 以 start_date 所在周为锚，INTERVAL/DAILY 按本地日间隔；DST 重复选第一次、缺失跳过；quiet hours 起止相同表示关闭。免打扰期间延后提供本次执行，不改变 occurrence 身份；NO_RESPONSE 只表示反馈窗口内未收到反馈。照片解码/类型重编码是安全内容过滤，不声称通用杀毒服务。

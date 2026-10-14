@@ -33,6 +33,15 @@ class Settings(BaseSettings):
     auth_refresh_seconds: int = Field(default=604800, ge=900, le=2592000)
     auth_login_limit: int = Field(default=10, ge=1, le=1000)
     idempotency_seconds: int = Field(default=86400, ge=60, le=604800)
+    public_base_url: str = 'http://localhost:8000'
+    file_max_size_bytes: int = Field(default=5242880, ge=1024, le=104857600)
+    file_max_pixels: int = Field(default=12000000, ge=1, le=24000000)
+    file_url_seconds: int = Field(default=120, ge=30, le=300)
+    upload_expiry_seconds: int = Field(default=3600, ge=300, le=86400)
+    reminder_feedback_seconds: int = Field(default=3600, ge=60, le=86400)
+    ws_max_frame_bytes: int = Field(default=16384, ge=1024, le=65536)
+    ws_max_text_chars: int = Field(default=2000, ge=1, le=10000)
+    ws_messages_per_second: int = Field(default=20, ge=1, le=100)
 
     model_config = SettingsConfigDict(extra="ignore", case_sensitive=False)
 

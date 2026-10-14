@@ -20,11 +20,17 @@ app.add_middleware(RequestIdMiddleware)
 from app.modules.auth.api import router as auth_router
 from app.modules.family.api import router as family_router
 from app.modules.consent.api import router as consent_router
-from app.platform.models import WEEK2_MODELS
-app.state.domain_models = WEEK2_MODELS
+from app.platform.models import DOMAIN_MODELS
+from app.modules.memory.api import router as memory_router
+from app.modules.reminder.api import router as reminder_router
+from app.modules.conversation.api import router as conversation_router
+app.state.domain_models = DOMAIN_MODELS
 app.include_router(auth_router)
 app.include_router(family_router)
 app.include_router(consent_router)
+app.include_router(memory_router)
+app.include_router(reminder_router)
+app.include_router(conversation_router)
 
 
 @app.exception_handler(AppError)
