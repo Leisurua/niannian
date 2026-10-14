@@ -1,0 +1,1090 @@
+{
+  "task": "PHOTO-SELECT-01 repair and physical-device retest",
+  "status": "PASS",
+  "environment": "demo",
+  "provider": "mock",
+  "memory": {
+    "created_at": "2026-10-14T12:59:44.614196+00:00",
+    "id": "01a13a7f-505d-7da2-803c-322082945402",
+    "title": "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+    "content": "Fictional photo-selection and upload-error test only.",
+    "family_id": "01a13a2f-e10e-7cae-bdc1-42d5a42f91ae",
+    "create_http": 201,
+    "method": "Authenticated API fixture; CONFIRMED is setup only, no manual-confirm acceptance claim"
+  },
+  "preflight": {
+    "recorded_at": "2026-10-14T13:36:46.065409+00:00",
+    "status": "PASS",
+    "environment": "demo",
+    "provider": "mock",
+    "health_http": 200,
+    "migration": "20261010_week3_core",
+    "consent_status": "GRANTED",
+    "device": {
+      "model": "2201123C",
+      "sdk": "31"
+    },
+    "usb_reverse": [
+      [
+        "tcp:8000",
+        "tcp:59000"
+      ],
+      [
+        "tcp:59003",
+        "tcp:59003"
+      ]
+    ],
+    "installed_apks": [
+      {
+        "role": "family",
+        "package": "org.example.niannian.family.demo",
+        "sha256": "9a5acd6f0d6f64aa0c69c599ebea9ef47456536521ef754522dc046a89be3e72",
+        "matches_build": true
+      },
+      {
+        "role": "elder",
+        "package": "org.example.niannian.elder.demo",
+        "sha256": "03a407bf26b412544f15910e38ee0d67a792a662e573e9fd0a40087776f53456",
+        "matches_build": true
+      }
+    ],
+    "test_files": [
+      {
+        "name": "01-oversize-demo.png",
+        "size_bytes": 7692327,
+        "sha256": "ffcfce0961d2f7bc924c1371deb5c0fcf8abc66157bbcae01344bd2eeb956904",
+        "synthetic": true,
+        "device_sha256_matches": true
+      },
+      {
+        "name": "02-unsupported-demo.gif",
+        "size_bytes": 4112,
+        "sha256": "4fecba83b6d6b439605ad78578e1c6bc1616ab396745a489496b8dc59f36d709",
+        "synthetic": true,
+        "device_sha256_matches": true
+      },
+      {
+        "name": "03-corrupt-demo.png",
+        "size_bytes": 60,
+        "sha256": "40b1e3ff38393c17ee839d9889c0398cfbd2cbab80aeefe05a8dbd899b8e9187",
+        "synthetic": true,
+        "device_sha256_matches": true
+      },
+      {
+        "name": "04-valid-demo.png",
+        "size_bytes": 3404,
+        "sha256": "6997fad6c86adabd28402fb6aff30a830cb55e5286da4dd21e55f2ad492f2543",
+        "synthetic": true,
+        "device_sha256_matches": true
+      }
+    ],
+    "source_sha256": {
+      "android/feature-memory/src/main/java/org/example/niannian/feature/memory/MemoryModel.kt": "bc87e26e9aef81c26ba3fffd0d1bf293c2cd75006884a388b98f8934b841a61a",
+      "android/feature-memory/src/main/java/org/example/niannian/feature/memory/MemoryPanel.kt": "7ff72682ce9ac02917c8481f66a175f294c80482cc166afa240d0a2c690082d0",
+      "android/feature-memory/src/test/java/org/example/niannian/feature/memory/MemoryModelTest.kt": "346f529f714a6e1c578156342621acb7d50653f7b6ce8a6769ce02f2fd0c4e0e"
+    },
+    "install_note": "CI and local debug certificates differed; two Demo apps were reinstalled and fictional logins restored. Server fixtures and Consent were preserved."
+  },
+  "test_files": [
+    {
+      "name": "01-oversize-demo.png",
+      "size_bytes": 7692327,
+      "sha256": "ffcfce0961d2f7bc924c1371deb5c0fcf8abc66157bbcae01344bd2eeb956904",
+      "synthetic": true,
+      "device_sha256_matches": true,
+      "decodable": true,
+      "format": "PNG",
+      "dimensions": [
+        1600,
+        1600
+      ]
+    },
+    {
+      "name": "02-unsupported-demo.gif",
+      "size_bytes": 4112,
+      "sha256": "4fecba83b6d6b439605ad78578e1c6bc1616ab396745a489496b8dc59f36d709",
+      "synthetic": true,
+      "device_sha256_matches": true,
+      "decodable": true,
+      "format": "GIF",
+      "dimensions": [
+        480,
+        320
+      ]
+    },
+    {
+      "name": "03-corrupt-demo.png",
+      "size_bytes": 60,
+      "sha256": "40b1e3ff38393c17ee839d9889c0398cfbd2cbab80aeefe05a8dbd899b8e9187",
+      "synthetic": true,
+      "device_sha256_matches": true,
+      "decodable": false
+    },
+    {
+      "name": "04-valid-demo.png",
+      "size_bytes": 3404,
+      "sha256": "6997fad6c86adabd28402fb6aff30a830cb55e5286da4dd21e55f2ad492f2543",
+      "synthetic": true,
+      "device_sha256_matches": true,
+      "decodable": true,
+      "format": "PNG",
+      "dimensions": [
+        480,
+        320
+      ]
+    }
+  ],
+  "observations": [
+    {
+      "stage": "baseline",
+      "recorded_at": "2026-10-14T13:27:58.510831+00:00",
+      "api": [
+        {
+          "role": "family",
+          "detail_http": 200,
+          "id": "01a13a7f-505d-7da2-803c-322082945402",
+          "title": "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+          "content": "Fictional photo-selection and upload-error test only.",
+          "status": "CONFIRMED",
+          "version": 1,
+          "attachments": [],
+          "file_checks": []
+        },
+        {
+          "role": "elder",
+          "detail_http": 200,
+          "id": "01a13a7f-505d-7da2-803c-322082945402",
+          "title": "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+          "content": "Fictional photo-selection and upload-error test only.",
+          "status": "CONFIRMED",
+          "version": 1,
+          "attachments": [],
+          "file_checks": []
+        }
+      ],
+      "database": {
+        "memory": {
+          "id": "01a13a7f-505d-7da2-803c-322082945402",
+          "family_id": "01a13a2f-e10e-7cae-bdc1-42d5a42f91ae",
+          "title": "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+          "content": "Fictional photo-selection and upload-error test only.",
+          "verification_status": "CONFIRMED",
+          "version": 1,
+          "deleted": false,
+          "revoked": false
+        },
+        "files": [],
+        "file_audit": []
+      }
+    },
+    {
+      "stage": "cancel-returned",
+      "recorded_at": "2026-10-14T13:34:23.343800+00:00",
+      "api": [
+        {
+          "role": "family",
+          "detail_http": 200,
+          "id": "01a13a7f-505d-7da2-803c-322082945402",
+          "title": "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+          "content": "Fictional photo-selection and upload-error test only.",
+          "status": "CONFIRMED",
+          "version": 1,
+          "attachments": [],
+          "file_checks": []
+        },
+        {
+          "role": "elder",
+          "detail_http": 200,
+          "id": "01a13a7f-505d-7da2-803c-322082945402",
+          "title": "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+          "content": "Fictional photo-selection and upload-error test only.",
+          "status": "CONFIRMED",
+          "version": 1,
+          "attachments": [],
+          "file_checks": []
+        }
+      ],
+      "database": {
+        "memory": {
+          "id": "01a13a7f-505d-7da2-803c-322082945402",
+          "family_id": "01a13a2f-e10e-7cae-bdc1-42d5a42f91ae",
+          "title": "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+          "content": "Fictional photo-selection and upload-error test only.",
+          "verification_status": "CONFIRMED",
+          "version": 1,
+          "deleted": false,
+          "revoked": false
+        },
+        "files": [],
+        "file_audit": []
+      }
+    },
+    {
+      "stage": "oversize",
+      "recorded_at": "2026-10-14T13:34:38.239882+00:00",
+      "api": [
+        {
+          "role": "family",
+          "detail_http": 200,
+          "id": "01a13a7f-505d-7da2-803c-322082945402",
+          "title": "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+          "content": "Fictional photo-selection and upload-error test only.",
+          "status": "CONFIRMED",
+          "version": 1,
+          "attachments": [],
+          "file_checks": []
+        },
+        {
+          "role": "elder",
+          "detail_http": 200,
+          "id": "01a13a7f-505d-7da2-803c-322082945402",
+          "title": "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+          "content": "Fictional photo-selection and upload-error test only.",
+          "status": "CONFIRMED",
+          "version": 1,
+          "attachments": [],
+          "file_checks": []
+        }
+      ],
+      "database": {
+        "memory": {
+          "id": "01a13a7f-505d-7da2-803c-322082945402",
+          "family_id": "01a13a2f-e10e-7cae-bdc1-42d5a42f91ae",
+          "title": "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+          "content": "Fictional photo-selection and upload-error test only.",
+          "verification_status": "CONFIRMED",
+          "version": 1,
+          "deleted": false,
+          "revoked": false
+        },
+        "files": [],
+        "file_audit": []
+      }
+    },
+    {
+      "stage": "unsupported",
+      "recorded_at": "2026-10-14T13:36:01.790089+00:00",
+      "api": [
+        {
+          "role": "family",
+          "detail_http": 200,
+          "id": "01a13a7f-505d-7da2-803c-322082945402",
+          "title": "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+          "content": "Fictional photo-selection and upload-error test only.",
+          "status": "CONFIRMED",
+          "version": 1,
+          "attachments": [],
+          "file_checks": []
+        },
+        {
+          "role": "elder",
+          "detail_http": 200,
+          "id": "01a13a7f-505d-7da2-803c-322082945402",
+          "title": "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+          "content": "Fictional photo-selection and upload-error test only.",
+          "status": "CONFIRMED",
+          "version": 1,
+          "attachments": [],
+          "file_checks": []
+        }
+      ],
+      "database": {
+        "memory": {
+          "id": "01a13a7f-505d-7da2-803c-322082945402",
+          "family_id": "01a13a2f-e10e-7cae-bdc1-42d5a42f91ae",
+          "title": "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+          "content": "Fictional photo-selection and upload-error test only.",
+          "verification_status": "CONFIRMED",
+          "version": 1,
+          "deleted": false,
+          "revoked": false
+        },
+        "files": [],
+        "file_audit": []
+      }
+    },
+    {
+      "stage": "corrupt",
+      "recorded_at": "2026-10-14T13:37:07.377676+00:00",
+      "api": [
+        {
+          "role": "family",
+          "detail_http": 200,
+          "id": "01a13a7f-505d-7da2-803c-322082945402",
+          "title": "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+          "content": "Fictional photo-selection and upload-error test only.",
+          "status": "CONFIRMED",
+          "version": 1,
+          "attachments": [],
+          "file_checks": [
+            {
+              "file_id": "01a13aa1-7a80-7a5b-b172-a95a7fe1112c",
+              "db_status": "QUARANTINED",
+              "download_url_http": 404,
+              "error_code": "FILE_NOT_FOUND"
+            }
+          ]
+        },
+        {
+          "role": "elder",
+          "detail_http": 200,
+          "id": "01a13a7f-505d-7da2-803c-322082945402",
+          "title": "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+          "content": "Fictional photo-selection and upload-error test only.",
+          "status": "CONFIRMED",
+          "version": 1,
+          "attachments": [],
+          "file_checks": [
+            {
+              "file_id": "01a13aa1-7a80-7a5b-b172-a95a7fe1112c",
+              "db_status": "QUARANTINED",
+              "download_url_http": 404,
+              "error_code": "FILE_NOT_FOUND"
+            }
+          ]
+        }
+      ],
+      "database": {
+        "memory": {
+          "id": "01a13a7f-505d-7da2-803c-322082945402",
+          "family_id": "01a13a2f-e10e-7cae-bdc1-42d5a42f91ae",
+          "title": "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+          "content": "Fictional photo-selection and upload-error test only.",
+          "verification_status": "CONFIRMED",
+          "version": 1,
+          "deleted": false,
+          "revoked": false
+        },
+        "files": [
+          {
+            "id": "01a13aa1-7a80-7a5b-b172-a95a7fe1112c",
+            "memory_id": "01a13a7f-505d-7da2-803c-322082945402",
+            "status": "QUARANTINED",
+            "mime_type": "image/png",
+            "size_bytes": 60,
+            "checksum": "40b1e3ff38393c17ee839d9889c0398cfbd2cbab80aeefe05a8dbd899b8e9187",
+            "created_at": "2026-10-14 13:37:03.616037+00",
+            "retention_until": "2026-10-14 14:37:03.616037+00",
+            "deleted": false
+          }
+        ],
+        "file_audit": [
+          {
+            "target_id": "01a13aa1-7a80-7a5b-b172-a95a7fe1112c",
+            "action": "FILE_UPLOAD_REQUESTED",
+            "created_at": "2026-10-14 13:37:03.619178+00"
+          },
+          {
+            "target_id": "01a13aa1-7a80-7a5b-b172-a95a7fe1112c",
+            "action": "FILE_QUARANTINED",
+            "created_at": "2026-10-14 13:37:03.774548+00"
+          }
+        ]
+      }
+    },
+    {
+      "stage": "valid",
+      "recorded_at": "2026-10-14T13:37:58.812793+00:00",
+      "api": [
+        {
+          "role": "family",
+          "detail_http": 200,
+          "id": "01a13a7f-505d-7da2-803c-322082945402",
+          "title": "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+          "content": "Fictional photo-selection and upload-error test only.",
+          "status": "CONFIRMED",
+          "version": 1,
+          "attachments": [
+            {
+              "id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+              "media_type": "PHOTO",
+              "status": "AVAILABLE"
+            }
+          ],
+          "file_checks": [
+            {
+              "file_id": "01a13aa1-7a80-7a5b-b172-a95a7fe1112c",
+              "db_status": "QUARANTINED",
+              "download_url_http": 404,
+              "error_code": "FILE_NOT_FOUND"
+            },
+            {
+              "file_id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+              "db_status": "AVAILABLE",
+              "download_url_http": 200,
+              "content_http": 200,
+              "cache_control": "no-store",
+              "safe_sha256": "81847c9393502669eba68fe4eedce16816f1980c9928434954bd9070fbaf7665",
+              "pixels_equal_fixture": true
+            }
+          ]
+        },
+        {
+          "role": "elder",
+          "detail_http": 200,
+          "id": "01a13a7f-505d-7da2-803c-322082945402",
+          "title": "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+          "content": "Fictional photo-selection and upload-error test only.",
+          "status": "CONFIRMED",
+          "version": 1,
+          "attachments": [
+            {
+              "id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+              "media_type": "PHOTO",
+              "status": "AVAILABLE"
+            }
+          ],
+          "file_checks": [
+            {
+              "file_id": "01a13aa1-7a80-7a5b-b172-a95a7fe1112c",
+              "db_status": "QUARANTINED",
+              "download_url_http": 404,
+              "error_code": "FILE_NOT_FOUND"
+            },
+            {
+              "file_id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+              "db_status": "AVAILABLE",
+              "download_url_http": 200,
+              "content_http": 200,
+              "cache_control": "no-store",
+              "safe_sha256": "81847c9393502669eba68fe4eedce16816f1980c9928434954bd9070fbaf7665",
+              "pixels_equal_fixture": true
+            }
+          ]
+        }
+      ],
+      "database": {
+        "memory": {
+          "id": "01a13a7f-505d-7da2-803c-322082945402",
+          "family_id": "01a13a2f-e10e-7cae-bdc1-42d5a42f91ae",
+          "title": "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+          "content": "Fictional photo-selection and upload-error test only.",
+          "verification_status": "CONFIRMED",
+          "version": 1,
+          "deleted": false,
+          "revoked": false
+        },
+        "files": [
+          {
+            "id": "01a13aa1-7a80-7a5b-b172-a95a7fe1112c",
+            "memory_id": "01a13a7f-505d-7da2-803c-322082945402",
+            "status": "QUARANTINED",
+            "mime_type": "image/png",
+            "size_bytes": 60,
+            "checksum": "40b1e3ff38393c17ee839d9889c0398cfbd2cbab80aeefe05a8dbd899b8e9187",
+            "created_at": "2026-10-14 13:37:03.616037+00",
+            "retention_until": "2026-10-14 14:37:03.616037+00",
+            "deleted": false
+          },
+          {
+            "id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+            "memory_id": "01a13a7f-505d-7da2-803c-322082945402",
+            "status": "AVAILABLE",
+            "mime_type": "image/png",
+            "size_bytes": 3404,
+            "checksum": "6997fad6c86adabd28402fb6aff30a830cb55e5286da4dd21e55f2ad492f2543",
+            "created_at": "2026-10-14 13:37:55.804345+00",
+            "retention_until": null,
+            "deleted": false
+          }
+        ],
+        "file_audit": [
+          {
+            "target_id": "01a13aa1-7a80-7a5b-b172-a95a7fe1112c",
+            "action": "FILE_UPLOAD_REQUESTED",
+            "created_at": "2026-10-14 13:37:03.619178+00"
+          },
+          {
+            "target_id": "01a13aa1-7a80-7a5b-b172-a95a7fe1112c",
+            "action": "FILE_QUARANTINED",
+            "created_at": "2026-10-14 13:37:03.774548+00"
+          },
+          {
+            "target_id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+            "action": "FILE_UPLOAD_REQUESTED",
+            "created_at": "2026-10-14 13:37:55.805373+00"
+          },
+          {
+            "target_id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+            "action": "FILE_CONFIRMED",
+            "created_at": "2026-10-14 13:37:55.974701+00"
+          },
+          {
+            "target_id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+            "action": "FILE_DOWNLOAD_URL",
+            "created_at": "2026-10-14 13:37:59.048856+00"
+          },
+          {
+            "target_id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+            "action": "FILE_READ",
+            "created_at": "2026-10-14 13:37:59.10264+00"
+          },
+          {
+            "target_id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+            "action": "FILE_DOWNLOAD_URL",
+            "created_at": "2026-10-14 13:37:59.203291+00"
+          },
+          {
+            "target_id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+            "action": "FILE_READ",
+            "created_at": "2026-10-14 13:37:59.254669+00"
+          }
+        ]
+      }
+    },
+    {
+      "stage": "final",
+      "recorded_at": "2026-10-14T13:39:00.131333+00:00",
+      "api": [
+        {
+          "role": "family",
+          "detail_http": 200,
+          "id": "01a13a7f-505d-7da2-803c-322082945402",
+          "title": "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+          "content": "Fictional photo-selection and upload-error test only.",
+          "status": "CONFIRMED",
+          "version": 1,
+          "attachments": [
+            {
+              "id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+              "media_type": "PHOTO",
+              "status": "AVAILABLE"
+            }
+          ],
+          "file_checks": [
+            {
+              "file_id": "01a13aa1-7a80-7a5b-b172-a95a7fe1112c",
+              "db_status": "QUARANTINED",
+              "download_url_http": 404,
+              "error_code": "FILE_NOT_FOUND"
+            },
+            {
+              "file_id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+              "db_status": "AVAILABLE",
+              "download_url_http": 200,
+              "content_http": 200,
+              "cache_control": "no-store",
+              "safe_sha256": "81847c9393502669eba68fe4eedce16816f1980c9928434954bd9070fbaf7665",
+              "pixels_equal_fixture": true
+            }
+          ]
+        },
+        {
+          "role": "elder",
+          "detail_http": 200,
+          "id": "01a13a7f-505d-7da2-803c-322082945402",
+          "title": "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+          "content": "Fictional photo-selection and upload-error test only.",
+          "status": "CONFIRMED",
+          "version": 1,
+          "attachments": [
+            {
+              "id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+              "media_type": "PHOTO",
+              "status": "AVAILABLE"
+            }
+          ],
+          "file_checks": [
+            {
+              "file_id": "01a13aa1-7a80-7a5b-b172-a95a7fe1112c",
+              "db_status": "QUARANTINED",
+              "download_url_http": 404,
+              "error_code": "FILE_NOT_FOUND"
+            },
+            {
+              "file_id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+              "db_status": "AVAILABLE",
+              "download_url_http": 200,
+              "content_http": 200,
+              "cache_control": "no-store",
+              "safe_sha256": "81847c9393502669eba68fe4eedce16816f1980c9928434954bd9070fbaf7665",
+              "pixels_equal_fixture": true
+            }
+          ]
+        }
+      ],
+      "database": {
+        "memory": {
+          "id": "01a13a7f-505d-7da2-803c-322082945402",
+          "family_id": "01a13a2f-e10e-7cae-bdc1-42d5a42f91ae",
+          "title": "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+          "content": "Fictional photo-selection and upload-error test only.",
+          "verification_status": "CONFIRMED",
+          "version": 1,
+          "deleted": false,
+          "revoked": false
+        },
+        "files": [
+          {
+            "id": "01a13aa1-7a80-7a5b-b172-a95a7fe1112c",
+            "memory_id": "01a13a7f-505d-7da2-803c-322082945402",
+            "status": "QUARANTINED",
+            "mime_type": "image/png",
+            "size_bytes": 60,
+            "checksum": "40b1e3ff38393c17ee839d9889c0398cfbd2cbab80aeefe05a8dbd899b8e9187",
+            "created_at": "2026-10-14 13:37:03.616037+00",
+            "retention_until": "2026-10-14 14:37:03.616037+00",
+            "deleted": false
+          },
+          {
+            "id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+            "memory_id": "01a13a7f-505d-7da2-803c-322082945402",
+            "status": "AVAILABLE",
+            "mime_type": "image/png",
+            "size_bytes": 3404,
+            "checksum": "6997fad6c86adabd28402fb6aff30a830cb55e5286da4dd21e55f2ad492f2543",
+            "created_at": "2026-10-14 13:37:55.804345+00",
+            "retention_until": null,
+            "deleted": false
+          }
+        ],
+        "file_audit": [
+          {
+            "target_id": "01a13aa1-7a80-7a5b-b172-a95a7fe1112c",
+            "action": "FILE_UPLOAD_REQUESTED",
+            "created_at": "2026-10-14 13:37:03.619178+00"
+          },
+          {
+            "target_id": "01a13aa1-7a80-7a5b-b172-a95a7fe1112c",
+            "action": "FILE_QUARANTINED",
+            "created_at": "2026-10-14 13:37:03.774548+00"
+          },
+          {
+            "target_id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+            "action": "FILE_UPLOAD_REQUESTED",
+            "created_at": "2026-10-14 13:37:55.805373+00"
+          },
+          {
+            "target_id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+            "action": "FILE_CONFIRMED",
+            "created_at": "2026-10-14 13:37:55.974701+00"
+          },
+          {
+            "target_id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+            "action": "FILE_DOWNLOAD_URL",
+            "created_at": "2026-10-14 13:37:59.048856+00"
+          },
+          {
+            "target_id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+            "action": "FILE_READ",
+            "created_at": "2026-10-14 13:37:59.10264+00"
+          },
+          {
+            "target_id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+            "action": "FILE_DOWNLOAD_URL",
+            "created_at": "2026-10-14 13:37:59.203291+00"
+          },
+          {
+            "target_id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+            "action": "FILE_READ",
+            "created_at": "2026-10-14 13:37:59.254669+00"
+          },
+          {
+            "target_id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+            "action": "FILE_DOWNLOAD_URL",
+            "created_at": "2026-10-14 13:38:02.063252+00"
+          },
+          {
+            "target_id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+            "action": "FILE_READ",
+            "created_at": "2026-10-14 13:38:02.174666+00"
+          },
+          {
+            "target_id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+            "action": "FILE_DOWNLOAD_URL",
+            "created_at": "2026-10-14 13:38:56.822905+00"
+          },
+          {
+            "target_id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+            "action": "FILE_READ",
+            "created_at": "2026-10-14 13:38:56.959635+00"
+          },
+          {
+            "target_id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+            "action": "FILE_DOWNLOAD_URL",
+            "created_at": "2026-10-14 13:39:00.284576+00"
+          },
+          {
+            "target_id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+            "action": "FILE_READ",
+            "created_at": "2026-10-14 13:39:00.321034+00"
+          },
+          {
+            "target_id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+            "action": "FILE_DOWNLOAD_URL",
+            "created_at": "2026-10-14 13:39:00.39938+00"
+          },
+          {
+            "target_id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+            "action": "FILE_READ",
+            "created_at": "2026-10-14 13:39:00.479293+00"
+          }
+        ]
+      }
+    }
+  ],
+  "ui": [
+    {
+      "recorded_at": "2026-10-14T13:32:48.617398+00:00",
+      "name": "baseline-family",
+      "memory_id": "01a13a7f-505d-7da2-803c-322082945402",
+      "packages": [
+        "org.example.niannian.family.demo"
+      ],
+      "visible_allowlisted_text": [
+        "Fictional photo-selection and upload-error test only.",
+        "已人工确认",
+        "选择照片并上传"
+      ],
+      "observed_known_error_text": [],
+      "photo_control_count": 0,
+      "photo_image_visible": false,
+      "xml_sha256": "428740abdd380deb08da00e784f502b2536193ce2bd754ee3c002eca5420858d",
+      "screenshot_sha256": "3becb58ef28f4774b18b3a0e1faf323f8500dd70749f65f0fb9f56bcc46e3ba9",
+      "raw_xml": "baseline-family.private.xml",
+      "raw_screenshot": "baseline-family.private.png",
+      "ui_id_mapping": "Unique title/content mapped by independent API and read-only DB; app does not display Memory/File IDs"
+    },
+    {
+      "recorded_at": "2026-10-14T13:32:54.502102+00:00",
+      "name": "cancel-picker",
+      "memory_id": "01a13a7f-505d-7da2-803c-322082945402",
+      "packages": [
+        "com.google.android.documentsui"
+      ],
+      "visible_allowlisted_text": [
+        "01-oversize-demo.png",
+        "02-unsupported-demo.gif",
+        "03-corrupt-demo.png",
+        "04-valid-demo.png",
+        "NianNian-photo-test",
+        "下载内容"
+      ],
+      "observed_known_error_text": [],
+      "photo_control_count": 0,
+      "photo_image_visible": false,
+      "xml_sha256": "ea14b05f74499a9a2349bb71f4be015f985fd3d79512101f70cbdc9e5ac53eef",
+      "screenshot_sha256": "ff7bd88154b29111dd3b46efc8daa356a0bdddc93771f6517d1a37aef5efcacf",
+      "raw_xml": "cancel-picker.private.xml",
+      "raw_screenshot": "cancel-picker.private.png",
+      "ui_id_mapping": "Unique title/content mapped by independent API and read-only DB; app does not display Memory/File IDs"
+    },
+    {
+      "recorded_at": "2026-10-14T13:33:59.223021+00:00",
+      "name": "cancel-family-returned",
+      "memory_id": "01a13a7f-505d-7da2-803c-322082945402",
+      "packages": [
+        "org.example.niannian.family.demo"
+      ],
+      "visible_allowlisted_text": [
+        "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+        "Fictional photo-selection and upload-error test only.",
+        "已人工确认",
+        "选择照片并上传"
+      ],
+      "observed_known_error_text": [],
+      "photo_control_count": 0,
+      "photo_image_visible": false,
+      "xml_sha256": "f014fb61a514d0cf9a5f31a4f4bc1d3657846c6b62e26d070d30fd0b50f1a9a3",
+      "screenshot_sha256": "ed0cfc04622b05158c0e58acc534a84c4e4c00cc5b546aba80b35636a84d45fd",
+      "raw_xml": "cancel-family-returned.private.xml",
+      "raw_screenshot": "cancel-family-returned.private.png",
+      "ui_id_mapping": "Unique title/content mapped by independent API and read-only DB; app does not display Memory/File IDs"
+    },
+    {
+      "recorded_at": "2026-10-14T13:34:31.966910+00:00",
+      "name": "oversize-picker",
+      "memory_id": "01a13a7f-505d-7da2-803c-322082945402",
+      "packages": [
+        "com.google.android.documentsui"
+      ],
+      "visible_allowlisted_text": [
+        "01-oversize-demo.png",
+        "02-unsupported-demo.gif",
+        "03-corrupt-demo.png",
+        "04-valid-demo.png",
+        "NianNian-photo-test",
+        "下载内容"
+      ],
+      "observed_known_error_text": [],
+      "photo_control_count": 0,
+      "photo_image_visible": false,
+      "xml_sha256": "ea14b05f74499a9a2349bb71f4be015f985fd3d79512101f70cbdc9e5ac53eef",
+      "screenshot_sha256": "93f439420899931e4884423415a30b7a3cc71b2b5882e2dd24841fcca81d6b1a",
+      "raw_xml": "oversize-picker.private.xml",
+      "raw_screenshot": "oversize-picker.private.png",
+      "ui_id_mapping": "Unique title/content mapped by independent API and read-only DB; app does not display Memory/File IDs"
+    },
+    {
+      "recorded_at": "2026-10-14T13:35:05.809065+00:00",
+      "name": "oversize-error-family",
+      "memory_id": "01a13a7f-505d-7da2-803c-322082945402",
+      "packages": [
+        "org.example.niannian.family.demo"
+      ],
+      "visible_allowlisted_text": [
+        "查看待确认候选",
+        "照片需小于 5 MB。",
+        "重新读取记忆"
+      ],
+      "observed_known_error_text": [
+        "照片需小于 5 MB。"
+      ],
+      "photo_control_count": 0,
+      "photo_image_visible": false,
+      "xml_sha256": "f8f463edbf6a3477883d7fc835392ef06a81ee4dc7bf2d6bdcf747767d128e83",
+      "screenshot_sha256": "3585ea0e770d33e5a99fcf3ddb9e3f19c6b62a4ab026c7f91f587c89eb319ac7",
+      "raw_xml": "oversize-error-family.private.xml",
+      "raw_screenshot": "oversize-error-family.private.png",
+      "ui_id_mapping": "Unique title/content mapped by independent API and read-only DB; app does not display Memory/File IDs"
+    },
+    {
+      "recorded_at": "2026-10-14T13:35:54.735678+00:00",
+      "name": "unsupported-picker",
+      "memory_id": "01a13a7f-505d-7da2-803c-322082945402",
+      "packages": [
+        "com.google.android.documentsui"
+      ],
+      "visible_allowlisted_text": [
+        "01-oversize-demo.png",
+        "02-unsupported-demo.gif",
+        "03-corrupt-demo.png",
+        "04-valid-demo.png",
+        "NianNian-photo-test",
+        "下载内容"
+      ],
+      "observed_known_error_text": [],
+      "photo_control_count": 0,
+      "photo_image_visible": false,
+      "xml_sha256": "ea14b05f74499a9a2349bb71f4be015f985fd3d79512101f70cbdc9e5ac53eef",
+      "screenshot_sha256": "0a1ceb032488d4078a0c2d98e46bef523724c5a7e34f9585056be8558fb9320e",
+      "raw_xml": "unsupported-picker.private.xml",
+      "raw_screenshot": "unsupported-picker.private.png",
+      "ui_id_mapping": "Unique title/content mapped by independent API and read-only DB; app does not display Memory/File IDs"
+    },
+    {
+      "recorded_at": "2026-10-14T13:36:01.371493+00:00",
+      "name": "unsupported-error-family",
+      "memory_id": "01a13a7f-505d-7da2-803c-322082945402",
+      "packages": [
+        "org.example.niannian.family.demo"
+      ],
+      "visible_allowlisted_text": [
+        "查看待确认候选",
+        "请选择 JPG、PNG 或 WebP 照片。",
+        "重新读取记忆"
+      ],
+      "observed_known_error_text": [
+        "请选择 JPG、PNG 或 WebP 照片。"
+      ],
+      "photo_control_count": 0,
+      "photo_image_visible": false,
+      "xml_sha256": "e7bce44f4cddab239e2f3d48002a34f7aec629667559be73624a05b1bac0449a",
+      "screenshot_sha256": "c5e42cda634ac793feefd6034e54ae7117ba34b4ad7ce701ec4923d72c2c6c56",
+      "raw_xml": "unsupported-error-family.private.xml",
+      "raw_screenshot": "unsupported-error-family.private.png",
+      "ui_id_mapping": "Unique title/content mapped by independent API and read-only DB; app does not display Memory/File IDs"
+    },
+    {
+      "recorded_at": "2026-10-14T13:37:00.409944+00:00",
+      "name": "corrupt-picker",
+      "memory_id": "01a13a7f-505d-7da2-803c-322082945402",
+      "packages": [
+        "com.google.android.documentsui"
+      ],
+      "visible_allowlisted_text": [
+        "01-oversize-demo.png",
+        "02-unsupported-demo.gif",
+        "03-corrupt-demo.png",
+        "04-valid-demo.png",
+        "NianNian-photo-test",
+        "下载内容"
+      ],
+      "observed_known_error_text": [],
+      "photo_control_count": 0,
+      "photo_image_visible": false,
+      "xml_sha256": "ea14b05f74499a9a2349bb71f4be015f985fd3d79512101f70cbdc9e5ac53eef",
+      "screenshot_sha256": "88b53419bd82a7f15ecfbcd9cd9370097d379d70f800ef840e18817efbc38ee9",
+      "raw_xml": "corrupt-picker.private.xml",
+      "raw_screenshot": "corrupt-picker.private.png",
+      "ui_id_mapping": "Unique title/content mapped by independent API and read-only DB; app does not display Memory/File IDs"
+    },
+    {
+      "recorded_at": "2026-10-14T13:37:07.031189+00:00",
+      "name": "corrupt-error-family",
+      "memory_id": "01a13a7f-505d-7da2-803c-322082945402",
+      "packages": [
+        "org.example.niannian.family.demo"
+      ],
+      "visible_allowlisted_text": [
+        "查看待确认候选",
+        "照片未通过内容检查，已隔离；请换一张照片。",
+        "重新读取记忆"
+      ],
+      "observed_known_error_text": [
+        "照片未通过内容检查，已隔离；请换一张照片。"
+      ],
+      "photo_control_count": 0,
+      "photo_image_visible": false,
+      "xml_sha256": "effdb7305f6d28811f2ceeed95ef5462a71cee93b324366a835718468610ee01",
+      "screenshot_sha256": "ba77dd808678272f126f7bc67f47e28bce35d0d8210e0294c2f11be00078748a",
+      "raw_xml": "corrupt-error-family.private.xml",
+      "raw_screenshot": "corrupt-error-family.private.png",
+      "ui_id_mapping": "Unique title/content mapped by independent API and read-only DB; app does not display Memory/File IDs"
+    },
+    {
+      "recorded_at": "2026-10-14T13:37:52.651314+00:00",
+      "name": "valid-picker",
+      "memory_id": "01a13a7f-505d-7da2-803c-322082945402",
+      "packages": [
+        "com.google.android.documentsui"
+      ],
+      "visible_allowlisted_text": [
+        "01-oversize-demo.png",
+        "02-unsupported-demo.gif",
+        "03-corrupt-demo.png",
+        "04-valid-demo.png",
+        "NianNian-photo-test",
+        "下载内容"
+      ],
+      "observed_known_error_text": [],
+      "photo_control_count": 0,
+      "photo_image_visible": false,
+      "xml_sha256": "ea14b05f74499a9a2349bb71f4be015f985fd3d79512101f70cbdc9e5ac53eef",
+      "screenshot_sha256": "0b87c39b0231c67c3a9e286f4e9e482abd460859b150a04a68f8760cc53d4f24",
+      "raw_xml": "valid-picker.private.xml",
+      "raw_screenshot": "valid-picker.private.png",
+      "ui_id_mapping": "Unique title/content mapped by independent API and read-only DB; app does not display Memory/File IDs"
+    },
+    {
+      "recorded_at": "2026-10-14T13:37:58.452610+00:00",
+      "name": "valid-family",
+      "memory_id": "01a13a7f-505d-7da2-803c-322082945402",
+      "packages": [
+        "org.example.niannian.family.demo"
+      ],
+      "visible_allowlisted_text": [
+        "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+        "Fictional photo-selection and upload-error test only.",
+        "已人工确认",
+        "查看照片 1",
+        "选择照片并上传"
+      ],
+      "observed_known_error_text": [],
+      "photo_control_count": 1,
+      "photo_image_visible": false,
+      "xml_sha256": "523469e860c9149682b12cff3ce9d212ece55fac24022e6ebcb4b9f215946cf9",
+      "screenshot_sha256": "9c72cb52fbd692eb19e69d2ac159b97d60b17882a8e8f1fd3924fe255b4c824f",
+      "raw_xml": "valid-family.private.xml",
+      "raw_screenshot": "valid-family.private.png",
+      "ui_id_mapping": "Unique title/content mapped by independent API and read-only DB; app does not display Memory/File IDs"
+    },
+    {
+      "recorded_at": "2026-10-14T13:38:04.944753+00:00",
+      "name": "family-photo",
+      "memory_id": "01a13a7f-505d-7da2-803c-322082945402",
+      "packages": [
+        "org.example.niannian.family.demo"
+      ],
+      "visible_allowlisted_text": [
+        "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+        "Fictional photo-selection and upload-error test only.",
+        "家庭记忆照片",
+        "已人工确认",
+        "查看照片 1",
+        "选择照片并上传"
+      ],
+      "observed_known_error_text": [],
+      "photo_control_count": 1,
+      "photo_image_visible": true,
+      "xml_sha256": "15ecf0b9bce4e7d047bac9710085dd970d1691f50621a39a5ce9b790c657ab13",
+      "screenshot_sha256": "bfc70c0b0f6dcc93975ebe709645d5ea707a3b8f8a23993c2aa0e1df29adff49",
+      "raw_xml": "family-photo.private.xml",
+      "raw_screenshot": "family-photo.private.png",
+      "ui_id_mapping": "Unique title/content mapped by independent API and read-only DB; app does not display Memory/File IDs",
+      "screenshot_visual_review": "Agent viewed original screenshot: full synthetic blue border/yellow rectangle photo rendered."
+    },
+    {
+      "recorded_at": "2026-10-14T13:38:59.759892+00:00",
+      "name": "elder-photo",
+      "memory_id": "01a13a7f-505d-7da2-803c-322082945402",
+      "packages": [
+        "org.example.niannian.elder.demo"
+      ],
+      "visible_allowlisted_text": [
+        "DEMO-PHOTO-ERRORS-20261014-9FBC43C5",
+        "DEMO-PHOTO-ERRORS-20261014-9FBC43C5 · 已确认",
+        "Fictional photo-selection and upload-error test only.",
+        "家庭记忆照片",
+        "已人工确认",
+        "查看待确认候选",
+        "查看照片 1",
+        "选择照片并上传",
+        "重新读取记忆"
+      ],
+      "observed_known_error_text": [],
+      "photo_control_count": 1,
+      "photo_image_visible": true,
+      "xml_sha256": "7af09d6774ce501331ca4a3ee0bb755560612739594916d06060b3e8146829bb",
+      "screenshot_sha256": "a457c8c7cd1d17d1cd83fd9cd6e82f2f1dcf3b431122c9ff8659cc0a7786f1e0",
+      "raw_xml": "elder-photo.private.xml",
+      "raw_screenshot": "elder-photo.private.png",
+      "ui_id_mapping": "Unique title/content mapped by independent API and read-only DB; app does not display Memory/File IDs"
+    },
+    {
+      "recorded_at": "2026-10-14T13:39:38.135423+00:00",
+      "name": "elder-photo-full",
+      "memory_id": "01a13a7f-505d-7da2-803c-322082945402",
+      "packages": [
+        "org.example.niannian.elder.demo"
+      ],
+      "visible_allowlisted_text": [
+        "家庭记忆照片",
+        "查看照片 1",
+        "选择照片并上传"
+      ],
+      "observed_known_error_text": [],
+      "photo_control_count": 1,
+      "photo_image_visible": true,
+      "xml_sha256": "cf799de739468cb24b09a8a65df19782afe49fb59344127763d187f62aa580b0",
+      "screenshot_sha256": "ff1d97956744d13e3e13f25e68ff6b896dd2470759828ffc557b134bb98f7a75",
+      "raw_xml": "elder-photo-full.private.xml",
+      "raw_screenshot": "elder-photo-full.private.png",
+      "ui_id_mapping": "Unique title/content mapped by independent API and read-only DB; app does not display Memory/File IDs",
+      "screenshot_visual_review": "Agent viewed original screenshot: full synthetic blue border/yellow rectangle photo rendered."
+    }
+  ],
+  "actual_files": {
+    "corrupt": {
+      "id": "01a13aa1-7a80-7a5b-b172-a95a7fe1112c",
+      "status": "QUARANTINED"
+    },
+    "valid": {
+      "id": "01a13aa2-465c-7590-90c2-b32ad827f43e",
+      "status": "AVAILABLE"
+    }
+  },
+  "software_checks": {
+    "jvm": {
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "xml_sha256": "fdbb2ed02a7b1e525a22759f7f727a8ea42f1a40a9ca62a191408a5d25c81666"
+    },
+    "lint": {
+      "errors": 0,
+      "warnings": 2,
+      "report_sha256": "e55fcac0c08a3d741b86493d0b0bee9037acdbe0d0ca8ed2c9eb78d7f2b0cf74"
+    },
+    "build": {
+      "status": "PASS",
+      "log_sha256": "ea1011661a3bf5541fee360500e29a0cf383671733bf308fa591a0eaa4ac2115"
+    }
+  },
+  "limits": [
+    "Both apps ran on one Xiaomi 12/API 31; no two-device synchronization claim.",
+    "New Demo APKs and restored fictional sessions; old Elder session failure root cause not verified.",
+    "No full backend regression, process recovery, offline, Keystore or physical-cleanup acceptance in this task."
+  ]
+}

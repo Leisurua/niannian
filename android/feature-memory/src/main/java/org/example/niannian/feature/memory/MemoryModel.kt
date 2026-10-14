@@ -125,6 +125,23 @@ class MemoryModel(private val gateway: MemoryGateway, private val taskScope: Cor
     }
     fun retry() = action { stamp -> gateway.retry(); load(stamp) }
 
+    // GetContent stops the Activity. Restore only this panel's scope, then
+    // re-read the target through the authorized API before handling its result.
+    suspend fun resumePhotoSelection(familyId: String, userId: String, id: String,
+        mime: String?, readBytes: () -> ByteArray) {
+        val snapshot = current.value
+        if (snapshot.familyId.isNotBlank() &&
+            (snapshot.familyId != familyId || snapshot.userId != userId)) return
+        bind(familyId, userId)
+        awaitIdle()
+        if (current.value.familyId != familyId || current.value.userId != userId ||
+            current.value.error.isNotEmpty() || current.value.pending) return
+        detail(id)?.join()
+        if (current.value.familyId != familyId || current.value.userId != userId ||
+            current.value.selected?.id != id || current.value.error.isNotEmpty()) return
+        if (mime != null) uploadPhoto(id, mime, readBytes)?.join()
+    }
+
     fun uploadPhoto(id: String, mime: String, readBytes: () -> ByteArray) = action { stamp ->
         val bytes = withContext(Dispatchers.IO) { readBytes() }
         require(bytes.isNotEmpty() && bytes.size <= 5 * 1024 * 1024) { "照片需小于 5 MB。" }

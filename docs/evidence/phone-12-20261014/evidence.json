@@ -1,0 +1,807 @@
+{
+  "schema_version": 1,
+  "case_id": "PHONE-12",
+  "status": "PASS",
+  "overall_week3_acceptance": "INCOMPLETE",
+  "recorded_at": "2026-10-14T11:48:43.263562+00:00",
+  "client_timezone": "Asia/Shanghai",
+  "source_sha": "a1948c2702d3117e0185abb6cf47a736d59698f1",
+  "checkout_sha": "c612aa2",
+  "backend_and_android_source_equal_to_snapshot": true,
+  "ci_run_id": 38334535070,
+  "ci_artifact_id": 11784585417,
+  "ci_zip_sha256": "826009409deb80756274c786d9757e6979a4c125b0d3739548bfeba8ec6c3a78",
+  "device": {
+    "manufacturer": "Xiaomi",
+    "model": "2201123C",
+    "sku": "cupid",
+    "android_version": "12",
+    "api_level": 31,
+    "security_patch": "2022-09-01",
+    "serial_included": false
+  },
+  "installed_builds": [
+    {
+      "role": "elder",
+      "package": "org.example.niannian.elder.demo",
+      "installed_apk_sha256": "346c1be20311ccdc7fb28fbe3fe5b35029241b189e04d04369b5765975a4bf0a",
+      "matches_acceptance_snapshot": true
+    },
+    {
+      "role": "family",
+      "package": "org.example.niannian.family.demo",
+      "installed_apk_sha256": "fba0b7155d52ce831fe7c84ca60bcc7e330b23d1b8580bb5fdf1c2ce571e1a59",
+      "matches_acceptance_snapshot": true
+    }
+  ],
+  "runtime": {
+    "origin": "Reconstructed isolated environment; previous runtime files unavailable on this host",
+    "provider": "mock",
+    "data": "fictional-demo",
+    "database": "niannian_phone12_demo_20261014",
+    "postgres_image": "pgvector/pgvector:pg16",
+    "postgres_image_id": "ccc6e83d6e35",
+    "minio_image": "quay.io/minio/minio:RELEASE.2025-02-18T16-25-55Z",
+    "minio_image_id": "1df91be8d6a6",
+    "api_listen": "127.0.0.1:59000",
+    "postgres_listen": "127.0.0.1:59032",
+    "minio_listen": "127.0.0.1:59003",
+    "phone_api": "USB reverse tcp:8000 -> tcp:59000",
+    "phone_storage": "USB reverse tcp:59003 -> tcp:59003",
+    "worker": "WORKER_READY observed; 15-second scheduler",
+    "migration": "20261010_week3_core",
+    "business_tables": 13,
+    "private_bucket_anonymous_http": 403
+  },
+  "fixture": {
+    "fixture_origin": "Authenticated API setup, explicitly CONFIRMED; not a phone human-confirmation result",
+    "family_id": "01a13a2f-e10e-7cae-bdc1-42d5a42f91ae",
+    "memory_id": "01a13a2f-e183-7677-b796-ff2882c69d05",
+    "file_id": "01a13a2f-e1f2-7991-8294-768864baa16a",
+    "baseline_version": 1,
+    "baseline_status": "CONFIRMED",
+    "baseline_title": "DEMO-PHONE12-ORIGINAL-20261014",
+    "baseline_content": "Fictional PHOTO-12 fixture before edit. Blue-green border and yellow circle.",
+    "file_status": "AVAILABLE",
+    "photo_fixture_sha256": "5ac4326463eab54aaa3a35514f0c3930e9aec6b9e53aa99bf11f450bb0871ab8"
+  },
+  "stages": {
+    "baseline": {
+      "stage": "baseline",
+      "recorded_at": "2026-10-14T11:35:45.176572+00:00",
+      "memory_id": "01a13a2f-e183-7677-b796-ff2882c69d05",
+      "file_id": "01a13a2f-e1f2-7991-8294-768864baa16a",
+      "expected_version": 1,
+      "expected_status": "CONFIRMED",
+      "api_actors": [
+        {
+          "role": "family",
+          "detail_http": 200,
+          "version": 1,
+          "status": "CONFIRMED",
+          "title": "DEMO-PHONE12-ORIGINAL-20261014",
+          "content": "Fictional PHOTO-12 fixture before edit. Blue-green border and yellow circle.",
+          "attachments": [
+            {
+              "id": "01a13a2f-e1f2-7991-8294-768864baa16a",
+              "media_type": "PHOTO",
+              "status": "AVAILABLE"
+            }
+          ],
+          "confirmed_list_contains_id": true,
+          "pending_list_contains_id": false,
+          "confirmed_list_count": 1,
+          "pending_list_count": 0,
+          "photo_url_http": 200,
+          "photo_content_http": 200,
+          "photo_content_sha256": "d7eb09009fb103c81bbbcc3f963cad99f1ca6b450d93695d7a82218e2a6e96a1",
+          "photo_pixels_equal_fixture": true,
+          "photo_cache_control": "no-store",
+          "verified_by_present": true
+        },
+        {
+          "role": "elder",
+          "detail_http": 200,
+          "version": 1,
+          "status": "CONFIRMED",
+          "title": "DEMO-PHONE12-ORIGINAL-20261014",
+          "content": "Fictional PHOTO-12 fixture before edit. Blue-green border and yellow circle.",
+          "attachments": [
+            {
+              "id": "01a13a2f-e1f2-7991-8294-768864baa16a",
+              "media_type": "PHOTO",
+              "status": "AVAILABLE"
+            }
+          ],
+          "confirmed_list_contains_id": true,
+          "pending_list_contains_id": false,
+          "confirmed_list_count": 1,
+          "pending_list_count": 0,
+          "photo_url_http": 200,
+          "photo_content_http": 200,
+          "photo_content_sha256": "d7eb09009fb103c81bbbcc3f963cad99f1ca6b450d93695d7a82218e2a6e96a1",
+          "photo_pixels_equal_fixture": true,
+          "photo_cache_control": "no-store",
+          "verified_by_present": true
+        }
+      ],
+      "phone_ui": {
+        "operator_reports": [
+          {
+            "stage": "baseline",
+            "source": "Direct user response in this chat",
+            "reported": "双端原内容和照片可见"
+          }
+        ],
+        "independent_snapshots": [
+          {
+            "stage": "baseline",
+            "role": "family",
+            "package": "org.example.niannian.family.demo",
+            "source": "ADB uiautomator snapshot; only allowlisted fictional text exported",
+            "local_file": "baseline-ui.private.xml",
+            "xml_sha256": "0212e67ad4dd1ab7ee71afd2dad99c24ba7329e0831ec00bc4840f199c14a631",
+            "allowlisted_visible_labels": [
+              "DEMO-PHONE12-ORIGINAL-20261014",
+              "DEMO-PHONE12-ORIGINAL-20261014 · 已确认",
+              "Fictional PHOTO-12 fixture before edit. Blue-green border and yellow circle.",
+              "保存编辑（需重新确认）",
+              "家庭记忆照片",
+              "已人工确认",
+              "查看照片 1",
+              "编辑这条记忆",
+              "重新读取记忆"
+            ],
+            "photo_widget_visible": true,
+            "confirmed_list_empty_visible": false,
+            "local_screenshot": "baseline-ui.private.png",
+            "screenshot_sha256": "79c263362e4b933785abae90b138dc04e262b47bcc8f9f348dd7da992aebdeb1",
+            "screenshot_visual_review": "Agent viewed screenshot: fictional green border/yellow circle photo rendered; screenshot excluded from publication"
+          }
+        ]
+      },
+      "database_memory": {
+        "id": "01a13a2f-e183-7677-b796-ff2882c69d05",
+        "family_id": "01a13a2f-e10e-7cae-bdc1-42d5a42f91ae",
+        "verification_status": "CONFIRMED",
+        "version": 1,
+        "title": "DEMO-PHONE12-ORIGINAL-20261014",
+        "content": "Fictional PHOTO-12 fixture before edit. Blue-green border and yellow circle.",
+        "verified_by_present": true,
+        "verified_at_present": true,
+        "deleted": false,
+        "revoked": false
+      },
+      "database_file": {
+        "id": "01a13a2f-e1f2-7991-8294-768864baa16a",
+        "memory_id": "01a13a2f-e183-7677-b796-ff2882c69d05",
+        "status": "AVAILABLE",
+        "deleted": false
+      },
+      "fixture_family_memory_count": 1,
+      "memory_audit": [
+        {
+          "action": "MEMORY_CREATED",
+          "created_at": "2026-10-14 11:32:58.886365+00",
+          "actor_user_id": "01920000-0000-7000-8000-000000000002"
+        }
+      ],
+      "checks": {
+        "exact_id_and_version": true,
+        "same_attachment_preserved": true,
+        "same_content_both_actors": true,
+        "default_list_visibility": true,
+        "pending_list_visibility": true,
+        "same_photo_accessible": true,
+        "no_duplicate_memory": true,
+        "confirmation_markers": true
+      },
+      "api_database_status": "PASS"
+    },
+    "edited-pending": {
+      "stage": "edited-pending",
+      "recorded_at": "2026-10-14T11:40:22.971910+00:00",
+      "memory_id": "01a13a2f-e183-7677-b796-ff2882c69d05",
+      "file_id": "01a13a2f-e1f2-7991-8294-768864baa16a",
+      "expected_version": 2,
+      "expected_status": "PENDING",
+      "api_actors": [
+        {
+          "role": "family",
+          "detail_http": 200,
+          "version": 2,
+          "status": "PENDING",
+          "title": "DEMO-PHONE12-EDITED-20261014",
+          "content": "PHONE12 EDITED ONCE",
+          "attachments": [
+            {
+              "id": "01a13a2f-e1f2-7991-8294-768864baa16a",
+              "media_type": "PHOTO",
+              "status": "AVAILABLE"
+            }
+          ],
+          "verified_by_present": false,
+          "confirmed_list_contains_id": false,
+          "pending_list_contains_id": true,
+          "confirmed_list_count": 0,
+          "pending_list_count": 1,
+          "photo_url_http": 200,
+          "photo_content_http": 200,
+          "photo_content_sha256": "d7eb09009fb103c81bbbcc3f963cad99f1ca6b450d93695d7a82218e2a6e96a1",
+          "photo_pixels_equal_fixture": true,
+          "photo_cache_control": "no-store"
+        },
+        {
+          "role": "elder",
+          "detail_http": 200,
+          "version": 2,
+          "status": "PENDING",
+          "title": "DEMO-PHONE12-EDITED-20261014",
+          "content": "PHONE12 EDITED ONCE",
+          "attachments": [
+            {
+              "id": "01a13a2f-e1f2-7991-8294-768864baa16a",
+              "media_type": "PHOTO",
+              "status": "AVAILABLE"
+            }
+          ],
+          "verified_by_present": false,
+          "confirmed_list_contains_id": false,
+          "pending_list_contains_id": true,
+          "confirmed_list_count": 0,
+          "pending_list_count": 1,
+          "photo_url_http": 200,
+          "photo_content_http": 200,
+          "photo_content_sha256": "d7eb09009fb103c81bbbcc3f963cad99f1ca6b450d93695d7a82218e2a6e96a1",
+          "photo_pixels_equal_fixture": true,
+          "photo_cache_control": "no-store"
+        }
+      ],
+      "phone_ui": {
+        "operator_reports": [
+          {
+            "stage": "edited-pending",
+            "source": "Direct user response in this chat",
+            "reported": "原记忆已编辑，已确认列表不可见，待确认列表可见"
+          }
+        ],
+        "independent_snapshots": [
+          {
+            "stage": "edited-pending",
+            "role": "family",
+            "package": "org.example.niannian.family.demo",
+            "source": "ADB uiautomator snapshot; only allowlisted fictional text exported",
+            "local_file": "edited-pending-ui.private.xml",
+            "xml_sha256": "1dd3d2361d012ff50e40a3ddb5a59cd99dd5b0182e313003ca83d2de1563b42b",
+            "allowlisted_visible_labels": [
+              "DEMO-PHONE12-EDITED-20261014",
+              "DEMO-PHONE12-EDITED-20261014 · 待确认",
+              "PHONE12 EDITED ONCE",
+              "家庭记忆",
+              "查看已确认记忆",
+              "重新读取记忆"
+            ],
+            "photo_widget_visible": false,
+            "confirmed_list_empty_visible": false
+          },
+          {
+            "stage": "edited-pending",
+            "role": "family",
+            "package": "org.example.niannian.family.demo",
+            "source": "ADB uiautomator snapshot; only allowlisted fictional text exported",
+            "local_file": "family-pending-confirmed-list-ui.private.xml",
+            "xml_sha256": "1368f6a62a327abb1510c97d3024ae8beb436ca9b719e93a7e0cd9861a436d17",
+            "allowlisted_visible_labels": [
+              "DEMO-PHONE12-EDITED-20261014",
+              "PHONE12 EDITED ONCE",
+              "家庭记忆",
+              "暂无已确认且获准使用的记忆。",
+              "查看待确认候选",
+              "重新读取记忆"
+            ],
+            "photo_widget_visible": false,
+            "confirmed_list_empty_visible": true
+          },
+          {
+            "stage": "edited-pending",
+            "role": "elder",
+            "package": "org.example.niannian.elder.demo",
+            "source": "ADB uiautomator snapshot; only allowlisted fictional text exported",
+            "local_file": "elder-pending-confirmed-list-ui.private.xml",
+            "xml_sha256": "4ea91ac3f10b96593d82b0a2af4885a2aacf179c7ec328bff86f0106842331b8",
+            "allowlisted_visible_labels": [
+              "家庭记忆",
+              "暂无已确认且获准使用的记忆。",
+              "查看待确认候选",
+              "重新读取记忆"
+            ],
+            "photo_widget_visible": false,
+            "confirmed_list_empty_visible": true
+          },
+          {
+            "stage": "edited-pending",
+            "role": "elder",
+            "package": "org.example.niannian.elder.demo",
+            "source": "ADB uiautomator snapshot; only allowlisted fictional text exported",
+            "local_file": "elder-pending-list-ui.private.xml",
+            "xml_sha256": "772aa40ed633c23ea6fce634b6acf3dc9ebb44a5a111ed5f377b7e1ece9bcd58",
+            "allowlisted_visible_labels": [
+              "DEMO-PHONE12-EDITED-20261014 · 待确认",
+              "家庭记忆",
+              "查看已确认记忆",
+              "重新读取记忆"
+            ],
+            "photo_widget_visible": false,
+            "confirmed_list_empty_visible": false
+          },
+          {
+            "stage": "edited-pending",
+            "role": "elder",
+            "package": "org.example.niannian.elder.demo",
+            "source": "ADB uiautomator snapshot; only allowlisted fictional text exported",
+            "local_file": "elder-pending-detail-ui.private.xml",
+            "xml_sha256": "6333fa560ae9c8720463519f8cccda26b8a07189641fa381b3947cec0f111b65",
+            "allowlisted_visible_labels": [
+              "DEMO-PHONE12-EDITED-20261014",
+              "DEMO-PHONE12-EDITED-20261014 · 待确认",
+              "PHONE12 EDITED ONCE",
+              "家庭记忆",
+              "待确认，不作为事实使用",
+              "我已核对，确认为家庭事实",
+              "查看已确认记忆",
+              "重新读取记忆"
+            ],
+            "photo_widget_visible": false,
+            "confirmed_list_empty_visible": false
+          }
+        ]
+      },
+      "database_memory": {
+        "id": "01a13a2f-e183-7677-b796-ff2882c69d05",
+        "family_id": "01a13a2f-e10e-7cae-bdc1-42d5a42f91ae",
+        "verification_status": "PENDING",
+        "version": 2,
+        "title": "DEMO-PHONE12-EDITED-20261014",
+        "content": "PHONE12 EDITED ONCE",
+        "verified_by_present": false,
+        "verified_at_present": false,
+        "deleted": false,
+        "revoked": false
+      },
+      "database_file": {
+        "id": "01a13a2f-e1f2-7991-8294-768864baa16a",
+        "memory_id": "01a13a2f-e183-7677-b796-ff2882c69d05",
+        "status": "AVAILABLE",
+        "deleted": false
+      },
+      "fixture_family_memory_count": 1,
+      "memory_audit": [
+        {
+          "action": "MEMORY_CREATED",
+          "created_at": "2026-10-14 11:32:58.886365+00",
+          "actor_user_id": "01920000-0000-7000-8000-000000000002"
+        },
+        {
+          "action": "MEMORY_UPDATED",
+          "created_at": "2026-10-14 11:38:59.337614+00",
+          "actor_user_id": "01920000-0000-7000-8000-000000000002"
+        }
+      ],
+      "checks": {
+        "exact_id_and_version": true,
+        "same_attachment_preserved": true,
+        "same_content_both_actors": true,
+        "default_list_visibility": true,
+        "pending_list_visibility": true,
+        "same_photo_accessible": true,
+        "no_duplicate_memory": true,
+        "confirmation_markers": true,
+        "expected_content": true
+      },
+      "api_database_status": "PASS"
+    },
+    "reconfirmed": {
+      "stage": "reconfirmed",
+      "recorded_at": "2026-10-14T11:44:50.165260+00:00",
+      "memory_id": "01a13a2f-e183-7677-b796-ff2882c69d05",
+      "file_id": "01a13a2f-e1f2-7991-8294-768864baa16a",
+      "expected_version": 3,
+      "expected_status": "CONFIRMED",
+      "api_actors": [
+        {
+          "role": "family",
+          "detail_http": 200,
+          "version": 3,
+          "status": "CONFIRMED",
+          "title": "DEMO-PHONE12-EDITED-20261014",
+          "content": "PHONE12 EDITED ONCE",
+          "attachments": [
+            {
+              "id": "01a13a2f-e1f2-7991-8294-768864baa16a",
+              "media_type": "PHOTO",
+              "status": "AVAILABLE"
+            }
+          ],
+          "verified_by_present": true,
+          "confirmed_list_contains_id": true,
+          "pending_list_contains_id": false,
+          "confirmed_list_count": 1,
+          "pending_list_count": 0,
+          "photo_url_http": 200,
+          "photo_content_http": 200,
+          "photo_content_sha256": "d7eb09009fb103c81bbbcc3f963cad99f1ca6b450d93695d7a82218e2a6e96a1",
+          "photo_pixels_equal_fixture": true,
+          "photo_cache_control": "no-store"
+        },
+        {
+          "role": "elder",
+          "detail_http": 200,
+          "version": 3,
+          "status": "CONFIRMED",
+          "title": "DEMO-PHONE12-EDITED-20261014",
+          "content": "PHONE12 EDITED ONCE",
+          "attachments": [
+            {
+              "id": "01a13a2f-e1f2-7991-8294-768864baa16a",
+              "media_type": "PHOTO",
+              "status": "AVAILABLE"
+            }
+          ],
+          "verified_by_present": true,
+          "confirmed_list_contains_id": true,
+          "pending_list_contains_id": false,
+          "confirmed_list_count": 1,
+          "pending_list_count": 0,
+          "photo_url_http": 200,
+          "photo_content_http": 200,
+          "photo_content_sha256": "d7eb09009fb103c81bbbcc3f963cad99f1ca6b450d93695d7a82218e2a6e96a1",
+          "photo_pixels_equal_fixture": true,
+          "photo_cache_control": "no-store"
+        }
+      ],
+      "phone_ui": {
+        "operator_reports": [
+          {
+            "stage": "reconfirmed",
+            "source": "Direct user response in this chat; manual elder phone confirmation",
+            "reported": "已人工确认，双端新内容、已确认状态及原照片均可见"
+          }
+        ],
+        "independent_snapshots": [
+          {
+            "stage": "reconfirmed",
+            "role": "family",
+            "package": "org.example.niannian.family.demo",
+            "source": "ADB uiautomator snapshot; only allowlisted fictional text exported",
+            "local_file": "family-reconfirmed-ui.private.xml",
+            "xml_sha256": "5c46f111b7c3c000e79236e81f882eedec30ed937b40ab76b756b320f61070f0",
+            "allowlisted_visible_labels": [
+              "DEMO-PHONE12-EDITED-20261014",
+              "DEMO-PHONE12-EDITED-20261014 · 已确认",
+              "PHONE12 EDITED ONCE",
+              "家庭记忆",
+              "家庭记忆照片",
+              "已人工确认",
+              "查看待确认候选",
+              "查看照片 1",
+              "重新读取记忆"
+            ],
+            "photo_widget_visible": true,
+            "confirmed_list_empty_visible": false,
+            "local_screenshot": "family-reconfirmed-ui.private.png",
+            "screenshot_sha256": "74a1c99fdc316c64607f43d5e97a30ccb7b1236c7ac0299301aba3f83b9fa80d",
+            "screenshot_visual_review": "Agent viewed screenshot: fictional green border/yellow circle photo rendered; screenshot excluded from publication"
+          },
+          {
+            "stage": "reconfirmed",
+            "role": "elder",
+            "package": "org.example.niannian.elder.demo",
+            "source": "ADB uiautomator snapshot; only allowlisted fictional text exported",
+            "local_file": "elder-reconfirmed-ui.private.xml",
+            "xml_sha256": "1c36e759470bf41a779a155ff2b406e5da7b3f2b1b99fcb34f0edb8a09b0da16",
+            "allowlisted_visible_labels": [
+              "DEMO-PHONE12-EDITED-20261014",
+              "DEMO-PHONE12-EDITED-20261014 · 已确认",
+              "PHONE12 EDITED ONCE",
+              "保存编辑（需重新确认）",
+              "家庭记忆照片",
+              "已人工确认",
+              "查看照片 1",
+              "编辑这条记忆"
+            ],
+            "photo_widget_visible": true,
+            "confirmed_list_empty_visible": false,
+            "local_screenshot": "elder-reconfirmed-ui.private.png",
+            "screenshot_sha256": "3fd591194e3ec395c18e88804bc2c60f81fa92066b500b41796fc983b7d416c8",
+            "screenshot_visual_review": "Agent viewed screenshot: fictional green border/yellow circle photo rendered; screenshot excluded from publication"
+          }
+        ]
+      },
+      "database_memory": {
+        "id": "01a13a2f-e183-7677-b796-ff2882c69d05",
+        "family_id": "01a13a2f-e10e-7cae-bdc1-42d5a42f91ae",
+        "verification_status": "CONFIRMED",
+        "version": 3,
+        "title": "DEMO-PHONE12-EDITED-20261014",
+        "content": "PHONE12 EDITED ONCE",
+        "verified_by_present": true,
+        "verified_at_present": true,
+        "deleted": false,
+        "revoked": false
+      },
+      "database_file": {
+        "id": "01a13a2f-e1f2-7991-8294-768864baa16a",
+        "memory_id": "01a13a2f-e183-7677-b796-ff2882c69d05",
+        "status": "AVAILABLE",
+        "deleted": false
+      },
+      "fixture_family_memory_count": 1,
+      "memory_audit": [
+        {
+          "action": "MEMORY_CREATED",
+          "created_at": "2026-10-14 11:32:58.886365+00",
+          "actor_user_id": "01920000-0000-7000-8000-000000000002"
+        },
+        {
+          "action": "MEMORY_UPDATED",
+          "created_at": "2026-10-14 11:38:59.337614+00",
+          "actor_user_id": "01920000-0000-7000-8000-000000000002"
+        },
+        {
+          "action": "MEMORY_CONFIRM",
+          "created_at": "2026-10-14 11:43:43.239512+00",
+          "actor_user_id": "01920000-0000-7000-8000-000000000001"
+        }
+      ],
+      "checks": {
+        "exact_id_and_version": true,
+        "same_attachment_preserved": true,
+        "same_content_both_actors": true,
+        "default_list_visibility": true,
+        "pending_list_visibility": true,
+        "same_photo_accessible": true,
+        "no_duplicate_memory": true,
+        "confirmation_markers": true,
+        "expected_content": true
+      },
+      "api_database_status": "PASS"
+    }
+  },
+  "operator_observations": [
+    {
+      "stage": "baseline",
+      "source": "Direct user response in this chat",
+      "reported": "双端原内容和照片可见"
+    },
+    {
+      "stage": "edited-pending",
+      "source": "Direct user response in this chat",
+      "reported": "原记忆已编辑，已确认列表不可见，待确认列表可见"
+    },
+    {
+      "stage": "reconfirmed",
+      "source": "Direct user response in this chat; manual elder phone confirmation",
+      "reported": "已人工确认，双端新内容、已确认状态及原照片均可见"
+    }
+  ],
+  "ui_observations": [
+    {
+      "stage": "baseline",
+      "role": "family",
+      "package": "org.example.niannian.family.demo",
+      "source": "ADB uiautomator snapshot; only allowlisted fictional text exported",
+      "local_file": "baseline-ui.private.xml",
+      "xml_sha256": "0212e67ad4dd1ab7ee71afd2dad99c24ba7329e0831ec00bc4840f199c14a631",
+      "allowlisted_visible_labels": [
+        "DEMO-PHONE12-ORIGINAL-20261014",
+        "DEMO-PHONE12-ORIGINAL-20261014 · 已确认",
+        "Fictional PHOTO-12 fixture before edit. Blue-green border and yellow circle.",
+        "保存编辑（需重新确认）",
+        "家庭记忆照片",
+        "已人工确认",
+        "查看照片 1",
+        "编辑这条记忆",
+        "重新读取记忆"
+      ],
+      "photo_widget_visible": true,
+      "confirmed_list_empty_visible": false,
+      "local_screenshot": "baseline-ui.private.png",
+      "screenshot_sha256": "79c263362e4b933785abae90b138dc04e262b47bcc8f9f348dd7da992aebdeb1",
+      "screenshot_visual_review": "Agent viewed screenshot: fictional green border/yellow circle photo rendered; screenshot excluded from publication"
+    },
+    {
+      "stage": "edited-pending",
+      "role": "family",
+      "package": "org.example.niannian.family.demo",
+      "source": "ADB uiautomator snapshot; only allowlisted fictional text exported",
+      "local_file": "edited-pending-ui.private.xml",
+      "xml_sha256": "1dd3d2361d012ff50e40a3ddb5a59cd99dd5b0182e313003ca83d2de1563b42b",
+      "allowlisted_visible_labels": [
+        "DEMO-PHONE12-EDITED-20261014",
+        "DEMO-PHONE12-EDITED-20261014 · 待确认",
+        "PHONE12 EDITED ONCE",
+        "家庭记忆",
+        "查看已确认记忆",
+        "重新读取记忆"
+      ],
+      "photo_widget_visible": false,
+      "confirmed_list_empty_visible": false
+    },
+    {
+      "stage": "edited-pending",
+      "role": "family",
+      "package": "org.example.niannian.family.demo",
+      "source": "ADB uiautomator snapshot; only allowlisted fictional text exported",
+      "local_file": "family-pending-confirmed-list-ui.private.xml",
+      "xml_sha256": "1368f6a62a327abb1510c97d3024ae8beb436ca9b719e93a7e0cd9861a436d17",
+      "allowlisted_visible_labels": [
+        "DEMO-PHONE12-EDITED-20261014",
+        "PHONE12 EDITED ONCE",
+        "家庭记忆",
+        "暂无已确认且获准使用的记忆。",
+        "查看待确认候选",
+        "重新读取记忆"
+      ],
+      "photo_widget_visible": false,
+      "confirmed_list_empty_visible": true
+    },
+    {
+      "stage": "edited-pending",
+      "role": "elder",
+      "package": "org.example.niannian.elder.demo",
+      "source": "ADB uiautomator snapshot; only allowlisted fictional text exported",
+      "local_file": "elder-pending-confirmed-list-ui.private.xml",
+      "xml_sha256": "4ea91ac3f10b96593d82b0a2af4885a2aacf179c7ec328bff86f0106842331b8",
+      "allowlisted_visible_labels": [
+        "家庭记忆",
+        "暂无已确认且获准使用的记忆。",
+        "查看待确认候选",
+        "重新读取记忆"
+      ],
+      "photo_widget_visible": false,
+      "confirmed_list_empty_visible": true
+    },
+    {
+      "stage": "edited-pending",
+      "role": "elder",
+      "package": "org.example.niannian.elder.demo",
+      "source": "ADB uiautomator snapshot; only allowlisted fictional text exported",
+      "local_file": "elder-pending-list-ui.private.xml",
+      "xml_sha256": "772aa40ed633c23ea6fce634b6acf3dc9ebb44a5a111ed5f377b7e1ece9bcd58",
+      "allowlisted_visible_labels": [
+        "DEMO-PHONE12-EDITED-20261014 · 待确认",
+        "家庭记忆",
+        "查看已确认记忆",
+        "重新读取记忆"
+      ],
+      "photo_widget_visible": false,
+      "confirmed_list_empty_visible": false
+    },
+    {
+      "stage": "edited-pending",
+      "role": "elder",
+      "package": "org.example.niannian.elder.demo",
+      "source": "ADB uiautomator snapshot; only allowlisted fictional text exported",
+      "local_file": "elder-pending-detail-ui.private.xml",
+      "xml_sha256": "6333fa560ae9c8720463519f8cccda26b8a07189641fa381b3947cec0f111b65",
+      "allowlisted_visible_labels": [
+        "DEMO-PHONE12-EDITED-20261014",
+        "DEMO-PHONE12-EDITED-20261014 · 待确认",
+        "PHONE12 EDITED ONCE",
+        "家庭记忆",
+        "待确认，不作为事实使用",
+        "我已核对，确认为家庭事实",
+        "查看已确认记忆",
+        "重新读取记忆"
+      ],
+      "photo_widget_visible": false,
+      "confirmed_list_empty_visible": false
+    },
+    {
+      "stage": "reconfirmed",
+      "role": "family",
+      "package": "org.example.niannian.family.demo",
+      "source": "ADB uiautomator snapshot; only allowlisted fictional text exported",
+      "local_file": "family-reconfirmed-ui.private.xml",
+      "xml_sha256": "5c46f111b7c3c000e79236e81f882eedec30ed937b40ab76b756b320f61070f0",
+      "allowlisted_visible_labels": [
+        "DEMO-PHONE12-EDITED-20261014",
+        "DEMO-PHONE12-EDITED-20261014 · 已确认",
+        "PHONE12 EDITED ONCE",
+        "家庭记忆",
+        "家庭记忆照片",
+        "已人工确认",
+        "查看待确认候选",
+        "查看照片 1",
+        "重新读取记忆"
+      ],
+      "photo_widget_visible": true,
+      "confirmed_list_empty_visible": false,
+      "local_screenshot": "family-reconfirmed-ui.private.png",
+      "screenshot_sha256": "74a1c99fdc316c64607f43d5e97a30ccb7b1236c7ac0299301aba3f83b9fa80d",
+      "screenshot_visual_review": "Agent viewed screenshot: fictional green border/yellow circle photo rendered; screenshot excluded from publication"
+    },
+    {
+      "stage": "reconfirmed",
+      "role": "elder",
+      "package": "org.example.niannian.elder.demo",
+      "source": "ADB uiautomator snapshot; only allowlisted fictional text exported",
+      "local_file": "elder-reconfirmed-ui.private.xml",
+      "xml_sha256": "1c36e759470bf41a779a155ff2b406e5da7b3f2b1b99fcb34f0edb8a09b0da16",
+      "allowlisted_visible_labels": [
+        "DEMO-PHONE12-EDITED-20261014",
+        "DEMO-PHONE12-EDITED-20261014 · 已确认",
+        "PHONE12 EDITED ONCE",
+        "保存编辑（需重新确认）",
+        "家庭记忆照片",
+        "已人工确认",
+        "查看照片 1",
+        "编辑这条记忆"
+      ],
+      "photo_widget_visible": true,
+      "confirmed_list_empty_visible": false,
+      "local_screenshot": "elder-reconfirmed-ui.private.png",
+      "screenshot_sha256": "3fd591194e3ec395c18e88804bc2c60f81fa92066b500b41796fc983b7d416c8",
+      "screenshot_visual_review": "Agent viewed screenshot: fictional green border/yellow circle photo rendered; screenshot excluded from publication"
+    }
+  ],
+  "not_verified": [
+    "Complete PHONE-09",
+    "Photo cancellation/invalid MIME/oversize",
+    "Physical deletion",
+    "Network and process recovery",
+    "Logout/Keystore wipe",
+    "Hardware/provider acceptance"
+  ],
+  "publication_excludes": [
+    "tokens",
+    "temporary credentials",
+    "signed URLs",
+    "device serial",
+    "raw UI XML/screenshots/logs",
+    "APKs",
+    "database/object files"
+  ],
+  "limited_privacy_scan": {
+    "scope": "Exact fixture-generated credentials and signed URL query values in four local service logs and two public evidence files; not system/OEM/full privacy acceptance",
+    "status": "PASS",
+    "files": [
+      {
+        "file": "api.stderr.log",
+        "fixture_generated_credential_hits": 0,
+        "signed_url_signature_hits": 0,
+        "status": "PASS"
+      },
+      {
+        "file": "api.stdout.log",
+        "fixture_generated_credential_hits": 0,
+        "signed_url_signature_hits": 0,
+        "status": "PASS"
+      },
+      {
+        "file": "worker.stderr.log",
+        "fixture_generated_credential_hits": 0,
+        "signed_url_signature_hits": 0,
+        "status": "PASS"
+      },
+      {
+        "file": "worker.stdout.log",
+        "fixture_generated_credential_hits": 0,
+        "signed_url_signature_hits": 0,
+        "status": "PASS"
+      },
+      {
+        "file": "evidence.json",
+        "fixture_generated_credential_hits": 0,
+        "signed_url_signature_hits": 0,
+        "status": "PASS"
+      },
+      {
+        "file": "phone-12-20261014.md",
+        "fixture_generated_credential_hits": 0,
+        "signed_url_signature_hits": 0,
+        "status": "PASS"
+      }
+    ]
+  }
+}
