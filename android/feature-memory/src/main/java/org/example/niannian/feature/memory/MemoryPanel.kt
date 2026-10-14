@@ -69,13 +69,11 @@ fun MemoryPanel(model: MemoryModel, familyId: String, userId: String, subjects: 
     }
     val choosePhoto = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         val id = photoTarget
-        if (uri != null && id != null && state.familyId == familyId) {
-            val mime = context.contentResolver.getType(uri).orEmpty()
+        if (id != null) {
+            val mime = uri?.let { context.contentResolver.getType(it).orEmpty() }
             uiScope.launch {
-              model.awaitIdle()
-              if (model.state.value.familyId != familyId || model.state.value.userId != userId) return@launch
-              model.uploadPhoto(id, mime) {
-                context.contentResolver.openInputStream(uri)?.use { input ->
+              model.resumePhotoSelection(familyId, userId, id, mime) {
+                context.contentResolver.openInputStream(requireNotNull(uri))?.use { input ->
                     val output = ByteArrayOutputStream()
                     val buffer = ByteArray(8192)
                     while (true) {

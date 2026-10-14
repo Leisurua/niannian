@@ -1,0 +1,12 @@
+{
+  "verified_at": "2026-10-14T13:43:18.570126+00:00",
+  "status": "PASS",
+  "snapshots_checked": 7,
+  "ui_hash_pairs_checked": 14,
+  "fixture_hashes_checked": 4,
+  "source_hashes_checked": 3,
+  "full_photo_screenshots_checked": 2,
+  "public_credential_pattern_hits": 0,
+  "evidence_sha256": "631065745c116e51a85d752d6b930d63f418279f88a65df8c806e406b33e7c4d",
+  "scope": "Evidence integrity and targeted public credential patterns; not a complete privacy/security acceptance."
+}

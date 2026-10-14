@@ -1,0 +1,609 @@
+{
+  "case_id": "PHONE-09",
+  "status": "PASS",
+  "recorded_at": "2026-10-14T12:02:56.384348+00:00",
+  "timezone": "Asia/Shanghai",
+  "overall_week3_acceptance": "INCOMPLETE",
+  "environment": {
+    "recorded_at": "2026-10-14T11:55:47.676616+00:00",
+    "status": "PASS",
+    "environment": "demo",
+    "provider": "mock",
+    "device": {
+      "model": "2201123C",
+      "sdk": "31"
+    },
+    "health_http": 200,
+    "containers": [
+      {
+        "service": "minio",
+        "state": "running",
+        "health": "",
+        "ports": "127.0.0.1:59003->9000/tcp"
+      },
+      {
+        "service": "postgres",
+        "state": "running",
+        "health": "healthy",
+        "ports": "127.0.0.1:59032->5432/tcp"
+      }
+    ],
+    "migration": "20261010_week3_core",
+    "worker_process_alive": true,
+    "worker_ready_logged": true,
+    "usb_reverse": [
+      [
+        "tcp:8000",
+        "tcp:59000"
+      ],
+      [
+        "tcp:59003",
+        "tcp:59003"
+      ]
+    ],
+    "installed_apks": [
+      {
+        "role": "elder",
+        "package": "org.example.niannian.elder.demo",
+        "sha256": "346c1be20311ccdc7fb28fbe3fe5b35029241b189e04d04369b5765975a4bf0a",
+        "matches_ci": true
+      },
+      {
+        "role": "family",
+        "package": "org.example.niannian.family.demo",
+        "sha256": "fba0b7155d52ce831fe7c84ca60bcc7e330b23d1b8580bb5fdf1c2ce571e1a59",
+        "matches_ci": true
+      }
+    ]
+  },
+  "fixture": {
+    "created_at": "2026-10-14T11:56:33.401534+00:00",
+    "create_http": 201,
+    "id": "01a13a45-76f3-7382-af57-7717cb5922ee",
+    "title": "DEMO-PHONE09-20261014-00B6EAB8",
+    "content": "Fictional PHONE-09 candidate for display isolation only.",
+    "family_id": "01a13a2f-e10e-7cae-bdc1-42d5a42f91ae",
+    "status": "PENDING",
+    "version": 1,
+    "source": "FAMILY_MEMBER",
+    "method": "Authenticated API fixture creation; no confirmation endpoint called"
+  },
+  "stages": {
+    "pending": {
+      "stage": "pending",
+      "recorded_at": "2026-10-14T11:56:33.756120+00:00",
+      "id": "01a13a45-76f3-7382-af57-7717cb5922ee",
+      "expected_status": "PENDING",
+      "api_actors": [
+        {
+          "role": "elder",
+          "detail_http": 200,
+          "id": "01a13a45-76f3-7382-af57-7717cb5922ee",
+          "title": "DEMO-PHONE09-20261014-00B6EAB8",
+          "status": "PENDING",
+          "version": 1,
+          "confirmed_list_ids": [
+            "01a13a2f-e183-7677-b796-ff2882c69d05"
+          ],
+          "pending_list_ids": [
+            "01a13a45-76f3-7382-af57-7717cb5922ee"
+          ],
+          "confirmed_list_contains_id": false,
+          "pending_list_contains_id": true,
+          "all_pages_exhausted": true
+        },
+        {
+          "role": "family",
+          "detail_http": 200,
+          "id": "01a13a45-76f3-7382-af57-7717cb5922ee",
+          "title": "DEMO-PHONE09-20261014-00B6EAB8",
+          "status": "PENDING",
+          "version": 1,
+          "confirmed_list_ids": [
+            "01a13a2f-e183-7677-b796-ff2882c69d05"
+          ],
+          "pending_list_ids": [
+            "01a13a45-76f3-7382-af57-7717cb5922ee"
+          ],
+          "confirmed_list_contains_id": false,
+          "pending_list_contains_id": true,
+          "all_pages_exhausted": true
+        }
+      ],
+      "database_memory": {
+        "id": "01a13a45-76f3-7382-af57-7717cb5922ee",
+        "verification_status": "PENDING",
+        "version": 1,
+        "title": "DEMO-PHONE09-20261014-00B6EAB8",
+        "verified_by_present": false,
+        "verified_at_present": false
+      },
+      "same_title_count": 1,
+      "audit": [
+        {
+          "action": "MEMORY_CREATED",
+          "created_at": "2026-10-14 11:56:33.397079+00",
+          "actor_role": "family"
+        },
+        {
+          "action": "MEMORY_READ",
+          "created_at": "2026-10-14 11:56:33.809953+00",
+          "actor_role": "elder"
+        },
+        {
+          "action": "MEMORY_READ",
+          "created_at": "2026-10-14 11:56:33.946137+00",
+          "actor_role": "family"
+        }
+      ],
+      "status": "PASS"
+    },
+    "confirmed": {
+      "stage": "confirmed",
+      "recorded_at": "2026-10-14T11:59:40.834466+00:00",
+      "id": "01a13a45-76f3-7382-af57-7717cb5922ee",
+      "expected_status": "CONFIRMED",
+      "api_actors": [
+        {
+          "role": "elder",
+          "detail_http": 200,
+          "id": "01a13a45-76f3-7382-af57-7717cb5922ee",
+          "title": "DEMO-PHONE09-20261014-00B6EAB8",
+          "status": "CONFIRMED",
+          "version": 2,
+          "confirmed_list_ids": [
+            "01a13a45-76f3-7382-af57-7717cb5922ee",
+            "01a13a2f-e183-7677-b796-ff2882c69d05"
+          ],
+          "pending_list_ids": [],
+          "confirmed_list_contains_id": true,
+          "pending_list_contains_id": false,
+          "all_pages_exhausted": true
+        },
+        {
+          "role": "family",
+          "detail_http": 200,
+          "id": "01a13a45-76f3-7382-af57-7717cb5922ee",
+          "title": "DEMO-PHONE09-20261014-00B6EAB8",
+          "status": "CONFIRMED",
+          "version": 2,
+          "confirmed_list_ids": [
+            "01a13a45-76f3-7382-af57-7717cb5922ee",
+            "01a13a2f-e183-7677-b796-ff2882c69d05"
+          ],
+          "pending_list_ids": [],
+          "confirmed_list_contains_id": true,
+          "pending_list_contains_id": false,
+          "all_pages_exhausted": true
+        }
+      ],
+      "database_memory": {
+        "id": "01a13a45-76f3-7382-af57-7717cb5922ee",
+        "verification_status": "CONFIRMED",
+        "version": 2,
+        "title": "DEMO-PHONE09-20261014-00B6EAB8",
+        "verified_by_present": true,
+        "verified_at_present": true
+      },
+      "same_title_count": 1,
+      "audit": [
+        {
+          "action": "MEMORY_CREATED",
+          "created_at": "2026-10-14 11:56:33.397079+00",
+          "actor_role": "family"
+        },
+        {
+          "action": "MEMORY_READ",
+          "created_at": "2026-10-14 11:56:33.809953+00",
+          "actor_role": "elder"
+        },
+        {
+          "action": "MEMORY_READ",
+          "created_at": "2026-10-14 11:56:33.946137+00",
+          "actor_role": "family"
+        },
+        {
+          "action": "MEMORY_READ",
+          "created_at": "2026-10-14 11:57:36.554821+00",
+          "actor_role": "elder"
+        },
+        {
+          "action": "MEMORY_READ",
+          "created_at": "2026-10-14 11:58:25.536613+00",
+          "actor_role": "family"
+        },
+        {
+          "action": "MEMORY_READ",
+          "created_at": "2026-10-14 11:59:16.38419+00",
+          "actor_role": "family"
+        },
+        {
+          "action": "MEMORY_CONFIRM",
+          "created_at": "2026-10-14 11:59:18.08032+00",
+          "actor_role": "family"
+        },
+        {
+          "action": "MEMORY_READ",
+          "created_at": "2026-10-14 11:59:40.930409+00",
+          "actor_role": "elder"
+        },
+        {
+          "action": "MEMORY_READ",
+          "created_at": "2026-10-14 11:59:41.213399+00",
+          "actor_role": "family"
+        }
+      ],
+      "status": "PASS"
+    }
+  },
+  "ui_observations": [
+    {
+      "recorded_at": "2026-10-14T11:57:26.495082+00:00",
+      "stage": "pending",
+      "role": "elder",
+      "view": "confirmed-list",
+      "package": "org.example.niannian.elder.demo",
+      "memory_id": "01a13a45-76f3-7382-af57-7717cb5922ee",
+      "ui_id_mapping": "App list labels do not display IDs. Exact unique title is bound to ID by independent API and DB; candidate detail binds content/status.",
+      "visible_allowlisted_text": [
+        "DEMO-PHONE12-EDITED-20261014 · 已确认",
+        "候选经人工确认后才是可用的家庭事实；访问始终受当前授权控制。",
+        "家庭记忆",
+        "查看待确认候选",
+        "重新读取记忆"
+      ],
+      "candidate_title_visible": false,
+      "candidate_content_visible": false,
+      "raw_xml": "pending-elder-confirmed-list.private.xml",
+      "xml_sha256": "7e3c79032c0661d7bb10a3cd3d2d63cd899c66e4efb951d7bd6a3392d4838513",
+      "raw_screenshot": "pending-elder-confirmed-list.private.png",
+      "screenshot_sha256": "e79e3948b1d5d1b5102aaeaae495cf7e3ad51bf44f374aab2deecd2e8731283c",
+      "status": "PASS"
+    },
+    {
+      "recorded_at": "2026-10-14T11:57:34.042347+00:00",
+      "stage": "pending",
+      "role": "elder",
+      "view": "pending-list",
+      "package": "org.example.niannian.elder.demo",
+      "memory_id": "01a13a45-76f3-7382-af57-7717cb5922ee",
+      "ui_id_mapping": "App list labels do not display IDs. Exact unique title is bound to ID by independent API and DB; candidate detail binds content/status.",
+      "visible_allowlisted_text": [
+        "DEMO-PHONE09-20261014-00B6EAB8 · 待确认",
+        "候选经人工确认后才是可用的家庭事实；访问始终受当前授权控制。",
+        "家庭记忆",
+        "查看已确认记忆",
+        "重新读取记忆"
+      ],
+      "candidate_title_visible": true,
+      "candidate_content_visible": false,
+      "raw_xml": "pending-elder-pending-list.private.xml",
+      "xml_sha256": "2f21239906db05aa04ffa291d110f0b6074f14c62c6d267182a3ba9602b34b56",
+      "raw_screenshot": "pending-elder-pending-list.private.png",
+      "screenshot_sha256": "d916ebdc4808cf2ddcb6ecded3963b9eb366c967443bc902a3833aad5d3a2216",
+      "status": "PASS"
+    },
+    {
+      "recorded_at": "2026-10-14T11:57:39.191518+00:00",
+      "stage": "pending",
+      "role": "elder",
+      "view": "pending-detail",
+      "package": "org.example.niannian.elder.demo",
+      "memory_id": "01a13a45-76f3-7382-af57-7717cb5922ee",
+      "ui_id_mapping": "App list labels do not display IDs. Exact unique title is bound to ID by independent API and DB; candidate detail binds content/status.",
+      "visible_allowlisted_text": [
+        "DEMO-PHONE09-20261014-00B6EAB8",
+        "DEMO-PHONE09-20261014-00B6EAB8 · 待确认",
+        "Fictional PHONE-09 candidate for display isolation only.",
+        "候选经人工确认后才是可用的家庭事实；访问始终受当前授权控制。",
+        "家庭记忆",
+        "待确认，不作为事实使用",
+        "我已核对，确认为家庭事实",
+        "查看已确认记忆",
+        "重新读取记忆"
+      ],
+      "candidate_title_visible": true,
+      "candidate_content_visible": true,
+      "raw_xml": "pending-elder-pending-detail.private.xml",
+      "xml_sha256": "67aa55d44865d80eddd1a06b79ab21bf0016712af9477083e075cc69b731e8ab",
+      "raw_screenshot": "pending-elder-pending-detail.private.png",
+      "screenshot_sha256": "0c407eeb12316bc35e8b808d5e835e6ca4b02edf78372262b02799a2e00ed057",
+      "status": "PASS"
+    },
+    {
+      "recorded_at": "2026-10-14T11:58:15.483065+00:00",
+      "stage": "pending",
+      "role": "family",
+      "view": "confirmed-list",
+      "package": "org.example.niannian.family.demo",
+      "memory_id": "01a13a45-76f3-7382-af57-7717cb5922ee",
+      "ui_id_mapping": "App list labels do not display IDs. Exact unique title is bound to ID by independent API and DB; candidate detail binds content/status.",
+      "visible_allowlisted_text": [
+        "DEMO-PHONE12-EDITED-20261014 · 已确认",
+        "候选经人工确认后才是可用的家庭事实；访问始终受当前授权控制。",
+        "家庭记忆",
+        "查看待确认候选",
+        "重新读取记忆"
+      ],
+      "candidate_title_visible": false,
+      "candidate_content_visible": false,
+      "raw_xml": "pending-family-confirmed-list.private.xml",
+      "xml_sha256": "ccbfa05e675724f763e8422ce8fff5fa4768d6b44d86310cd57c37829a226456",
+      "raw_screenshot": "pending-family-confirmed-list.private.png",
+      "screenshot_sha256": "4d1c6e8ca10b07cd176c37d766488b2dfc391448482ff359ef6c58a3c76dd57d",
+      "status": "PASS"
+    },
+    {
+      "recorded_at": "2026-10-14T11:58:23.050476+00:00",
+      "stage": "pending",
+      "role": "family",
+      "view": "pending-list",
+      "package": "org.example.niannian.family.demo",
+      "memory_id": "01a13a45-76f3-7382-af57-7717cb5922ee",
+      "ui_id_mapping": "App list labels do not display IDs. Exact unique title is bound to ID by independent API and DB; candidate detail binds content/status.",
+      "visible_allowlisted_text": [
+        "DEMO-PHONE09-20261014-00B6EAB8 · 待确认",
+        "候选经人工确认后才是可用的家庭事实；访问始终受当前授权控制。",
+        "家庭记忆",
+        "查看已确认记忆",
+        "重新读取记忆"
+      ],
+      "candidate_title_visible": true,
+      "candidate_content_visible": false,
+      "raw_xml": "pending-family-pending-list.private.xml",
+      "xml_sha256": "cc2ca8878145b235eca6f4263bd1da31a3e38d452051a59761c363d194705d35",
+      "raw_screenshot": "pending-family-pending-list.private.png",
+      "screenshot_sha256": "5319adfe9474b094624e581a130e2a4af1d8d8c3291e8cee7df13f8c942111c9",
+      "status": "PASS"
+    },
+    {
+      "recorded_at": "2026-10-14T11:58:28.140699+00:00",
+      "stage": "pending",
+      "role": "family",
+      "view": "pending-detail",
+      "package": "org.example.niannian.family.demo",
+      "memory_id": "01a13a45-76f3-7382-af57-7717cb5922ee",
+      "ui_id_mapping": "App list labels do not display IDs. Exact unique title is bound to ID by independent API and DB; candidate detail binds content/status.",
+      "visible_allowlisted_text": [
+        "DEMO-PHONE09-20261014-00B6EAB8",
+        "DEMO-PHONE09-20261014-00B6EAB8 · 待确认",
+        "Fictional PHONE-09 candidate for display isolation only.",
+        "候选经人工确认后才是可用的家庭事实；访问始终受当前授权控制。",
+        "家庭记忆",
+        "待确认，不作为事实使用",
+        "我已核对，确认为家庭事实",
+        "查看已确认记忆",
+        "重新读取记忆"
+      ],
+      "candidate_title_visible": true,
+      "candidate_content_visible": true,
+      "raw_xml": "pending-family-pending-detail.private.xml",
+      "xml_sha256": "64f3719c4a73f2a09aaa26c4766f7c227c3eaef7ae65faa32eb65e78e50bcc27",
+      "raw_screenshot": "pending-family-pending-detail.private.png",
+      "screenshot_sha256": "b939c0594e2342f7a1538fc3ad5535c02cf35a3f2d13090ff5bd4af0b0b1b39a",
+      "status": "PASS"
+    },
+    {
+      "recorded_at": "2026-10-14T12:00:59.266692+00:00",
+      "stage": "confirmed",
+      "role": "elder",
+      "view": "confirmed-list",
+      "package": "org.example.niannian.elder.demo",
+      "memory_id": "01a13a45-76f3-7382-af57-7717cb5922ee",
+      "ui_id_mapping": "App list labels do not display IDs. Exact unique title is bound to ID by independent API and DB; candidate detail binds content/status.",
+      "visible_allowlisted_text": [
+        "DEMO-PHONE09-20261014-00B6EAB8 · 已确认",
+        "DEMO-PHONE12-EDITED-20261014 · 已确认",
+        "候选经人工确认后才是可用的家庭事实；访问始终受当前授权控制。",
+        "家庭记忆",
+        "查看待确认候选",
+        "重新读取记忆"
+      ],
+      "candidate_title_visible": true,
+      "candidate_content_visible": false,
+      "raw_xml": "confirmed-elder-confirmed-list.private.xml",
+      "xml_sha256": "76d792166fe4beb9b0fc7845b6dfa83d1962d55c3fcb64fa26514d21360b1ebf",
+      "raw_screenshot": "confirmed-elder-confirmed-list.private.png",
+      "screenshot_sha256": "bcb0808c93c724701c25d78c356ce5cf281a75cacc5f87906acb3ffc2d5c7dba",
+      "status": "PASS"
+    },
+    {
+      "recorded_at": "2026-10-14T12:01:06.784004+00:00",
+      "stage": "confirmed",
+      "role": "elder",
+      "view": "pending-list",
+      "package": "org.example.niannian.elder.demo",
+      "memory_id": "01a13a45-76f3-7382-af57-7717cb5922ee",
+      "ui_id_mapping": "App list labels do not display IDs. Exact unique title is bound to ID by independent API and DB; candidate detail binds content/status.",
+      "visible_allowlisted_text": [
+        "候选经人工确认后才是可用的家庭事实；访问始终受当前授权控制。",
+        "家庭记忆",
+        "暂无可访问的待确认候选。",
+        "查看已确认记忆",
+        "重新读取记忆"
+      ],
+      "candidate_title_visible": false,
+      "candidate_content_visible": false,
+      "raw_xml": "confirmed-elder-pending-list.private.xml",
+      "xml_sha256": "68709e6a70a5f64a91929b910ecf1534e13e2e68db07f01145e9e22d0fd6fb1b",
+      "raw_screenshot": "confirmed-elder-pending-list.private.png",
+      "screenshot_sha256": "f3f7478cfd2845153d8411bea45858191985c2074a689620498070a2b500f7c7",
+      "status": "PASS"
+    },
+    {
+      "recorded_at": "2026-10-14T12:01:14.384767+00:00",
+      "stage": "confirmed",
+      "role": "elder",
+      "view": "confirmed-detail",
+      "package": "org.example.niannian.elder.demo",
+      "memory_id": "01a13a45-76f3-7382-af57-7717cb5922ee",
+      "ui_id_mapping": "App list labels do not display IDs. Exact unique title is bound to ID by independent API and DB; candidate detail binds content/status.",
+      "visible_allowlisted_text": [
+        "DEMO-PHONE09-20261014-00B6EAB8",
+        "DEMO-PHONE09-20261014-00B6EAB8 · 已确认",
+        "DEMO-PHONE12-EDITED-20261014 · 已确认",
+        "Fictional PHONE-09 candidate for display isolation only.",
+        "候选经人工确认后才是可用的家庭事实；访问始终受当前授权控制。",
+        "家庭记忆",
+        "已人工确认",
+        "查看待确认候选",
+        "重新读取记忆"
+      ],
+      "candidate_title_visible": true,
+      "candidate_content_visible": true,
+      "raw_xml": "confirmed-elder-confirmed-detail.private.xml",
+      "xml_sha256": "927779709b4f5a9c1ca60247ae61612f11e9ecfdcf10a6e3403ce500eefdfce0",
+      "raw_screenshot": "confirmed-elder-confirmed-detail.private.png",
+      "screenshot_sha256": "131de49dd019e3f6d3b307562c793a412b2c428c813e52abfc026ba4719678a9",
+      "status": "PASS"
+    },
+    {
+      "recorded_at": "2026-10-14T12:00:14.544562+00:00",
+      "stage": "confirmed",
+      "role": "family",
+      "view": "confirmed-list",
+      "package": "org.example.niannian.family.demo",
+      "memory_id": "01a13a45-76f3-7382-af57-7717cb5922ee",
+      "ui_id_mapping": "App list labels do not display IDs. Exact unique title is bound to ID by independent API and DB; candidate detail binds content/status.",
+      "visible_allowlisted_text": [
+        "DEMO-PHONE09-20261014-00B6EAB8 · 已确认",
+        "DEMO-PHONE12-EDITED-20261014 · 已确认",
+        "候选经人工确认后才是可用的家庭事实；访问始终受当前授权控制。",
+        "家庭记忆",
+        "查看待确认候选",
+        "重新读取记忆"
+      ],
+      "candidate_title_visible": true,
+      "candidate_content_visible": false,
+      "raw_xml": "confirmed-family-confirmed-list.private.xml",
+      "xml_sha256": "05ca381d04397fee4cece6403c1c5e1cbd4d7ac61940505c041a175fbad3994d",
+      "raw_screenshot": "confirmed-family-confirmed-list.private.png",
+      "screenshot_sha256": "9f97e7d2de29adbf5b7cca33af01a2674f5ad0c1686c4634a7c63daec28c7dd6",
+      "status": "PASS"
+    },
+    {
+      "recorded_at": "2026-10-14T12:00:06.034469+00:00",
+      "stage": "confirmed",
+      "role": "family",
+      "view": "pending-list",
+      "package": "org.example.niannian.family.demo",
+      "memory_id": "01a13a45-76f3-7382-af57-7717cb5922ee",
+      "ui_id_mapping": "App list labels do not display IDs. Exact unique title is bound to ID by independent API and DB; candidate detail binds content/status.",
+      "visible_allowlisted_text": [
+        "候选经人工确认后才是可用的家庭事实；访问始终受当前授权控制。",
+        "家庭记忆",
+        "暂无可访问的待确认候选。",
+        "查看已确认记忆",
+        "重新读取记忆"
+      ],
+      "candidate_title_visible": false,
+      "candidate_content_visible": false,
+      "raw_xml": "confirmed-family-pending-list.private.xml",
+      "xml_sha256": "fc48daec91b75d62f531de48caa74965c0d72cecf0bee5dac7f25196c92c07b4",
+      "raw_screenshot": "confirmed-family-pending-list.private.png",
+      "screenshot_sha256": "f6339a18f37dcb5f4e8f8889ba22e32115c8be622afbb3a25ae67e785a0e598c",
+      "status": "PASS"
+    },
+    {
+      "recorded_at": "2026-10-14T12:00:20.068658+00:00",
+      "stage": "confirmed",
+      "role": "family",
+      "view": "confirmed-detail",
+      "package": "org.example.niannian.family.demo",
+      "memory_id": "01a13a45-76f3-7382-af57-7717cb5922ee",
+      "ui_id_mapping": "App list labels do not display IDs. Exact unique title is bound to ID by independent API and DB; candidate detail binds content/status.",
+      "visible_allowlisted_text": [
+        "DEMO-PHONE09-20261014-00B6EAB8",
+        "DEMO-PHONE09-20261014-00B6EAB8 · 已确认",
+        "DEMO-PHONE12-EDITED-20261014 · 已确认",
+        "Fictional PHONE-09 candidate for display isolation only.",
+        "候选经人工确认后才是可用的家庭事实；访问始终受当前授权控制。",
+        "家庭记忆",
+        "已人工确认",
+        "查看待确认候选",
+        "重新读取记忆"
+      ],
+      "candidate_title_visible": true,
+      "candidate_content_visible": true,
+      "raw_xml": "confirmed-family-confirmed-detail.private.xml",
+      "xml_sha256": "54a128e176f580918427649b1b1e38e8d10831dd5f43c5f00497b6446048922e",
+      "raw_screenshot": "confirmed-family-confirmed-detail.private.png",
+      "screenshot_sha256": "291e27e70a8f06c0f12714623a919b47b1ccb432adc7cf8beb32418631be4a65",
+      "status": "PASS"
+    }
+  ],
+  "operator_observation": {
+    "source": "Direct user reply to manual operation request in this chat",
+    "reply": "已确认",
+    "app_role": "family",
+    "title": "DEMO-PHONE09-20261014-00B6EAB8",
+    "id": "01a13a45-76f3-7382-af57-7717cb5922ee",
+    "action": "User manually tapped 我已核对，确认为家庭事实",
+    "api_fixture_confirmation": false
+  },
+  "evidence_limits": [
+    "Two separate Demo Apps on one Xiaomi 12, not two devices",
+    "App UI shows unique title rather than Memory ID; exact ID independently bound by API and read-only DB",
+    "All API list pages exhausted; small fixture UI list captured in full",
+    "No full RAG, offline, lifecycle, revocation or hardware gate acceptance",
+    "No full backend or Android build/test/lint rerun"
+  ],
+  "raw_evidence_policy": "Raw APKs, XML, screenshots and credentials remain only in ignored artifacts directory. UI output exports fictional allowlisted text only.",
+  "limited_privacy_scan": {
+    "status": "PASS",
+    "scope": "Known fixture secrets and credential/signed URL patterns in public evidence/report/week3 and four existing API/worker logs; not a complete privacy gate",
+    "files": [
+      {
+        "file": "docs/evidence/phone-09-20261014/evidence.json",
+        "sha256_before_scan_annotation": "8204c20a70b710e40ace326dae19dce3ca58618c28c020134c0ebb7e2f9c60d2",
+        "known_secret_hits": 0,
+        "credential_or_signed_url_pattern_hits": 0
+      },
+      {
+        "file": "docs/evidence/phone-09-20261014.md",
+        "sha256_before_scan_annotation": "28d86934fcde7273a5933a194d6027ad241c62843f849e92b326fad1bf948058",
+        "known_secret_hits": 0,
+        "credential_or_signed_url_pattern_hits": 0
+      },
+      {
+        "file": "docs/evidence/week3.md",
+        "sha256_before_scan_annotation": "fa328758f2a59669d40a39661818ffae7509fa7d6916c696410c52400a3e22be",
+        "known_secret_hits": 0,
+        "credential_or_signed_url_pattern_hits": 0
+      },
+      {
+        "file": "artifacts/phone-12-20261014/api.stdout.log",
+        "sha256_before_scan_annotation": "f56218e02bf3f247391828dd4baa498df0a90dac7dba5d01f237cffa45741bea",
+        "known_secret_hits": 0,
+        "credential_or_signed_url_pattern_hits": 0
+      },
+      {
+        "file": "artifacts/phone-12-20261014/api.stderr.log",
+        "sha256_before_scan_annotation": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "known_secret_hits": 0,
+        "credential_or_signed_url_pattern_hits": 0
+      },
+      {
+        "file": "artifacts/phone-12-20261014/worker.stdout.log",
+        "sha256_before_scan_annotation": "fb06d185d774d460149f46ab72e0b192f2e78199c54df7e8c4cb2d29204568e1",
+        "known_secret_hits": 0,
+        "credential_or_signed_url_pattern_hits": 0
+      },
+      {
+        "file": "artifacts/phone-12-20261014/worker.stderr.log",
+        "sha256_before_scan_annotation": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "known_secret_hits": 0,
+        "credential_or_signed_url_pattern_hits": 0
+      }
+    ]
+  },
+  "verification": {
+    "status": "PASS",
+    "ui_records": 12,
+    "same_id_state_version_list_and_audit_consistent": true,
+    "raw_evidence_hashes_match": true,
+    "required_report_sections": true,
+    "backend_android_source_unchanged": true,
+    "diff_whitespace": true
+  }
+}

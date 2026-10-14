@@ -2,7 +2,7 @@
 
 这是开发期间的门禁清单，不是新的设计文档。每项填写 `NOT_STARTED / IN_PROGRESS / PASS / FAIL / BLOCKED`，并附 evidence path。
 
-## Week 3 current checkout — 2026-10-13
+## Week 3 current checkout — 2026-10-14
 
 **第三周软件交付 PASS；含真机的整周验收仍为 IN_PROGRESS。** 继承第二周的设备待验项，不启动第四周。具体证据见 [第三周交付记录](evidence/week3.md)。
 
@@ -15,7 +15,9 @@
 - [x] 双端 12 APK、68 次 JVM 测试、6 份 lint 报告无错误、57 个源码文件 SHA-256 一致：PASS。
 - [x] 源码/fixture/Git/APK 隐私检查 7 tests：PASS；后端 wheel 源码目录外三环境验证：PASS。
 - [x] 第三周复现脚本与 PostgreSQL CI 已添加；远端当前提交 CI 以 PR 实际运行结果为准。
-- [ ] 真机记忆页面、照片选择器/生命周期、Keystore：NOT VERIFIED，当前 ADB 为 NO_AUTHORIZED_DEVICE。
+- [x] 小米 12 / API 31 与已安装双端 APK 身份已核对；PHONE-09 候选展示隔离、PHONE-12 编辑后重新确认和原照片查看：PASS，见 [PHONE-09](evidence/phone-09-20261014.md)、[PHONE-12](evidence/phone-12-20261014.md)。两端在同一手机运行。
+- [x] PHOTO-SELECT-01 修复后真机复验：取消、超限 PNG、GIF、损坏 PNG 隔离和有效 PNG 上传/双端查看 PASS；9 项照片模块 JVM、lint 和双端 Demo 构建 PASS，见 [复验报告](evidence/photo-retest-20261014.md)。[原失败记录](evidence/photo-errors-20261014.md)保留。
+- [ ] 选择期间旋转/进程死亡、断网恢复、退出/Keystore、物理删除及完整撤权/跨家庭真机负例：NOT VERIFIED；第三周整体验收仍为 INCOMPLETE。照片复验后的新虚构登录未复现旧长辈会话读取失败，其根因未核查。
 - [ ] 指定硬件 kiosk/BLE/camera/wake/telephony：保留第二周未通过状态。
 
 ## Week 2 current checkout — 2026-10-09
