@@ -321,7 +321,8 @@ def test_wss_owner_identity_reconnect_replay_and_end(system):
         assert ws.receive_json()['type'] == 'session.ready'
         identity = ws.receive_json(); assert 'Mock' in identity['payload']['text']
         ws.send_json(ws_frame(cid, 'text.input', 2, {'text':'虚构输入不应持久化'}))
-        assert ws.receive_json()['type'] == 'error'
+        assert ws.receive_json()['payload']['state'] == 'THINKING'
+        assert ws.receive_json()['type'] == 'assistant.text'
         last = ws.receive_json()['sequence']
     with client.websocket_connect(path, headers=home[4]) as ws:
         assert ws.receive_json()['sequence'] > last

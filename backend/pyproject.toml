@@ -35,3 +35,4 @@ include = ["app*", "config"]
 
 [tool.setuptools.package-data]
 config = ["*.env"]
+"app.ai" = ["prompts/*.md"]

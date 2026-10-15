@@ -7,6 +7,7 @@ from anyio import CancelScope
 from fastapi import APIRouter, Depends, Request, WebSocket, WebSocketDisconnect
 from sqlalchemy import text
 
+from app.ai.conversation import AIOrchestrator, REPLIES
 from app.modules.audit import service as audit
 from app.modules.auth.service import authenticate
 from app.modules.conversation import service
@@ -73,6 +74,10 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
     actor_id = None
     accepted = False
     lease = factory()
+    receive_task = None
+    turn_task = None
+    last_reply = None
+    orchestrator = getattr(websocket.app.state, 'conversation_orchestrator', None) or AIOrchestrator()
     try:
         async with factory() as db:
             actor = await authenticate(db, bearer[7:], settings)
@@ -95,23 +100,66 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
         accepted = True
         await websocket.send_json(ready)
         while True:
-            raw = None
-            try:
-                raw = await asyncio.wait_for(websocket.receive(), timeout=1.0)
-            except asyncio.TimeoutError:
-                pass
+            if receive_task is None:
+                receive_task = asyncio.create_task(websocket.receive())
+            waiting = {receive_task} | ({turn_task} if turn_task else set())
+            done, _ = await asyncio.wait(waiting, timeout=1.0, return_when=asyncio.FIRST_COMPLETED)
+            raw = receive_task.result() if receive_task in done else None
+            if receive_task in done:
+                receive_task = None
             if raw and raw['type'] == 'websocket.disconnect':
                 break
             async with factory() as db:
                 actor = await authenticate(db, bearer[7:], settings)
                 row = await service.access(db, actor, conversation_id, owner_only=True, active=True)
-                if raw is None:
+                if raw is None and (turn_task is None or turn_task not in done):
                     await db.commit()
                     continue
                 try:
-                    budget.take(time.monotonic())
-                    message = parse_client_frame(raw.get('text'), conversation_id=conversation_id, last_sequence=row.client_sequence, limits=limits)
-                    outgoing = service.handle(row, message)
+                    outgoing = []
+                    if raw is not None:
+                        budget.take(time.monotonic())
+                        message = parse_client_frame(raw.get('text'), conversation_id=conversation_id, last_sequence=row.client_sequence, limits=limits)
+                        row.client_sequence = message.sequence
+                        if message.type in ('interrupt', 'session.end'):
+                            if turn_task:
+                                turn_task.cancel()
+                                await asyncio.gather(turn_task, return_exceptions=True)
+                                turn_task = None
+                            last_reply = None
+                            outgoing = service.handle(row, message)
+                        elif message.type == 'text.input':
+                            if turn_task or not row.provider_metadata.get('identity_disclosed') or settings.provider_mode != 'mock':
+                                outgoing = [service.event(row, 'error', {'code': 'PROVIDER_TEMPORARILY_UNAVAILABLE', 'retryable': False})]
+                            else:
+                                last_reply = None
+                                row.backend_state = 'THINKING'
+                                outgoing = [service.event(row, 'assistant.state', {'state': 'THINKING'})]
+                                turn_task = asyncio.create_task(orchestrator.handle(
+                                    request_id=f'turn-{message.sequence}', conversation_id=conversation_id,
+                                    text=message.payload['text']))
+                        elif message.type in ('repeat', 'slow_down'):
+                            if turn_task or last_reply is None:
+                                outgoing = [service.event(row, 'error', {'code': 'PROVIDER_TEMPORARILY_UNAVAILABLE', 'retryable': False})]
+                            else:
+                                outgoing = [service.event(row, 'assistant.text', {'text': last_reply, 'source_labels': ['Mock']}),
+                                    service.event(row, 'assistant.state', {'state': 'IDLE'})]
+                        else:
+                            outgoing = service.handle(row, message)
+                    # Input (especially interrupt/end) wins a completion race.
+                    # Authentication was repeated after the provider completed.
+                    if turn_task and turn_task in done:
+                        result = turn_task.result()
+                        turn_task = None
+                        if result.assistant_text not in REPLIES:
+                            raise RuntimeError('Invalid orchestrator output')
+                        last_reply = result.assistant_text
+                        row.backend_state = result.avatar_state.value
+                        row.provider_metadata = {**row.provider_metadata, 'trace': result.trace}
+                        outgoing += [service.event(row, 'assistant.text', {'text': last_reply, 'source_labels': ['Mock']})]
+                        if result.fallback_code:
+                            outgoing += [service.event(row, 'error', {'code': 'PROVIDER_TEMPORARILY_UNAVAILABLE', 'retryable': False})]
+                        outgoing += [service.event(row, 'assistant.state', {'state': row.backend_state})]
                 except ProtocolError as error:
                     outgoing = [service.event(row, 'error', {'code': str(error), 'retryable': False})]
                     await audit.record(db, actor_id, 'CONVERSATION_WS_REJECTED', 'CONVERSATION', row.id, row.family_id,
@@ -139,4 +187,9 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
         else:
             await websocket.close(code=4403)
     finally:
+        tasks = [task for task in (receive_task, turn_task) if task is not None]
+        for task in tasks:
+            task.cancel()
+        with CancelScope(shield=True):
+            await asyncio.gather(*tasks, return_exceptions=True)
         await release_connection_lease(lease, actor_id)

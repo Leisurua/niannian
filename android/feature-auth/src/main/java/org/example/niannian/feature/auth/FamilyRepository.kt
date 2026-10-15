@@ -149,6 +149,18 @@ class FamilyRepository(
         executeCall(path, method, body, idempotent, expectedVersion)
     }
 
+    suspend fun <T> withConversationConnection(id: String, open: (String, String) -> T): T {
+        require(UUID.fromString(id).toString() == id)
+        call("/v1/me")
+        return requestMutex.withLock {
+            val session = store.load()
+            val origin = ConnectionPolicy.origin(session.getString("origin"), debug)
+            val socketOrigin = if (origin.startsWith("https://")) "wss://" + origin.removePrefix("https://")
+                else "ws://" + origin.removePrefix("http://")
+            open("$socketOrigin/v1/ws/conversations/$id", session.getString("access_token"))
+        }
+    }
+
     private suspend fun executeCall(path: String, method: String, body: JSONObject?, idempotent: Boolean, expectedVersion: Long?): JSONObject = withContext(Dispatchers.IO) {
         var session = store.load()
         val origin = ConnectionPolicy.origin(session.getString("origin"), debug)
