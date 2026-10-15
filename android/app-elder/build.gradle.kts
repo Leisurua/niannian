@@ -38,6 +38,7 @@ android {
 dependencies {
     implementation(project(":feature-auth"))
     implementation(project(":feature-memory"))
+    implementation(project(":feature-conversation"))
     implementation(project(":core-common"))
     implementation(project(":core-telemetry"))
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))

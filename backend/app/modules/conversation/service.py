@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pydantic import Field
 
+from app.ai.conversation import IDENTITY
+
 from app.modules.auth.schemas import Input
 from app.modules.audit import service as audit
 from app.modules.conversation.models import Conversation
@@ -101,7 +103,7 @@ def handle(row, message):
         result = [event(row, 'session.ready', {'backend_state': row.backend_state})]
         if not row.provider_metadata.get('identity_disclosed'):
             row.provider_metadata = {**row.provider_metadata, 'identity_disclosed': True}
-            result.append(event(row, 'assistant.text', {'text': '我是念念，AI 陪伴助手。这是 Mock 演示，当前只开放会话状态，尚未启用 AI 回复。', 'source_labels': ['Mock']}))
+            result.append(event(row, 'assistant.text', {'text': IDENTITY, 'source_labels': ['Mock']}))
         return result
     if message.type == 'interrupt':
         row.backend_state = 'LISTENING'
