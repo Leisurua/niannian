@@ -111,6 +111,19 @@ class ConversationModelTest {
         model.clear()
     }
 
+    @Test fun delayedStartAcknowledgementDoesNotUnlockAnActiveTurn() = runBlocking {
+        val gateway = Gateway(); val model = ConversationModel(gateway, this)
+        model.bind("family", "elder"); model.start(); yield()
+        gateway.listener(frame(1)); yield()
+        model.input("你好")
+        gateway.listener(frame(2)); yield()
+        assertTrue(model.state.value.busy)
+        assertEquals("THINKING", model.state.value.state)
+        model.input("不应重发")
+        assertEquals(1, gateway.sent.count { it.getString("type") == "text.input" })
+        model.clear()
+    }
+
     @Test fun pendingStatusCannotRestoreOldFamilyAfterClear() = runBlocking {
         val gateway = Gateway(); val gate = CompletableDeferred<Unit>(); gateway.waitStatus = gate
         val model = ConversationModel(gateway, this)

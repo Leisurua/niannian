@@ -6,8 +6,10 @@
 
 按 development-plan 第四周完成 Mock AI 会话、身份/未知/失败话术、简化形象和长辈端控制入口。
 基线为 [第三周 PR #5](https://github.com/Leisurua/niannian/pull/5) 的
-`a1948c2702d3117e0185abb6cf47a736d59698f1`，本地分支 `codex/week4-mock-conversation`。
+`a1948c2702d3117e0185abb6cf47a736d59698f1`，发布分支 `codex/week4-mock-conversation-pr`。
 第三周已批准的 TEXT/Mock、音频拒绝、无逐字稿持久化边界继续有效。
+
+发布前接入 main `5175c745037c4086b7250e7fe0efa22c306b92dd`，保留已合并的计划与照片选择器修复。审查补验修复了延迟 session.ready 解锁活动回合，以及可选 TTS/Avatar 超时覆盖安全文字的问题；新增回归已证明旧代码失败、修复后通过。
 
 开发期间已有的 `docs/development-plan.md` 语音主线/持续摘要授权修改由其他工作产生，本轮保留，没有把它当作修改冻结 API/DB 的授权。
 
@@ -23,23 +25,23 @@
 
 ## Tests
 
-实际证据位于忽略目录 `artifacts/week4/`。
+发布前实际证据位于忽略目录 `artifacts/week4-publication/`，首次开发记录仍保留在原目录的 `artifacts/week4/`。
 
 | 检查 | 实际结果 | Evidence |
 | --- | --- | --- |
-| 后端综合回归 | **289 tests，0 failure/error/skip** | `verification/summary.json`、`verification/tests.xml` |
-| PostgreSQL/WSS | PASS；包含在上述 289 项内；未知回复、重复、慢速、结束、重连不重播、生成中打断/退出/断线/注销取消 | `backend/tests/integration/test_week4_postgres.py` |
+| 后端综合回归 | **291 tests，0 failure/error/skip** | `verification/summary.json`、`verification/tests.xml` |
+| PostgreSQL/WSS | PASS；包含在上述 291 项内；未知回复、重复、慢速、结束、重连不重播、生成中打断/退出/断线/注销取消 | `backend/tests/integration/test_week4_postgres.py` |
 | 输出与故障负例 | PASS；畸形/超长/非法 enum、伪造引用/候选/动作、原文兜底、provider 身份、超时、取消、TTS/Avatar 失败 | `backend/tests/unit/test_week4_conversation.py` |
 | 源码/fixture/Git 隐私与 Ruff | PASS；包含在综合入口中 | `verification/tests.xml`、`verification/lint.txt` |
-| Android build/JVM/lint | PASS；12 APK，**82 次 JVM 测试，0 failure/error/skip**；7 份 lint XML 无 Error/Fatal | `android-build.txt`、`android-summary.json`、`android-tests/` |
+| Android build/JVM/lint | PASS；12 APK，**94 次 JVM 测试，0 failure/error/skip**；7 份 lint XML 无 Error/Fatal | `android-build.txt`、`android-summary.json`、`android-tests/` |
 | 构建源码一致性 | PASS；63 个源码/配置文件 SHA-256 与英文构建副本一致 | `android-summary.json` |
 | APK 隐私扫描 | PASS；1 项扫描全部 12 APK，强制要求完整变体集合 | `apk-scan.xml` |
 | 后端 wheel | PASS；离线构建，源码目录外安装；dev/test/demo health 和新 prompt 的 Mock 回复均实际执行 | `wheel-build.txt`、`wheel-check.txt` |
-| 当前设备 | 0 个已授权 Android 设备；真机 NOT VERIFIED | `device-baseline.txt` |
+| 开发设备检查 | 0 个已授权 Android 设备；本周真机 NOT VERIFIED | 原开发记录 `artifacts/week4/device-baseline.txt` |
 
 后端入口：安装已锁定依赖，设置分别以 `_week2_test`、`_week3_test` 结尾的独立数据库 URL 到 `WEEK2_TEST_DATABASE_URL` / `WEEK3_TEST_DATABASE_URL`，运行 `python scripts/verify_week4.py`。不得指向真实家庭数据库。此入口明确排除本轮未修改的真实 MinIO 表面，不能据此重申存储验收。
 
-最初直接扫描工作目录失败：已有 `artifacts/device/` 第三方工具测试数据被识别为电话模式，已有设备日志被识别为禁止源码产物；pytest 默认临时目录还出现权限错误。最终入口使用有 hash 证据的源码副本和全新临时目录，未删除旧设备证据、未弱化扫描模式。原始失败记录保留在 `backend-tests.txt`。
+最初直接扫描工作目录失败：已有 `artifacts/device/` 第三方工具测试数据被识别为电话模式，已有设备日志被识别为禁止源码产物；pytest 默认临时目录还出现权限错误。最终入口使用有 hash 证据的源码副本和全新临时目录，未删除旧设备证据、未弱化扫描模式。原始失败记录保留在原开发目录的 `artifacts/week4/backend-tests.txt`。
 
 ## Decisions
 

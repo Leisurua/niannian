@@ -108,6 +108,25 @@ def test_text_survives_optional_adapter_failure(options, code):
     assert result.avatar_state == AvatarState.IDLE
 
 
+class SlowTTS(MockTTS):
+    async def synthesize(self, request):
+        await asyncio.sleep(10)
+
+
+class SlowAvatar(MockAvatar):
+    async def set_state(self, request):
+        await asyncio.sleep(10)
+
+
+@pytest.mark.parametrize('options,code', [({'tts': SlowTTS()}, 'TTS_UNAVAILABLE'), ({'avatar': SlowAvatar()}, 'AVATAR_UNAVAILABLE')])
+def test_total_deadline_preserves_text_during_optional_adapter(options, code):
+    result = run(AIOrchestrator(timeout=0.01, **options))
+    assert result.assistant_text == CHAT
+    assert result.avatar_state == AvatarState.IDLE
+    assert result.fallback_code == code
+    assert result.trace['result_status'] == 'PARTIAL'
+
+
 def test_real_capability_never_receives_data():
     class Real(AlteredLLM):
         def capabilities(self):

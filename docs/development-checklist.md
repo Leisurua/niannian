@@ -7,9 +7,9 @@
 第四周 Mock 软件范围完成；实际语音和真机验收保持 `NOT VERIFIED`。见 [第四周记录](evidence/week4.md)。后续完整 RAG/摘要/安全事件闭环没有提前执行。
 
 - [x] Mock 编排、版本化 prompt、未知事实/故障兜底、输出负例与取消：`PASS`。
-- [x] PostgreSQL/WSS 生成期间的打断、结束、断线、注销撤权及重连不重播：`PASS`；总回归 289 tests，0 failure/error/skip。
+- [x] PostgreSQL/WSS 生成期间的打断、结束、断线、注销撤权及重连不重播：`PASS`；总回归 291 tests，0 failure/error/skip。
 - [x] 长辈端语音主线入口、显式 Mock 话题、大字状态与控制、文字备用入口：软件实现与 JVM 验证 `PASS`；不表示真实语音已开放。
-- [x] 12 APK、82 次 JVM 测试、7 份 lint XML 无错误、63 文件 hash 一致与 APK 扫描：`PASS`。
+- [x] 12 APK、94 次 JVM 测试、7 份 lint XML 无错误、63 文件 hash 一致与 APK 扫描：`PASS`。
 - [ ] 真机 UI/可听可说/单一音频占用、实际语音 Provider：`NOT VERIFIED`，当前无授权设备，音频/Provider 门禁尚未通过。
 - [ ] 完整 E4-T03 RAG/引用正例与完整 VS-03：依赖第五周及后续范围，本周仅验证 Mock 子路径。
 

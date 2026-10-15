@@ -146,8 +146,6 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                                     service.event(row, 'assistant.state', {'state': 'IDLE'})]
                         else:
                             outgoing = service.handle(row, message)
-                    # Input (especially interrupt/end) wins a completion race.
-                    # Authentication was repeated after the provider completed.
                     if turn_task and turn_task in done:
                         result = turn_task.result()
                         turn_task = None

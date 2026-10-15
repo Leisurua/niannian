@@ -1,4 +1,3 @@
-"""Bounded Mock-only conversation. No persistence, retrieval or action authority."""
 import asyncio
 from dataclasses import dataclass
 from importlib.resources import files
@@ -87,6 +86,7 @@ class AIOrchestrator:
         started = time.monotonic()
         reply, code = UNAVAILABLE, None
         state = AvatarState.IDLE
+        optional_fallback = None
         try:
             async with asyncio.timeout(self.timeout):
                 if not isinstance(text, str) or not text.strip() or len(text) > 2000:
@@ -102,8 +102,6 @@ class AIOrchestrator:
                     authorized_memory=[], user_input=text, safety_context={},
                     output_schema=ConversationOutput.model_json_schema(),
                     prompt_id='conversation', prompt_version=PROMPT_VERSION)
-                # Zero retries is conservative: no provider idempotency contract
-                # exists yet, so even retryable failures cannot duplicate a turn.
                 response = await self.llm.generate(request)
                 if (response.status != ProviderStatus.SUCCEEDED or response.provider != 'mock'
                         or response.prompt_id != 'conversation' or response.prompt_version != PROMPT_VERSION):
@@ -113,6 +111,7 @@ class AIOrchestrator:
                         or output.blocked_action is not None or output.reply != reply_for(text)):
                     raise ValueError('Untrusted response')
                 reply = output.reply
+                optional_fallback = 'TTS_UNAVAILABLE'
                 try:
                     async with asyncio.timeout(min(2.0, self.timeout)):
                         speech = await self.tts.synthesize(TTSRequest(request_id=request_id, text=reply))
@@ -120,15 +119,20 @@ class AIOrchestrator:
                             raise ValueError('Audio is disabled')
                 except Exception:
                     code = 'TTS_UNAVAILABLE'
+                optional_fallback = 'AVATAR_UNAVAILABLE'
                 try:
                     async with asyncio.timeout(min(2.0, self.timeout)):
                         await self.avatar.set_state(AvatarStateRequest(request_id=request_id, state=AvatarState.IDLE))
                 except Exception:
                     code = code or 'AVATAR_UNAVAILABLE'
+                optional_fallback = None
         except asyncio.CancelledError:
             raise
         except TimeoutError:
-            reply, code, state = UNAVAILABLE, 'PROVIDER_TIMEOUT', AvatarState.ERROR
+            if optional_fallback:
+                code = code or optional_fallback
+            else:
+                reply, code, state = UNAVAILABLE, 'PROVIDER_TIMEOUT', AvatarState.ERROR
         except Exception:
             reply, code, state = UNAVAILABLE, 'INVALID_OR_UNAVAILABLE_OUTPUT', AvatarState.ERROR
         trace = dict(request_id=request_id, conversation_id=str(conversation_id), provider='mock',

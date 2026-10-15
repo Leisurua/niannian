@@ -123,9 +123,9 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
             val payload = event.getJSONObject("payload")
             when (type) {
                 "session.ready" -> {
-                    deadline?.cancel()
-                    current.value = current.value.copy(connected = true, busy = false, state = "LISTENING", message = "")
                     if (awaitingHandshake) {
+                        deadline?.cancel()
+                        current.value = current.value.copy(connected = true, busy = false, state = "LISTENING", message = "")
                         awaitingHandshake = false
                         send("session.start", JSONObject().put("client_session_id", UUID.randomUUID().toString()).put("input_mode", "TEXT"))
                     }

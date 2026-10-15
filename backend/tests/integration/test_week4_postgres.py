@@ -1,4 +1,3 @@
-"""Week 4 uses the guarded, disposable Week 3 PostgreSQL fixture."""
 import asyncio
 import threading
 
