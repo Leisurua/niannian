@@ -74,7 +74,8 @@ def run_checks(output: Path, *, device: bool = False) -> dict:
         command = [python, "-m", "pytest", "backend/tests", "tests", "-q", "--junitxml", str(report),
             "-k", "not test_built_apks_contain_no_secret_patterns",
             "--ignore=backend/tests/integration/test_week3_postgres.py",
-            "--ignore=backend/tests/integration/test_week3_storage.py"]
+            "--ignore=backend/tests/integration/test_week3_storage.py",
+            "--ignore=backend/tests/integration/test_week4_postgres.py"]
         if not ready:
             command += ["--ignore=backend/tests/integration"]
         if not ready:
