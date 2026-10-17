@@ -198,3 +198,9 @@ The subject or delegated data editor can request deletion/revoke. The service im
 ## 第三周获批补充
 
 `GET /v1/files/{id}/content` 与 download-url 使用相同当前身份、同家庭、Memory 可见性及 Consent 判定；短签名不替代 Bearer 登录。创建上传请求需要已授权 memory_id，主体/家庭从记忆推导；confirm 还必须为上传请求发起人。Reminder 使用持久化 family_id，不把同一用户的另一个家庭视为同一权限范围。家庭创建者的 CHILD/CAREGIVER 身份可管理该家庭业务，但仍必须具备数据主体的对应 Consent；其他 CHILD/CAREGIVER 必须有 MEMORY_WRITE/READ、REMINDER_WRITE/READ 或 SUMMARY_READ。任何管理角色均不能替长辈授予 Consent。
+
+## W5 approved additions
+
+`POST /v1/reminders/{id}/offline-feedback`: Elder owner/device session only; same ACTIVE family, current reminder and version, ownership required. Family read Consent is not required to submit own feedback; family cannot report on behalf of Elder. Audited, idempotent.
+
+Conversation RAG requires explicit current subject-to-caller Consent even for subject=caller (W5-04); no self-read exemption. Self-grants are independently described in UI and never grant family access. Existing REST personal read policy remains unchanged.

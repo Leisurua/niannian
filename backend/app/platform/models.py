@@ -11,3 +11,7 @@ from app.modules.reminder.models import Reminder, ReminderExecution
 from app.modules.conversation.models import Conversation
 
 DOMAIN_MODELS = WEEK2_MODELS + (Memory, FileAsset, Reminder, ReminderExecution, Conversation)
+from app.modules.memory.index_models import MemoryChunk, MemoryEmbedding
+from app.platform.tasks import Task
+
+DOMAIN_MODELS += (MemoryChunk, MemoryEmbedding, Task)

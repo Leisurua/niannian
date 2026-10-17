@@ -17,7 +17,7 @@ interface SessionStore {
     fun clear()
 }
 
-class SecureSession(context: Context) : SessionStore {
+class SecureSession(context: Context, private val onClear: () -> Unit = {}) : SessionStore {
     private val preferences = context.getSharedPreferences("niannian-session", Context.MODE_PRIVATE)
     private val associatedData = context.packageName.toByteArray(Charsets.UTF_8)
     private val alias = "niannian-session-key"
@@ -56,6 +56,7 @@ class SecureSession(context: Context) : SessionStore {
     }
 
     @Synchronized override fun clear() {
+        onClear()
         check(preferences.edit().clear().commit()) { "无法清除本机登录状态，请重试。" }
     }
 }

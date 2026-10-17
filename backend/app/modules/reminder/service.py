@@ -165,6 +165,39 @@ async def feedback(db, actor, execution_id, body, key, settings, request_id):
     return execution_view(row)
 
 
+async def offline_feedback(db, actor, reminder_id, body, key, settings, request_id):
+    parent = await access(db, actor, reminder_id)
+    if parent.owner_user_id != actor.user_id or not parent.active:
+        raise AppError('REMINDER_NOT_FOUND', '提醒不存在或无权反馈。', 404)
+    check_version(parent, body.reminder_version)
+    idem = audit.Idempotency(key, f'offline-feedback:{parent.id}', body.model_dump(mode='json'))
+    previous = await idem.previous(db, actor.user_id, max(86400, settings.idempotency_seconds))
+    if previous:
+        return execution_view(await db.get(ReminderExecution, previous))
+    now = utcnow()
+    if not body.scheduled_at <= body.feedback_at <= now or body.feedback_at < now - timedelta(hours=24):
+        raise AppError('VALIDATION_ERROR', '离线反馈时间无效或已过期，请联网核对。', 422)
+    item = next_occurrence(schedule(parent), body.scheduled_at, POLICY)
+    if not item or item.scheduled_at != body.scheduled_at:
+        raise AppError('VALIDATION_ERROR', '该时间不是有效的计划提醒。', 422)
+    if body.status == 'LATER' and (body.next_due_at is None or not now < body.next_due_at <= now + timedelta(days=1)):
+        raise AppError('VALIDATION_ERROR', '稍后时间已过或无效，请重新选择。', 422)
+    if body.status != 'LATER' and body.next_due_at is not None:
+        raise AppError('VALIDATION_ERROR', '只有稍后反馈可设置下次时间。', 422)
+    await db.execute(insert(ReminderExecution).values(id=uuid7(), reminder_id=parent.id, owner_user_id=actor.user_id,
+        occurrence_key=item.occurrence_key, scheduled_at=item.scheduled_at, local_date=item.local_date,
+        local_time=item.local_time, source='OFFLINE', feedback_status='PENDING', created_at=now).on_conflict_do_nothing(
+        constraint='uq_reminder_occurrence'))
+    row = await db.scalar(select(ReminderExecution).where(ReminderExecution.reminder_id == parent.id,
+        ReminderExecution.occurrence_key == item.occurrence_key).with_for_update())
+    if row.feedback_status in ('DONE', 'SKIPPED'):
+        raise AppError('ETAG_MISMATCH', '提醒已有反馈，请刷新核对。', 409)
+    row.feedback_status, row.feedback_at, row.next_due_at = body.status, now, body.next_due_at
+    await audit.record(db, actor.user_id, 'REMINDER_OFFLINE_FEEDBACK', 'REMINDER_EXECUTION', row.id,
+        parent.family_id, request_id, metadata=idem.metadata)
+    return execution_view(row)
+
+
 async def tick(db, settings, now=None):
     """One PostgreSQL-serialized cycle. Executions represent availability, not delivery."""
     now = now or utcnow()

@@ -675,6 +675,24 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ReminderExecutionResponse' }
         '409': { $ref: '#/components/responses/ConflictError' }
+  /reminders/{id}/offline-feedback:
+    parameters: [{ $ref: '#/components/parameters/ReminderId' }]
+    post:
+      tags: [Reminders]
+      operationId: submitOfflineReminderFeedback
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OfflineReminderFeedbackRequest' }
+      responses:
+        '200':
+          description: Owner-reported offline feedback durably recorded; not delivery or medication evidence
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReminderExecutionResponse' }
+        '409': { $ref: '#/components/responses/ConflictError' }
   /conversations:
     post:
       tags: [Conversations]
@@ -1635,6 +1653,16 @@ components:
         feedback_at: { $ref: '#/components/schemas/Timestamp' }
         feedback_note: { type: string }
         source: { type: string, enum: [ONLINE, OFFLINE] }
+        next_due_at: { $ref: '#/components/schemas/Timestamp' }
+    OfflineReminderFeedbackRequest:
+      type: object
+      additionalProperties: false
+      required: [reminder_version, scheduled_at, feedback_at, status]
+      properties:
+        reminder_version: { type: integer, minimum: 1 }
+        scheduled_at: { $ref: '#/components/schemas/Timestamp' }
+        feedback_at: { $ref: '#/components/schemas/Timestamp' }
+        status: { type: string, enum: [DONE, LATER, SKIPPED] }
         next_due_at: { $ref: '#/components/schemas/Timestamp' }
     ReminderFeedbackRequest:
       type: object

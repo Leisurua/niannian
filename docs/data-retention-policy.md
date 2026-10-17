@@ -66,3 +66,7 @@ COMPLETED / PARTIAL_FAILURE
 
 不能把 AuditLog 或备份清除失败隐藏为 `COMPLETED`；也不能因为异步物理清理尚未完成而继续返回已撤权数据。
 
+
+## W5-03 approved local reminder limits
+
+Owner reminder cache: at most 24h from sync, shortened by known rule/authorization expiry. Encrypted PendingAction: at most 24h from local feedback; expire and erase content with an unsynced notice. Clear matching data on logout, family switch, unbind or known revocation. No new server transcript/audio/summary retention. Full offline devices cannot observe remote revocation before reconnect/expiry.

@@ -13,7 +13,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
-assert len(DOMAIN_MODELS) == 13
+assert len(DOMAIN_MODELS) == 16
 
 
 def run_migrations_offline() -> None:

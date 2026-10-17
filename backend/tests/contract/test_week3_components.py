@@ -34,9 +34,9 @@ def test_internal_values_match_frozen_openapi():
     assert set(ScheduleRule.model_fields) <= set(schemas['ReminderCreate']['properties'])
 
 
-def test_all_thirteen_models_match_the_approved_dictionary():
+def test_all_implemented_models_match_the_approved_dictionary():
     dictionary = (ROOT / 'docs/data-dictionary.md').read_text(encoding='utf-8')
-    assert len(DOMAIN_MODELS) == 13
+    assert len(DOMAIN_MODELS) == 16
     for model in DOMAIN_MODELS:
         section = re.search(r'^## \d+\. ' + model.__tablename__ + r'\n(.*?)(?=^## |\Z)', dictionary, re.M | re.S)[1]
         columns = set(re.findall(r'^\| ([a-z][a-z0-9_]*) \|', section, re.M))

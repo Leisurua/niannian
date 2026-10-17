@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 12
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_DB: niannian_week2_test
           POSTGRES_USER: niannian

@@ -1,3 +1,4 @@
+"""Bounded Mock-only conversation with preauthorized, revalidated Memory citations."""
 import asyncio
 from dataclasses import dataclass
 from importlib.resources import files
@@ -13,9 +14,9 @@ from app.integrations.contracts import (
 )
 from app.integrations.mock import MockAvatar, MockLLM, MockTTS
 
-PROMPT_VERSION = '1.0.0'
+PROMPT_VERSION = '1.1.0'
 IDENTITY = '你好，我是念念 AI。今天想聊点什么？这是 Mock 演示，仅显示文字。'
-UNKNOWN = '我不确定，可以问问家人。当前演示尚未接入家庭记忆检索。'
+UNKNOWN = '我不确定，可以问问家人。当前没有可用且获准引用的家庭记忆。'
 UNAVAILABLE = '我现在没法回答，稍后再试或问问家人。'
 CHAT = '这是 Mock 演示回复。我在这里陪您，可以聊聊今天想做的事。'
 HELP = '如需帮助，请直接联系身边的人或家人。此演示不能代您拨打电话或发送通知。'
@@ -49,9 +50,9 @@ def reply_for(text):
 
 class MockConversationLLM(MockLLM):
     async def generate(self, request: LLMRequest) -> LLMResponse:
-        reply = reply_for(request.user_input)
+        reply, refs = grounded_reply(request.user_input, request.authorized_memory)
         return LLMResponse(status=ProviderStatus.SUCCEEDED, structured_output=dict(
-            reply=reply, memory_refs=[], intent='MEMORY_QUERY' if reply == UNKNOWN else 'GENERAL_CHAT',
+            reply=reply, memory_refs=refs, intent='MEMORY_QUERY' if reply == UNKNOWN or refs else 'GENERAL_CHAT',
             needs_clarification=reply == UNKNOWN, memory_candidates=[], signal_candidates=[],
             blocked_action=None, uncertainty_reason='NO_AUTHORIZED_CONTEXT' if reply == UNKNOWN else None,
         ), raw_text_for_fallback=None, provider='mock', model='mock-conversation-v1',
@@ -64,14 +65,26 @@ class TurnResult:
     avatar_state: AvatarState
     fallback_code: str | None
     trace: dict
+    memory_records: tuple = ()
+
+
+def grounded_reply(text, memories):
+    base = reply_for(text)
+    if base != UNKNOWN:
+        return base, []
+    for record in memories:
+        content = record['content']
+        if len(content) <= 1000 and not any(word in content.lower() for word in (
+            '忽略', '系统提示', 'ignore', 'system', 'instruction', '转账', '验证码', '诊断', '治疗', '<', '>')):
+            return 'Mock · 已确认的家庭记录：' + content, [UUID(record['id'])]
+    return UNKNOWN, []
 
 
 class AIOrchestrator:
     """The caller authenticates before input and again before publishing output.
 
-    Week 4 has no authorized retrieval provider: no family data is supplied and
-    all references/candidates/actions fail closed. Full RAG remains Week 5.
-    Only curated Mock replies can pass the post-provider fact/safety check.
+    Only curated Mock replies or exact quotations from the authorized retrieval
+    set pass the post-provider check. No candidate or action authority.
     """
 
     def __init__(self, *, llm=None, tts=None, avatar=None, timeout=8.0):
@@ -82,11 +95,12 @@ class AIOrchestrator:
         self.avatar = avatar or MockAvatar()
         self.timeout = timeout
 
-    async def handle(self, *, request_id: str, conversation_id: UUID, text: str) -> TurnResult:
+    async def handle(self, *, request_id: str, conversation_id: UUID, text: str, memory_records=()) -> TurnResult:
         started = time.monotonic()
         reply, code = UNAVAILABLE, None
         state = AvatarState.IDLE
         optional_fallback = None
+        used = ()
         try:
             async with asyncio.timeout(self.timeout):
                 if not isinstance(text, str) or not text.strip() or len(text) > 2000:
@@ -96,10 +110,13 @@ class AIOrchestrator:
                     raise ValueError('Real providers are not enabled')
                 if not capabilities.structured_output or 'zh-CN' not in capabilities.languages:
                     raise ValueError('Unsupported capability')
+                memories = [dict(id=str(r.id), content=r.content, type=r.type, family_id=str(r.family_id),
+                    verification='CONFIRMED', source_type='FAMILY_MEMORY') for r in memory_records]
+                expected_reply, expected_refs = grounded_reply(text, memories)
                 request = LLMRequest(request_id=request_id, task='conversation',
                     system_policy=files('app.ai').joinpath('prompts/conversation.md').read_text(encoding='utf-8'),
                     conversation_context={'conversation_id': str(conversation_id), 'input_mode': 'TEXT'},
-                    authorized_memory=[], user_input=text, safety_context={},
+                    authorized_memory=memories, user_input=text, safety_context={},
                     output_schema=ConversationOutput.model_json_schema(),
                     prompt_id='conversation', prompt_version=PROMPT_VERSION)
                 response = await self.llm.generate(request)
@@ -107,11 +124,12 @@ class AIOrchestrator:
                         or response.prompt_id != 'conversation' or response.prompt_version != PROMPT_VERSION):
                     raise ValueError('Invalid provider response')
                 output = ConversationOutput.model_validate(response.structured_output)
-                if (output.memory_refs or output.memory_candidates or output.signal_candidates
-                        or output.blocked_action is not None or output.reply != reply_for(text)):
+                if (output.memory_refs != expected_refs or output.memory_candidates or output.signal_candidates
+                        or output.blocked_action is not None or output.reply != expected_reply):
                     raise ValueError('Untrusted response')
                 reply = output.reply
                 optional_fallback = 'TTS_UNAVAILABLE'
+                used = tuple(r for r in memory_records if r.id in output.memory_refs)
                 try:
                     async with asyncio.timeout(min(2.0, self.timeout)):
                         speech = await self.tts.synthesize(TTSRequest(request_id=request_id, text=reply))
@@ -141,4 +159,4 @@ class AIOrchestrator:
             latency_ms=int((time.monotonic() - started) * 1000),
             result_status='FAILED' if state == AvatarState.ERROR else 'PARTIAL' if code else 'SUCCEEDED',
             fallback_code=code, memory_candidate_count=0, signal_candidate_count=0)
-        return TurnResult(reply, state, code, trace)
+        return TurnResult(reply, state, code, trace, used if state != AvatarState.ERROR else ())

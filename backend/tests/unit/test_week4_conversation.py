@@ -29,7 +29,7 @@ def test_mock_conversation_golden_subset(text, expected):
     assert result.assistant_text == expected
     assert result.avatar_state == AvatarState.IDLE
     assert result.trace['provider'] == 'mock'
-    assert result.trace['prompt_version'] == '1.0.0'
+    assert result.trace['prompt_version'] == '1.1.0'
     assert result.trace['memory_candidate_count'] == result.trace['signal_candidate_count'] == 0
     assert result.fallback_code is None
 

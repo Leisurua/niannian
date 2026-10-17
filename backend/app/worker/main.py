@@ -12,19 +12,22 @@ from app.platform.runtime import configure_event_loop
 async def run_cycle():
     from app.platform.db import session_factory
     from app.modules.reminder.service import tick
-    from app.modules.memory.files import cleanup
+    from app.modules.memory.files import schedule_cleanup
     from app.platform.storage import S3Storage
     from app.platform.models import DOMAIN_MODELS
+    from app.modules.memory.rag import maintenance
+    from app.worker.tasks import run_one
     settings = get_settings()
     logger = logging.getLogger('nianian.worker')
     try:
         async with session_factory() as db:
             await tick(db, settings)
+            await maintenance(db)
+            await schedule_cleanup(db)
             await db.commit()
-        if settings.s3_access_key and settings.s3_secret_key:
-            async with session_factory() as db:
-                await cleanup(db, S3Storage(settings))
-                await db.commit()
+        for _ in range(20):
+            if not await run_one(session_factory, S3Storage(settings) if settings.s3_access_key and settings.s3_secret_key else None):
+                break
     except Exception:
         log_event(logger, logging.ERROR, 'WORKER_CYCLE_FAILED', error_code='DEPENDENCY_UNAVAILABLE')
         raise

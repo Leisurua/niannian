@@ -2,6 +2,20 @@
 
 这是开发期间的门禁清单，不是新的设计文档。每项填写 `NOT_STARTED / IN_PROGRESS / PASS / FAIL / BLOCKED`，并附 evidence path。
 
+## Week 5 software closeout — 2026-10-17
+
+第五周软件实现与验证 `PASS`；含指定设备的整周验收仍为 `IN_PROGRESS`。见
+[交付记录](evidence/week5.md)和[已批准 W5-01..04](plan/week5-contract-review.md)。没有启动第六周。
+
+- [x] 已确认/授权/同家庭 RAG、引用复验、self-grant 与删除传播：软件路径 `PASS`；Mock 向量不代表真实语义检索准确率。
+- [x] pgvector 表、内部持久任务/租约/fence/退避/死信、延迟文件最终清理：`PASS`；实际 PostgreSQL/pgvector/MinIO 验证。
+- [x] 离线 occurrence owner-only 反馈、版本/时间校验、并发幂等、与在线 occurrence 合并：`PASS`。
+- [x] 双端提醒 UI、长辈 Room 加密缓存实现、持久队列与重启/过期/撤权状态：实现/JVM 验证 `PASS`；真实 Room/Keystore 行为需设备测试。
+- [x] 全量后端/契约/隐私 350 tests，128 次 JVM 测试，12 APK，8 份 lint 无错误，80 文件 hash 一致及 APK 扫描：`PASS`。
+- [x] 空测试库迁移回滚/重升级/模型一致性、源码目录外 wheel 验证：`PASS`。
+- [ ] REM 真机、系统通知/Doze、实际 Room/Keystore 与 UI/TalkBack：`NOT VERIFIED`；最近一次设备检查为 NO_AUTHORIZED_DEVICE。
+- [ ] 真实 AI Provider、正式签名发布与远端 CI：`NOT VERIFIED`；Mock/本地证据不能替代。
+
 ## Week 4 Mock software — 2026-10-15
 
 第四周 Mock 软件范围完成；实际语音和真机验收保持 `NOT VERIFIED`。见 [第四周记录](evidence/week4.md)。后续完整 RAG/摘要/安全事件闭环没有提前执行。

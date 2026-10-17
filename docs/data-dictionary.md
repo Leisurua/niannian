@@ -500,3 +500,29 @@ Purpose：授权、敏感读取、删除、导出、联系和设备动作的不�
 - Consent 撤回保留历史，但立即影响 Memory/RAG/Notification authorization。
 - AuditLog 不保存完整内容、token、完整电话或未脱敏健康信息。
 - 备份、AuditLog、WeeklyReport 和对话摘要的具体保留期需在隐私/威胁模型文档中确认。
+
+## 26. task_outbox
+
+W5-01 approved in docs/plan/week5-contract-review.md. Internal durable tasks only, no public CRUD.
+
+| Column | Type | Nullable | Default | Constraint | Description | Sensitivity |
+| --- | --- | --- | --- | --- | --- | --- |
+| id | uuid | no | app UUIDv7 | PK | task identity | S1 |
+| family_id | uuid | no | - | FK family.id RESTRICT | family boundary | S2 |
+| resource_id | uuid | no | - | service resolves by kind | source resource | S2 |
+| resource_version | integer | no | - | CHECK > 0 | source version | S0 |
+| kind | varchar(32) | no | - | CHECK MEMORY_INDEX/MEMORY_CLEANUP/FILE_CLEANUP | command | S0 |
+| business_key | varchar(200) | no | - | UNIQUE | kind/resource/version/authorization epoch | S1 |
+| status | varchar(16) | no | PENDING | CHECK PENDING/RUNNING/RETRY/SUCCEEDED/DEAD | task state | S0 |
+| attempts | integer | no | 0 | CHECK 0..max_attempts | attempts consumed at claim | S0 |
+| max_attempts | integer | no | 5 | CHECK > 0 | retry bound | S0 |
+| available_at | timestamptz | no | now() | indexed with status | next claim time | S0 |
+| lease_token | uuid | yes | null | required only for RUNNING | completion fence | S1 |
+| lease_until | timestamptz | yes | null | required only for RUNNING | expiry; indexed with status | S0 |
+| last_error_code | varchar(64) | yes | null | fixed redacted code | failure observation | S0 |
+| created_at | timestamptz | no | now() | - | creation | S0 |
+| updated_at | timestamptz | no | now() | - | transition | S0 |
+
+W5-01 vector constraints: ACTIVE requires a non-null finite nonzero vector with vector_dims = dimension.
+Mock uses dimension 8; production model changes remain gated. Chunk uniqueness is (memory_id, ordinal).
+Embedding metadata carries source_version and retrieval requires equality with current Memory.version.

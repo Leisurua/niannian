@@ -9,9 +9,10 @@ from urllib.parse import urlsplit
 import httpx
 import pytest
 from botocore.exceptions import ClientError
+from sqlalchemy import text
 
 from app.main import app
-from app.modules.memory.files import cleanup
+from app.worker.tasks import run_one
 from app.platform.config import Settings
 from app.platform.storage import S3Storage
 from backend.tests.integration.test_week3_postgres import system, household, grant, memory, photo, post
@@ -22,7 +23,7 @@ pytestmark = pytest.mark.skipif(not CONFIG or not os.environ.get('WEEK3_TEST_DAT
 
 
 def test_real_minio_private_upload_confirm_proxy_revoke_and_delete(system):
-    client, _, factory, _ = system
+    client, engine, factory, _ = system
     config = json.loads(Path(CONFIG).read_text(encoding='utf-8-sig'))
     endpoint = urlsplit(config['endpoint'])
     assert endpoint.scheme == 'http' and endpoint.hostname == '127.0.0.1' and endpoint.port == 59003
@@ -56,10 +57,12 @@ def test_real_minio_private_upload_confirm_proxy_revoke_and_delete(system):
     assert post(client, '/v1/consents/'+consent_id+'/revoke', home[4]).status_code == 201
     assert client.get(path, headers=home[2]).status_code == 404
     assert client.delete('/v1/memories/'+item['id'], headers={**home[4], 'Idempotency-Key':'real-photo-delete'}).status_code == 202
+    with engine.begin() as connection:
+        connection.execute(text("UPDATE file_asset SET created_at=now()-interval '1 hour' WHERE id=:id"), {'id': file_id})
     async def clean():
-        async with factory() as db:
-            await cleanup(db, storage)
-            await db.commit()
+        for _ in range(60):
+            if not await run_one(factory, storage):
+                break
     asyncio.run(clean())
     keys = storage.client.list_objects_v2(Bucket=config['bucket'], Prefix='private/'+home[0]+'/')
     assert keys.get('KeyCount', 0) == 0

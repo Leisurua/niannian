@@ -18,7 +18,7 @@ data class CompanionState(
     val busy: Boolean = false, val loggedIn: Boolean = false, val address: String = "http://10.0.2.2:8000",
     val userId: String = "", val userName: String = "", val families: List<FamilyChoice> = emptyList(),
     val selected: FamilyChoice? = null, val creator: String = "", val members: List<Member> = emptyList(),
-    val permissions: List<Permission> = emptyList(), val invite: String = "", val error: String = "",
+    val permissions: List<Permission> = emptyList(), val selfPermissions: List<Permission> = emptyList(), val invite: String = "", val error: String = "",
     val message: String = "", val pendingWrite: Boolean = false, val offline: Boolean = false,
     val canManageMembers: Boolean = false
 )
@@ -41,9 +41,12 @@ class CompanionModel(private val repository: FamilyRepository, val elder: Boolea
             catch (cancelled: CancellationException) { throw cancelled }
             catch (error: ApiFailure) {
                 if (error.status == 401) current.value = CompanionState(address = current.value.address, error = "登录已失效，请重新登录。")
-                else if (error.status == 403 || error.status == 404) current.value = current.value.copy(selected = null,
-                    creator = "", members = emptyList(), permissions = emptyList(), invite = "", canManageMembers = false,
+                else if (error.status == 403 || error.status == 404) {
+                    repository.invalidateLocalData()
+                    current.value = current.value.copy(selected = null,
+                    creator = "", members = emptyList(), permissions = emptyList(), selfPermissions = emptyList(), invite = "", canManageMembers = false,
                     error = error.message.orEmpty())
+                }
                 else current.value = current.value.copy(error = error.message.orEmpty())
             } catch (error: IllegalArgumentException) { current.value = current.value.copy(error = error.message ?: "请检查输入内容。") }
             catch (_: Exception) { current.value = current.value.copy(error = "连接或安全存储不可用，请检查网络和服务配置后重试。", offline = true) }
@@ -59,15 +62,16 @@ class CompanionModel(private val repository: FamilyRepository, val elder: Boolea
 
     private fun list(value: JSONArray): List<JSONObject> = (0 until value.length()).map { value.getJSONObject(it) }
 
-    private suspend fun home(selectedId: String? = current.value.selected?.id) {
+    private suspend fun home(selectedId: String? = current.value.selected?.id ?: repository.savedFamilyId().takeIf { it.isNotBlank() }) {
         val identity = repository.call("/v1/me")
         val me = identity.getJSONObject("user")
         val choices = repository.readAll("/v1/families?limit=100").map {
             FamilyChoice(it.getString("id"), it.getString("name"), it.getString("role"), it.getString("member_status"))
         }
         val selected = choices.find { it.id == selectedId } ?: choices.firstOrNull()
+        repository.noteFamily(selected?.id)
         current.value = current.value.copy(loggedIn = true, userId = me.getString("id"), userName = me.getString("display_name"),
-            families = choices, selected = selected, members = emptyList(), permissions = emptyList(), creator = "", offline = false,
+            families = choices, selected = selected, members = emptyList(), permissions = emptyList(), selfPermissions = emptyList(), creator = "", offline = false,
             invite = "", canManageMembers = false)
         if (selected?.status == "ACTIVE") {
             val family = repository.call("/v1/families/${selected.id}")
@@ -87,12 +91,16 @@ class CompanionModel(private val repository: FamilyRepository, val elder: Boolea
                 .map { item -> val codes = item.getJSONArray("permission_codes")
                     Member(item.getString("id"), item.getString("user_id"), item.optString("display_name"), item.getString("role"),
                         item.getString("status"), item.getLong("version"), (0 until codes.length()).map { codes.getString(it) }) } else emptyList()
-            current.value = current.value.copy(creator = creator, permissions = permissions, members = members, canManageMembers = admin)
+            val selfPermissions = if (elder) repository.readAll("/v1/consents?family_id=${selected.id}&subject_user_id=${current.value.userId}&grantee_user_id=${current.value.userId}&limit=100")
+                .groupBy { it.getString("scope") }.values.map { rows -> rows.maxBy { it.getLong("version") } }
+                .map { Permission(it.getString("id"), it.getString("scope"), it.getString("status"), it.getLong("version"), it.optString("expires_at", "")) }
+                else emptyList()
+            current.value = current.value.copy(creator = creator, permissions = permissions, selfPermissions = selfPermissions, members = members, canManageMembers = admin)
         }
     }
 
     fun reload() = action { home() }
-    fun choose(id: String) = action { current.value = current.value.copy(invite = ""); home(id) }
+    fun choose(id: String) = action { repository.noteFamily(id); current.value = current.value.copy(invite = ""); home(id) }
     fun createFamily(name: String) = action {
         require(name.isNotBlank()) { "请输入家庭称呼。" }
         val result = repository.call("/v1/families", "POST", JSONObject().put("name", name), true)
@@ -131,6 +139,16 @@ class CompanionModel(private val repository: FamilyRepository, val elder: Boolea
         require(elder && snapshot.creator.isNotEmpty() && snapshot.creator != snapshot.userId) { "请先加入家人创建的家庭。" }
         repository.call("/v1/consents", "POST", JSONObject().put("family_id", family.id).put("subject_user_id", snapshot.userId)
             .put("grantee_user_id", snapshot.creator).put("scope", scope).put("source", "SETTINGS"), true)
+        home()
+    }
+
+    fun grantSelf(scope: String) = action {
+        val snapshot = current.value
+        val family = snapshot.selected ?: return@action
+        require(elder && scope in setOf("FAMILY_MEMORY", "HEALTH_MEDICATION"))
+        repository.call("/v1/consents", "POST", JSONObject().put("family_id", family.id)
+            .put("subject_user_id", snapshot.userId).put("grantee_user_id", snapshot.userId)
+            .put("scope", scope).put("source", "SETTINGS"), true)
         home()
     }
 
