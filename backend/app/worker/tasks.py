@@ -1,9 +1,14 @@
-"""Run provider I/O between transactions; fence every database completion."""
 import asyncio
 
 from app.modules.memory import rag, files
 from app.platform import tasks
 from app.platform.identifiers import utcnow
+
+
+async def authorize_index_then_lock_lease(db, task, token):
+    current = await rag.prepare_index(db, task.resource_id, task.resource_version)
+    lease = await tasks.leased(db, task.id, token)
+    return current, lease
 
 
 async def run_one(factory, storage=None):
@@ -21,9 +26,8 @@ async def run_one(factory, storage=None):
                     await db.commit()
                 result = await rag.embed(prepared[2], str(task_id)) if prepared else None
                 async with factory() as db:
-                    # Family first, then task fence, matching API lock order.
-                    current = await rag.prepare_index(db, task.resource_id, task.resource_version)
-                    if await tasks.leased(db, task_id, token):
+                    current, lease = await authorize_index_then_lock_lease(db, task, token)
+                    if lease:
                         if prepared and prepared == current:
                             await rag.apply_index(db, task.resource_id, task.resource_version, prepared, result)
                         await tasks.finish(db, task_id, token)
@@ -37,7 +41,6 @@ async def run_one(factory, storage=None):
             else:
                 if storage is None:
                     raise RuntimeError('Storage unavailable')
-                # Provider I/O has neither a database session nor a business row lock.
                 async with factory() as db:
                     prepared = await files.prepare_cleanup(db, task.resource_id)
                 if prepared:

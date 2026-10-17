@@ -34,8 +34,7 @@ class ReminderStorage private constructor(context: Context) : ReminderStore {
                 .setKeySize(256).build())
         }.generateKey()
     }
-    // Synchronous key erasure hides all cached content even before asynchronous SQL cleanup.
-    fun invalidate() = synchronized(lock) {
+    fun revokeEncryptionKey() = synchronized(lock) {
         epoch++
         KeyStore.getInstance("AndroidKeyStore").apply { load(null); deleteEntry(alias) }
     }
@@ -64,7 +63,7 @@ class ReminderStorage private constructor(context: Context) : ReminderStore {
         database.runInTransaction { database.snapshots().save(row) }
     } }
     override suspend fun clear() = withContext(Dispatchers.IO) { synchronized(lock) {
-        invalidate(); database.snapshots().clear()
+        revokeEncryptionKey(); database.snapshots().clear()
     } }
     companion object {
         @Volatile private var instance: ReminderStorage? = null

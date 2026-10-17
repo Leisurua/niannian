@@ -8,8 +8,10 @@ from app.platform.config import get_settings
 from app.platform.logging import configure_logging, log_event
 from app.platform.runtime import configure_event_loop
 
+_memory_scan_after = None
 
 async def run_cycle():
+    global _memory_scan_after
     from app.platform.db import session_factory
     from app.modules.reminder.service import tick
     from app.modules.memory.files import schedule_cleanup
@@ -22,9 +24,10 @@ async def run_cycle():
     try:
         async with session_factory() as db:
             await tick(db, settings)
-            await maintenance(db)
+            next_memory_scan = await maintenance(db, _memory_scan_after)
             await schedule_cleanup(db)
             await db.commit()
+            _memory_scan_after = next_memory_scan
         for _ in range(20):
             if not await run_one(session_factory, S3Storage(settings) if settings.s3_access_key and settings.s3_secret_key else None):
                 break

@@ -71,7 +71,6 @@ class ReminderLedger(private val store: ReminderStore, private val clock: () -> 
             }
         }
         data.put("rules", cached).put("occurrences", occurrences).put("synced_at", now.epochSecond)
-        // Include known server executions from the preceding day, then future cached occurrences.
         cached.objects().forEach { r ->
             val parsed = parseRule(r)
             val server = r.optJSONArray("executions")?.objects().orEmpty().associateBy { Instant.parse(it.getString("scheduled_at")) }

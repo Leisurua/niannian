@@ -1,4 +1,3 @@
-"""W5 real pgvector, outbox and offline synchronization on guarded test databases."""
 import asyncio
 from datetime import timedelta
 from types import SimpleNamespace
@@ -326,3 +325,30 @@ def test_pgvector_rejects_nonfinite_input_in_database(system):
         with engine.begin() as conn:
             conn.execute(text("UPDATE memory_embedding SET embedding='[NaN,1,1,1,1,1,1,1]'::vector"))
     assert failure.value.orig.sqlstate.startswith('22')
+
+
+def test_maintenance_batches_advance_without_skipping_unindexed_sources(system):
+    client, engine, factory, storage = system
+    home = household(client)
+    grant(client, home)
+    own_grant(client, home)
+    for number in range(3):
+        memory(client, home, content=f'{FACT}演示记录{number}')
+    with engine.begin() as connection:
+        connection.execute(text('DELETE FROM task_outbox'))
+
+    async def advance(after=None):
+        async with factory() as db:
+            cursor = await rag.maintenance(db, after, limit=2)
+            await db.commit()
+            return cursor
+
+    cursor = asyncio.run(advance())
+    assert cursor is not None
+    asyncio.run(drain(factory, storage))
+    with engine.connect() as connection:
+        assert connection.execute(text('SELECT count(*) FROM memory_embedding')).scalar() == 2
+    assert asyncio.run(advance(cursor)) is None
+    asyncio.run(drain(factory, storage))
+    with engine.connect() as connection:
+        assert connection.execute(text('SELECT count(*) FROM memory_embedding')).scalar() == 3

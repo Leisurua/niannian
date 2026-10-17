@@ -1,4 +1,3 @@
-"""Transactional outbox with fenced, bounded PostgreSQL leases (W5-01)."""
 from datetime import datetime, timedelta
 from uuid import UUID
 

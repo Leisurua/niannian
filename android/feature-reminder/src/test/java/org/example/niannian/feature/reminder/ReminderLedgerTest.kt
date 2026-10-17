@@ -27,7 +27,7 @@ class ReminderLedgerTest {
         val key = first(ledger.snapshot()); ledger.feedback(key, "DONE")
         val first = ledger.attempted(key)!!.getJSONObject("action")
         val restarted = ReminderLedger(store) { now }
-        assertNull(restarted.attempted(key)) // persisted backoff
+        assertNull(restarted.attempted(key))
         now = now.plusSeconds(10)
         val retried = restarted.attempted(key)!!.getJSONObject("action")
         assertEquals(first.getString("key"), retried.getString("key"))

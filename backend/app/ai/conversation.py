@@ -1,4 +1,3 @@
-"""Bounded Mock-only conversation with preauthorized, revalidated Memory citations."""
 import asyncio
 from dataclasses import dataclass
 from importlib.resources import files

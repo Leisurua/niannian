@@ -33,7 +33,7 @@ async def generate_turn(factory, bearer, settings, orchestrator, conversation_id
     except asyncio.CancelledError:
         raise
     except Exception:
-        records = ()  # A failed index/provider never falls back to unfiltered content.
+        records = ()
     return await orchestrator.handle(request_id=request_id, conversation_id=conversation_id, text=text_input,
         memory_records=records)
 

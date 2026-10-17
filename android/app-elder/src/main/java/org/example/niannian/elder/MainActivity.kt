@@ -35,8 +35,8 @@ class MainActivity : ComponentActivity() {
                 preferences.edit().putString("device-id", it).apply()
             }
             val reminderStore = ReminderStorage.get(applicationContext)
-            val repository = FamilyRepository(SecureSession(applicationContext) { reminderStore.invalidate(); ReminderScheduler.cancel(applicationContext) }, BuildConfig.DEBUG,
-                onCacheInvalidated = { reminderStore.invalidate(); ReminderScheduler.cancel(applicationContext) })
+            val repository = FamilyRepository(SecureSession(applicationContext) { reminderStore.revokeEncryptionKey(); ReminderScheduler.cancel(applicationContext) }, BuildConfig.DEBUG,
+                onCacheInvalidated = { reminderStore.revokeEncryptionKey(); ReminderScheduler.cancel(applicationContext) })
             val transport = ConversationTransport()
             val conversationGateway = object : ConversationGateway {
                 override suspend fun create(family: String) = repository.call("/v1/conversations", "POST",

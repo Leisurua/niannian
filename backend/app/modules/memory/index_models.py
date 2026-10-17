@@ -1,4 +1,3 @@
-"""Frozen chunk/vector entities. No vendor SDK or new vector dependency."""
 from datetime import datetime
 import json
 from uuid import UUID

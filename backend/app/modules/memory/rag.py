@@ -1,11 +1,10 @@
-"""Public, permission-scoped Memory indexing/retrieval commands. Mock only."""
 import asyncio
 from dataclasses import dataclass
 import hashlib
 import math
 from types import SimpleNamespace
 
-from sqlalchemy import Float, Integer, delete, literal, or_, select, update
+from sqlalchemy import Float, Integer, delete, literal, or_, select, tuple_, update
 
 from app.integrations.contracts import EmbeddingRequest, EmbeddingResult
 from app.integrations.mock import MockEmbedding
@@ -80,20 +79,29 @@ async def consent_changed(db, family_id, subject, scope, epoch):
             await tasks.enqueue(db, 'MEMORY_INDEX', row.family_id, row.id, row.version, str(epoch))
 
 
-async def maintenance(db):
-    """Catch expiry/member loss and backfill course-sized confirmed collections."""
-    rows = (await db.scalars(select(Memory).order_by(Memory.family_id, Memory.id))).all()
+async def reconcile_index(db, row):
+    grant = await eligible(db, row, SimpleNamespace(user_id=row.subject_user_id))
+    if grant:
+        present = await db.scalar(select(MemoryEmbedding.id).join(MemoryChunk).where(
+            MemoryChunk.memory_id == row.id, MemoryChunk.status == 'ACTIVE', MemoryEmbedding.status == 'ACTIVE',
+            MemoryEmbedding.metadata_redacted['source_version'].astext.cast(Integer) == row.version).limit(1))
+        if not present:
+            await tasks.enqueue(db, 'MEMORY_INDEX', row.family_id, row.id, row.version, str(grant), rearm=True)
+    else:
+        await invalidate(db, row.id)
+        await tasks.enqueue(db, 'MEMORY_CLEANUP', row.family_id, row.id, row.version, 'ineligible')
+
+
+async def maintenance(db, after=None, limit=100):
+    if not 1 <= limit <= 100:
+        raise ValueError('Maintenance batch must contain 1..100 rows')
+    query = select(Memory).order_by(Memory.family_id, Memory.id).limit(limit)
+    if after is not None:
+        query = query.where(tuple_(Memory.family_id, Memory.id) > tuple_(after[0], after[1]))
+    rows = (await db.scalars(query)).all()
     for row in rows:
-        grant = await eligible(db, row, SimpleNamespace(user_id=row.subject_user_id))
-        if grant:
-            present = await db.scalar(select(MemoryEmbedding.id).join(MemoryChunk).where(
-                MemoryChunk.memory_id == row.id, MemoryChunk.status == 'ACTIVE', MemoryEmbedding.status == 'ACTIVE',
-                MemoryEmbedding.metadata_redacted['source_version'].astext.cast(Integer) == row.version).limit(1))
-            if not present:
-                await tasks.enqueue(db, 'MEMORY_INDEX', row.family_id, row.id, row.version, str(grant), rearm=True)
-        else:
-            await invalidate(db, row.id)
-            await tasks.enqueue(db, 'MEMORY_CLEANUP', row.family_id, row.id, row.version, 'ineligible')
+        await reconcile_index(db, row)
+    return (rows[-1].family_id, rows[-1].id) if len(rows) == limit else None
 
 
 async def prepare_index(db, resource_id, version):
@@ -103,7 +111,6 @@ async def prepare_index(db, resource_id, version):
     grant = await eligible(db, row, SimpleNamespace(user_id=row.subject_user_id))
     if not grant:
         return None
-    # Content is data, not a system prompt. Max 4000 chars per adapter input.
     chunks = [row.content[i:i + 2000] for i in range(0, len(row.content), 2000)] or [row.title]
     return row.family_id, grant, chunks
 
@@ -136,7 +143,6 @@ async def apply_index(db, resource_id, version, prepared, result):
 
 
 async def cleanup(db, resource_id):
-    # Never remove a newer ACTIVE index installed after this cleanup was queued.
     await db.execute(delete(MemoryChunk).where(MemoryChunk.memory_id == resource_id, MemoryChunk.status != 'ACTIVE'))
 
 

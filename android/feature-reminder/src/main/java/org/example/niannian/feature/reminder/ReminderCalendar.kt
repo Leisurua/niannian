@@ -9,10 +9,6 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
-/** Pure calculations only. No alarms, persistence, authorization or server writes.
- * Calendar policy approved in W3: first fold, skip gaps, equal quiet hours disabled.
- * These internal types are not new wire enums or API DTOs.
- */
 internal data class ReminderRule(
     val time: LocalTime,
     val timezone: String,
