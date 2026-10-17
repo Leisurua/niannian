@@ -33,10 +33,11 @@ private val scopeLabels = linkedMapOf("VOICE" to "语音处理", "PORTRAIT" to "
     "HEALTH_MEDICATION" to "健康与用药信息", "CONVERSATION_SUMMARY" to "交流摘要", "CAMERA_PROXIMITY" to "摄像头存在检测",
     "NOTIFICATION_TO_FAMILY" to "向家人发送关注提示")
 
-private data class ConsentChange(val familyId: String, val scope: String, val revokeId: String? = null)
+private data class ConsentChange(val familyId: String, val scope: String, val revokeId: String? = null, val self: Boolean = false)
 
 @Composable
 fun CompanionScreen(model: CompanionModel, environmentLabel: String,
+    offlineContent: @Composable () -> Unit = {},
     businessContent: @Composable (CompanionState, Boolean) -> Unit = { _, _ -> }) {
     val state by model.state.collectAsState()
     val mutationUnavailable = state.busy || state.offline || state.pendingWrite
@@ -51,11 +52,13 @@ fun CompanionScreen(model: CompanionModel, environmentLabel: String,
             val revoking = target.revokeId != null
             AlertDialog(onDismissRequest = { consentChange = null },
                 title = { Text(if (revoking) "撤回$label" else "允许$label") },
-                text = { Text(if (revoking) "撤回后，当前家庭创建者不能继续使用这项授权。其他授权保持原设置，授权历史会保留。"
+                text = { Text(if (target.self) if (revoking) "撤回后，念念将不能在您的交流中继续引用这项记忆，基础聊天仍可用。"
+                    else "允许在您与念念的交流中引用已确认的${label}。此项不会授权家人查看，不会开启通知；有效至您撤回，您随时可以关闭。"
+                    else if (revoking) "撤回后，当前家庭创建者不能继续使用这项授权。其他授权保持原设置，授权历史会保留。"
                     else "这会向当前家庭创建者授予“$label”权限。只有这一项会开启，您随时可以撤回。") },
                 confirmButton = { Button(enabled = !mutationUnavailable && state.selected?.id == target.familyId,
                     onClick = {
-                        if (target.revokeId != null) model.revoke(target.revokeId) else model.grant(target.scope)
+                        if (target.revokeId != null) model.revoke(target.revokeId) else if (target.self) model.grantSelf(target.scope) else model.grant(target.scope)
                         consentChange = null
                     }) { Text(if (revoking) "确认撤回" else "确认允许") } },
                 dismissButton = { OutlinedButton(onClick = { consentChange = null }) { Text("取消") } })
@@ -85,6 +88,7 @@ fun CompanionScreen(model: CompanionModel, environmentLabel: String,
                 OutlinedTextField(address, { address = it }, label = { Text("服务地址") }, modifier = Modifier.fillMaxWidth(), singleLine = true, enabled = !state.busy)
                 Action(if (model.elder) "以演示长辈登录" else "以演示家人登录", state.busy) { model.login(address) }
             } else {
+                if (model.elder && state.offline && state.selected == null) offlineContent()
                 Text("您好，${state.userName}", fontSize = 22.sp)
                 Text("请选择家庭", fontSize = 20.sp)
                 if (state.families.isEmpty()) Text("还没有家庭。家人可先创建家庭，再邀请长辈。")
@@ -109,7 +113,7 @@ fun CompanionScreen(model: CompanionModel, environmentLabel: String,
                 if (selected?.status == "ACTIVE") {
                     Text(selected.name, fontSize = 24.sp)
                     Text(if (model.elder) "今日 · 家庭已连接" else "家庭动态 · 已连接", fontSize = 20.sp)
-                    Text(if (model.elder) "家庭记忆与文字聊天已开放；提醒展示将按后续周计划接入。" else "家庭记忆已开放；提醒展示将按后续周计划接入。")
+                    Text(if (model.elder) "家庭记忆、Mock 文字聊天和提醒已开放。" else "家庭记忆与提醒已开放。")
                     businessContent(state, mutationUnavailable)
                     if (!model.elder) {
                         if (state.canManageMembers) Action("生成长辈邀请码", mutationUnavailable) { model.invite("ELDER") }
@@ -126,6 +130,16 @@ fun CompanionScreen(model: CompanionModel, environmentLabel: String,
                         state.permissions.forEach { Text("${scopeLabels[it.scope] ?: it.scope}：${permissionLabel(it)}") }
                         if (state.permissions.isEmpty()) Text("尚未收到分项授权。")
                     } else {
+                        Text("用于我与念念的交流", fontSize = 22.sp)
+                        Text("默认关闭；拒绝不影响基础聊天，与分享给家人的授权分别设置。")
+                        listOf("FAMILY_MEMORY", "HEALTH_MEDICATION").forEach { scope ->
+                            val permission = state.selfPermissions.find { it.scope == scope }
+                            val granted = permission?.let { permissionLabel(it) == "已授权" } == true
+                            Text("${scopeLabels[scope]}：${permission?.let(::permissionLabel) ?: "未授权"}")
+                            Action(if (granted) "停止在交流中使用${scopeLabels[scope]}" else "允许在交流中使用${scopeLabels[scope]}", mutationUnavailable) {
+                                consentChange = ConsentChange(selected.id, scope, if (granted) permission!!.id else null, self = true)
+                            }
+                        }
                         Text("我的授权 · 授予当前家庭创建者", fontSize = 22.sp)
                         Text("默认全部关闭，每项由您主动决定，可随时撤回。")
                         scopeLabels.forEach { (scope, label) ->

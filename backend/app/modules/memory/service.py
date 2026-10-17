@@ -105,6 +105,8 @@ async def create(db, actor, body, key, settings, request_id):
         verified_at=now if body.verification_status == 'CONFIRMED' else None, created_at=now, updated_at=now)
     db.add(row)
     await db.flush()
+    from app.modules.memory.rag import changed
+    await changed(db, row)
     await audit.record(db, actor.user_id, 'MEMORY_CREATED', 'MEMORY', row.id, row.family_id, request_id, metadata=idem.metadata)
     return await view(db, row)
 
@@ -125,6 +127,8 @@ async def update(db, actor, memory_id, body, expected, request_id):
         row.verification_status, row.verified_by, row.verified_at = 'PENDING', None, None
     row.version += 1
     row.updated_at = utcnow()
+    from app.modules.memory.rag import changed
+    await changed(db, row)
     await audit.record(db, actor.user_id, 'MEMORY_UPDATED', 'MEMORY', row.id, row.family_id, request_id)
     return await view(db, row)
 
@@ -159,6 +163,8 @@ async def action(db, actor, memory_id, action, body, key, settings, request_id):
             asset.status, asset.deleted_at = 'DELETE_REQUESTED', now
     row.version += 1
     row.updated_at = now
+    from app.modules.memory.rag import changed
+    await changed(db, row)
     event = await audit.record(db, actor.user_id, 'MEMORY_' + action.upper(), 'MEMORY', row.id, row.family_id,
                                request_id, metadata=idem.metadata if idem else {})
     if action == 'delete':

@@ -201,6 +201,11 @@
   },
   {
     "method": "POST",
+    "path": "/reminders/{id}/offline-feedback",
+    "operation_id": "submitOfflineReminderFeedback"
+  },
+  {
+    "method": "POST",
     "path": "/conversations",
     "operation_id": "createConversation"
   },

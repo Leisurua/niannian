@@ -568,3 +568,7 @@ BLE button event 若本地直接进入 Emergency，不创建公共 `/button-even
 WSS 两方向序号独立持久化；客户端可以递增跳号，旧序号拒绝；重连不重播内容。默认 TEXT/Mock，音频拒绝；默认帧 16 KiB、文本 2000 字符、每秒 20 条（可配置），每用户每进程最多 2 连接、同一会话数据库锁保证单连接。空闲每秒重新验证身份；本周摘要及 AI 回复明确返回 503/不可用，不接受成功但永远不执行的摘要作业。第四周会话编排与第六周摘要不提前实施。
 
 提醒日历策略：星期一=0，WEEKLY 以 start_date 所在周为锚，INTERVAL/DAILY 按本地日间隔；DST 重复选第一次、缺失跳过；quiet hours 起止相同表示关闭。免打扰期间延后提供本次执行，不改变 occurrence 身份；NO_RESPONSE 只表示反馈窗口内未收到反馈。照片解码/类型重编码是安全内容过滤，不声称通用杀毒服务。
+
+## W5-02 approved offline feedback
+
+POST `/reminders/{id}/offline-feedback` accepts reminder_version, scheduled_at, feedback_at, status DONE/LATER/SKIPPED and optional next_due_at. Bearer + Idempotency-Key required; owner only. Recompute the exact occurrence from the current rule; reject stale versions (409), inactive/deleted/foreign resources (404), invalid/future/older-than-24h feedback (422), and elapsed LATER times (422). Merge via the existing occurrence uniqueness. New rows have source OFFLINE; existing rows preserve source. No fake delivery timestamp. Response is ReminderExecutionResponse (200). A valid replay returns the durable result; changed payload with the same key is 409. No client NO_RESPONSE.

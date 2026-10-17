@@ -1,0 +1,418 @@
+[
+  {
+    "name": "daily-shanghai",
+    "rule": {
+      "schedule_time_local": "08:30",
+      "timezone": "Asia/Shanghai",
+      "start_date": "2026-10-09",
+      "recurrence_kind": "DAILY"
+    },
+    "start": "2026-10-09T00:00:00+00:00",
+    "end": "2026-10-12T00:00:00+00:00",
+    "expected": [
+      {
+        "scheduled_at": "2026-10-09T00:30:00+00:00",
+        "local_date": "2026-10-09",
+        "local_time": "08:30:00",
+        "occurrence_key": "259a0c6d0623ab3d3b60cd1899d8eaef50d7bda6c9e799f54decbf151b0f90f3",
+        "quiet": false
+      },
+      {
+        "scheduled_at": "2026-10-10T00:30:00+00:00",
+        "local_date": "2026-10-10",
+        "local_time": "08:30:00",
+        "occurrence_key": "0471435f8b924e85ebc7de21a8c9017a0f1826f6ef203764f231cc86d0b5359f",
+        "quiet": false
+      },
+      {
+        "scheduled_at": "2026-10-11T00:30:00+00:00",
+        "local_date": "2026-10-11",
+        "local_time": "08:30:00",
+        "occurrence_key": "afd863f501c1be522db30a104dbdc545f5c369bd8abddd9cbe32e23b4e7c812c",
+        "quiet": false
+      }
+    ]
+  },
+  {
+    "name": "interval-three-days",
+    "rule": {
+      "schedule_time_local": "08:30",
+      "timezone": "Asia/Shanghai",
+      "start_date": "2026-10-09",
+      "recurrence_kind": "INTERVAL",
+      "recurrence_interval": 3
+    },
+    "start": "2026-10-09T00:00:00+00:00",
+    "end": "2026-10-20T00:00:00+00:00",
+    "expected": [
+      {
+        "scheduled_at": "2026-10-09T00:30:00+00:00",
+        "local_date": "2026-10-09",
+        "local_time": "08:30:00",
+        "occurrence_key": "259a0c6d0623ab3d3b60cd1899d8eaef50d7bda6c9e799f54decbf151b0f90f3",
+        "quiet": false
+      },
+      {
+        "scheduled_at": "2026-10-12T00:30:00+00:00",
+        "local_date": "2026-10-12",
+        "local_time": "08:30:00",
+        "occurrence_key": "c73bd750f6f60d0eaa18a003a0bda85d0fc4708d49b9c77cb2182617acc11f14",
+        "quiet": false
+      },
+      {
+        "scheduled_at": "2026-10-15T00:30:00+00:00",
+        "local_date": "2026-10-15",
+        "local_time": "08:30:00",
+        "occurrence_key": "982a0c4e405ad724a89ef81b10ae2cbc2b137dafc13ce95568bd3216c2c60f03",
+        "quiet": false
+      },
+      {
+        "scheduled_at": "2026-10-18T00:30:00+00:00",
+        "local_date": "2026-10-18",
+        "local_time": "08:30:00",
+        "occurrence_key": "c13ef84e5e15fef490465705076f818d15ce246296acca8a9a6a6a98d4dd2528",
+        "quiet": false
+      }
+    ]
+  },
+  {
+    "name": "weekly-monday-anchor",
+    "rule": {
+      "schedule_time_local": "08:30",
+      "timezone": "Asia/Shanghai",
+      "start_date": "2026-10-09",
+      "recurrence_kind": "WEEKLY",
+      "recurrence_interval": 2,
+      "days_of_week": [
+        0,
+        4
+      ]
+    },
+    "start": "2026-10-09T00:00:00+00:00",
+    "end": "2026-10-25T00:00:00+00:00",
+    "expected": [
+      {
+        "scheduled_at": "2026-10-09T00:30:00+00:00",
+        "local_date": "2026-10-09",
+        "local_time": "08:30:00",
+        "occurrence_key": "259a0c6d0623ab3d3b60cd1899d8eaef50d7bda6c9e799f54decbf151b0f90f3",
+        "quiet": false
+      },
+      {
+        "scheduled_at": "2026-10-19T00:30:00+00:00",
+        "local_date": "2026-10-19",
+        "local_time": "08:30:00",
+        "occurrence_key": "21ba190bc13e945bf257a067d45f452a9312c7f19b0715f0166d454ca45a1d30",
+        "quiet": false
+      },
+      {
+        "scheduled_at": "2026-10-23T00:30:00+00:00",
+        "local_date": "2026-10-23",
+        "local_time": "08:30:00",
+        "occurrence_key": "0410db186b0f1f7134677a3e5ee86b8a0e93aa5d7df20bce53e7dbbdc5383d8a",
+        "quiet": false
+      }
+    ]
+  },
+  {
+    "name": "spring-gap",
+    "rule": {
+      "schedule_time_local": "02:30",
+      "timezone": "America/New_York",
+      "start_date": "2026-03-07",
+      "recurrence_kind": "DAILY"
+    },
+    "start": "2026-03-07T00:00:00+00:00",
+    "end": "2026-03-10T00:00:00+00:00",
+    "expected": [
+      {
+        "scheduled_at": "2026-03-07T07:30:00+00:00",
+        "local_date": "2026-03-07",
+        "local_time": "02:30:00",
+        "occurrence_key": "349be845065f008b3302fb38a2ece4cdae42356e76422d149e84f69d4ca469e0",
+        "quiet": false
+      },
+      {
+        "scheduled_at": "2026-03-09T06:30:00+00:00",
+        "local_date": "2026-03-09",
+        "local_time": "02:30:00",
+        "occurrence_key": "8efb7ced904e6351e504e1b57433176f5172266bdb7377299dcf823bc649b64b",
+        "quiet": false
+      }
+    ]
+  },
+  {
+    "name": "autumn-first-fold",
+    "rule": {
+      "schedule_time_local": "01:30",
+      "timezone": "America/New_York",
+      "start_date": "2026-11-01",
+      "recurrence_kind": "ONCE"
+    },
+    "start": "2026-11-01T00:00:00+00:00",
+    "end": "2026-11-02T00:00:00+00:00",
+    "expected": [
+      {
+        "scheduled_at": "2026-11-01T05:30:00+00:00",
+        "local_date": "2026-11-01",
+        "local_time": "01:30:00",
+        "occurrence_key": "639c6167fff7a2f2ccae21ab8d21b125f0edb699cf9700e69df5c99a5db52bc5",
+        "quiet": false
+      }
+    ]
+  },
+  {
+    "name": "half-hour-gap",
+    "rule": {
+      "schedule_time_local": "02:15",
+      "timezone": "Australia/Lord_Howe",
+      "start_date": "2026-10-04",
+      "recurrence_kind": "ONCE"
+    },
+    "start": "2026-10-03T00:00:00+00:00",
+    "end": "2026-10-05T00:00:00+00:00",
+    "expected": []
+  },
+  {
+    "name": "skipped-civil-date",
+    "rule": {
+      "schedule_time_local": "08:30",
+      "timezone": "Pacific/Apia",
+      "start_date": "2011-12-29",
+      "recurrence_kind": "DAILY"
+    },
+    "start": "2011-12-29T00:00:00+00:00",
+    "end": "2012-01-01T00:00:00+00:00",
+    "expected": [
+      {
+        "scheduled_at": "2011-12-29T18:30:00+00:00",
+        "local_date": "2011-12-29",
+        "local_time": "08:30:00",
+        "occurrence_key": "1a5db80c5c43a0dcca3bb992c3bfa7440d63d235e7d5813ee8ee9dff93a73512",
+        "quiet": false
+      },
+      {
+        "scheduled_at": "2011-12-30T18:30:00+00:00",
+        "local_date": "2011-12-31",
+        "local_time": "08:30:00",
+        "occurrence_key": "ec5605b58181c608385ea5f9fff78578a7b3bcc7474346dda518a854b4aab0fd",
+        "quiet": false
+      },
+      {
+        "scheduled_at": "2011-12-31T18:30:00+00:00",
+        "local_date": "2012-01-01",
+        "local_time": "08:30:00",
+        "occurrence_key": "cf00f3569730898c1b4cbfab0a6230af31b1dac3068aca4633ea69b79af97db8",
+        "quiet": false
+      }
+    ]
+  },
+  {
+    "name": "seconds-preserved",
+    "rule": {
+      "schedule_time_local": "08:30:12",
+      "timezone": "Asia/Shanghai",
+      "start_date": "2026-10-09",
+      "recurrence_kind": "DAILY"
+    },
+    "start": "2026-10-09T00:00:00+00:00",
+    "end": "2026-10-10T00:00:00+00:00",
+    "expected": [
+      {
+        "scheduled_at": "2026-10-09T00:30:12+00:00",
+        "local_date": "2026-10-09",
+        "local_time": "08:30:12",
+        "occurrence_key": "7352dcc06550b18ec8dd1b69ae97bffe09c2f3ca145afa7f1b4269d40e98362a",
+        "quiet": false
+      }
+    ]
+  },
+  {
+    "name": "end-date-inclusive",
+    "rule": {
+      "schedule_time_local": "08:30",
+      "timezone": "Asia/Shanghai",
+      "start_date": "2026-10-09",
+      "recurrence_kind": "DAILY",
+      "end_date": "2026-10-10"
+    },
+    "start": "2026-10-09T00:00:00+00:00",
+    "end": "2026-10-15T00:00:00+00:00",
+    "expected": [
+      {
+        "scheduled_at": "2026-10-09T00:30:00+00:00",
+        "local_date": "2026-10-09",
+        "local_time": "08:30:00",
+        "occurrence_key": "259a0c6d0623ab3d3b60cd1899d8eaef50d7bda6c9e799f54decbf151b0f90f3",
+        "quiet": false
+      },
+      {
+        "scheduled_at": "2026-10-10T00:30:00+00:00",
+        "local_date": "2026-10-10",
+        "local_time": "08:30:00",
+        "occurrence_key": "0471435f8b924e85ebc7de21a8c9017a0f1826f6ef203764f231cc86d0b5359f",
+        "quiet": false
+      }
+    ]
+  },
+  {
+    "name": "quiet-other-zone",
+    "rule": {
+      "schedule_time_local": "08:30",
+      "timezone": "Asia/Shanghai",
+      "start_date": "2026-10-09",
+      "recurrence_kind": "DAILY",
+      "quiet_hours": {
+        "start": "18:00",
+        "end": "22:00",
+        "timezone": "America/New_York"
+      }
+    },
+    "start": "2026-10-09T00:00:00+00:00",
+    "end": "2026-10-10T00:00:00+00:00",
+    "expected": [
+      {
+        "scheduled_at": "2026-10-09T00:30:00+00:00",
+        "local_date": "2026-10-09",
+        "local_time": "08:30:00",
+        "occurrence_key": "259a0c6d0623ab3d3b60cd1899d8eaef50d7bda6c9e799f54decbf151b0f90f3",
+        "quiet": true
+      }
+    ]
+  },
+  {
+    "name": "quiet-midnight",
+    "rule": {
+      "schedule_time_local": "00:30",
+      "timezone": "Asia/Shanghai",
+      "start_date": "2026-10-09",
+      "recurrence_kind": "DAILY",
+      "quiet_hours": {
+        "start": "22:00",
+        "end": "07:00",
+        "timezone": "Asia/Shanghai"
+      }
+    },
+    "start": "2026-10-08T00:00:00+00:00",
+    "end": "2026-10-10T00:00:00+00:00",
+    "expected": [
+      {
+        "scheduled_at": "2026-10-08T16:30:00+00:00",
+        "local_date": "2026-10-09",
+        "local_time": "00:30:00",
+        "occurrence_key": "8eb6104942a771f6dfe700b8675ee6ad28bb05f442c790c6020839ac8e9c3f60",
+        "quiet": true
+      },
+      {
+        "scheduled_at": "2026-10-09T16:30:00+00:00",
+        "local_date": "2026-10-10",
+        "local_time": "00:30:00",
+        "occurrence_key": "83f68b527febc4ac0b2026372c3e019f71464a3554949396a61cc972486e4fb4",
+        "quiet": true
+      }
+    ]
+  },
+  {
+    "name": "equal-quiet-disabled",
+    "rule": {
+      "schedule_time_local": "08:30",
+      "timezone": "Asia/Shanghai",
+      "start_date": "2026-10-09",
+      "recurrence_kind": "DAILY",
+      "quiet_hours": {
+        "start": "08:30",
+        "end": "08:30",
+        "timezone": "Asia/Shanghai"
+      }
+    },
+    "start": "2026-10-09T00:00:00+00:00",
+    "end": "2026-10-10T00:00:00+00:00",
+    "expected": [
+      {
+        "scheduled_at": "2026-10-09T00:30:00+00:00",
+        "local_date": "2026-10-09",
+        "local_time": "08:30:00",
+        "occurrence_key": "259a0c6d0623ab3d3b60cd1899d8eaef50d7bda6c9e799f54decbf151b0f90f3",
+        "quiet": false
+      }
+    ]
+  },
+  {
+    "name": "window-left-inclusive",
+    "rule": {
+      "schedule_time_local": "08:30",
+      "timezone": "Asia/Shanghai",
+      "start_date": "2026-10-09",
+      "recurrence_kind": "ONCE"
+    },
+    "start": "2026-10-09T00:30:00+00:00",
+    "end": "2026-10-09T00:30:01+00:00",
+    "expected": [
+      {
+        "scheduled_at": "2026-10-09T00:30:00+00:00",
+        "local_date": "2026-10-09",
+        "local_time": "08:30:00",
+        "occurrence_key": "259a0c6d0623ab3d3b60cd1899d8eaef50d7bda6c9e799f54decbf151b0f90f3",
+        "quiet": false
+      }
+    ]
+  },
+  {
+    "name": "window-right-exclusive",
+    "rule": {
+      "schedule_time_local": "08:30",
+      "timezone": "Asia/Shanghai",
+      "start_date": "2026-10-09",
+      "recurrence_kind": "ONCE"
+    },
+    "start": "2026-10-09T00:00:00+00:00",
+    "end": "2026-10-09T00:30:00+00:00",
+    "expected": []
+  },
+  {
+    "name": "after-once",
+    "rule": {
+      "schedule_time_local": "08:30",
+      "timezone": "Asia/Shanghai",
+      "start_date": "2026-10-09",
+      "recurrence_kind": "ONCE"
+    },
+    "start": "2026-10-10T00:00:00+00:00",
+    "end": "2026-10-11T00:00:00+00:00",
+    "expected": []
+  },
+  {
+    "name": "leap-day",
+    "rule": {
+      "schedule_time_local": "08:30",
+      "timezone": "Asia/Shanghai",
+      "start_date": "2028-02-28",
+      "recurrence_kind": "DAILY"
+    },
+    "start": "2028-02-28T00:00:00+00:00",
+    "end": "2028-03-02T00:00:00+00:00",
+    "expected": [
+      {
+        "scheduled_at": "2028-02-28T00:30:00+00:00",
+        "local_date": "2028-02-28",
+        "local_time": "08:30:00",
+        "occurrence_key": "fb25bc560b87b50cb4d8fcdfa1ebfc4887f3254ef30bfc42c2b369fdbeaf3c4d",
+        "quiet": false
+      },
+      {
+        "scheduled_at": "2028-02-29T00:30:00+00:00",
+        "local_date": "2028-02-29",
+        "local_time": "08:30:00",
+        "occurrence_key": "920788a215011f8e0178a5c51575d8b253b90abe4b77c94c97fe9dee06c54f1a",
+        "quiet": false
+      },
+      {
+        "scheduled_at": "2028-03-01T00:30:00+00:00",
+        "local_date": "2028-03-01",
+        "local_time": "08:30:00",
+        "occurrence_key": "3ada59313fb05402d666dd3cf71aca1e29ecd05aa5fbf19037408b504231973c",
+        "quiet": false
+      }
+    ]
+  }
+]

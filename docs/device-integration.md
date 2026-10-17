@@ -864,3 +864,15 @@ None required for this round. Existing UI states express `OFFLINE`, `Permission 
 ## 30. Implementation Handoff Rules
 
 The future Android Coding Agent must first complete the Hardware Acceptance Gate and fill the checklist. It may then implement adapters behind this document's interfaces, add unit/contract tests for state transitions and use the device test matrix as the release gate. It must not promote a Proposed decision to Accepted based only on emulator behavior.
+
+## 27. W5 approved reminder implementation
+
+W5-01..04 are accepted in plan/week5-contract-review.md. Owner reminder cache and pending feedback
+have a 24h maximum lifetime; known rule expiry can shorten cache validity. Room holds encrypted state
+and PendingAction together, with immutable idempotency keys, payload hashes and bounded retry metadata.
+Self RAG grants are independent of grants to family. Elder-only inexact alarms and minimal local
+notifications report submission rather than delivery; family app carries neither boot nor notification
+permissions. Full offline devices observe remote revoke at reconnect/expiry. Android suspension or
+force-stop can delay physical cleanup until the next allowed wake/start, but expired content/feedback
+cannot be shown/sent on resume. Actual Room/Keystore, notification permission and reboot/Doze behavior
+remain named-device checks; JVM tests cannot close these gates.

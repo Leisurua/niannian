@@ -48,6 +48,16 @@ async def granted_subjects(db, family_id, grantee, scope):
         row.expires_at is None or row.expires_at > now)]
 
 
+async def explicit_scope(db, family_id, subject, grantee, scope):
+    """AI processing requires an explicit grant, including subject == grantee."""
+    await family.context(db, grantee, family_id)
+    await family.require_member(db, family_id, subject)
+    row = await latest(db, family_id, subject, grantee, scope)
+    if not row or row.status != 'GRANTED' or row.expires_at and row.expires_at <= utcnow():
+        raise AppError('PERMISSION_CONSENT_REQUIRED', '尚未允许在交流中使用这项记忆。', 403)
+    return row.id
+
+
 async def visible(db, actor, row: Consent):
     fam, member = await family.context(db, actor.user_id, row.family_id)
     admin = fam.created_by_user_id == actor.user_id or member.permission_codes.get('MEMBER_ADMIN') is True
@@ -86,6 +96,9 @@ async def grant(db, actor, body, key, settings, request_id):
     row.audit_log_id = event.id
     db.add(row)
     await db.flush()
+    if row.subject_user_id == row.grantee_user_id:
+        from app.modules.memory.rag import consent_changed
+        await consent_changed(db, row.family_id, row.subject_user_id, row.scope, row.id)
     return view(row)
 
 
@@ -115,6 +128,8 @@ async def revoke(db, actor, consent_id, body, key, settings, request_id):
     row.audit_log_id = event.id
     db.add(row)
     await db.flush()
+    from app.modules.memory.rag import consent_changed
+    await consent_changed(db, row.family_id, row.subject_user_id, row.scope, row.id)
     return view(row)
 
 

@@ -22,10 +22,23 @@ data class RetriedWrite(val path: String, val response: JSONObject)
 class FamilyRepository(
     private val store: SessionStore,
     private val debug: Boolean,
+    private val onCacheInvalidated: () -> Unit = {},
     private val connectionFactory: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection }
 ) {
     private val requestMutex = Mutex()
     fun hasSession() = store.load().has("access_token")
+    fun savedUserId() = store.load().optString("user_id")
+    fun savedFamilyId() = store.load().optString("active_family")
+    fun invalidateLocalData() = onCacheInvalidated()
+    suspend fun noteFamily(id: String?) = requestMutex.withLock {
+        withContext(Dispatchers.IO) {
+            val saved = store.load()
+            if (saved.optString("active_family") != id.orEmpty()) {
+                onCacheInvalidated()
+                saved.put("active_family", id.orEmpty()); store.save(saved)
+            }
+        }
+    }
     fun savedOrigin() = store.load().optString("origin", "http://10.0.2.2:8000")
     fun clear() = store.clear()
     fun hasPending() = store.load().optBoolean("pending", false)
@@ -124,8 +137,9 @@ class FamilyRepository(
             .put("device", JSONObject().put("device_id", deviceId).put("name", if (elder) "演示长辈设备" else "演示家人设备").put("app_version", "0.1.0"))
         val result = exchange(origin, "/v1/auth/login", "POST", body, null, null)
         currentCoroutineContext().ensureActive()
+        onCacheInvalidated()
         store.save(JSONObject().put("origin", origin).put("access_token", result.getString("access_token"))
-            .put("refresh_token", result.getString("refresh_token")))
+            .put("refresh_token", result.getString("refresh_token")).put("user_id", result.getJSONObject("user").getString("id")))
     }
 
     private suspend fun refreshSessionOrRequireLogin(origin: String, session: JSONObject) {
@@ -161,10 +175,16 @@ class FamilyRepository(
         }
     }
 
-    private suspend fun executeCall(path: String, method: String, body: JSONObject?, idempotent: Boolean, expectedVersion: Long?): JSONObject = withContext(Dispatchers.IO) {
+    suspend fun submitOfflineFeedback(path: String, body: JSONObject, key: String): JSONObject = requestMutex.withLock {
+        require(Regex("/v1/reminders/[0-9a-f-]{36}/offline-feedback").matches(path))
+        require(UUID.fromString(key).toString() == key)
+        executeCall(path, "POST", body, false, null, key)
+    }
+
+    private suspend fun executeCall(path: String, method: String, body: JSONObject?, idempotent: Boolean, expectedVersion: Long?, explicitKey: String? = null): JSONObject = withContext(Dispatchers.IO) {
         var session = store.load()
         val origin = ConnectionPolicy.origin(session.getString("origin"), debug)
-        var key: String? = null
+        var key: String? = explicitKey
         if (idempotent) {
             val fingerprint = MessageDigest.getInstance("SHA-256").digest((method + path + body.toString()).toByteArray())
                 .joinToString("") { "%02x".format(it) }

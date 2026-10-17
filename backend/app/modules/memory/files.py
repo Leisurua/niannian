@@ -118,14 +118,48 @@ async def delete(db, actor, file_id, key, settings, request_id):
         return {'status': 'PENDING'}
     row = await access(db, actor, file_id, write=True, removal=True)
     row.status, row.deleted_at = 'DELETE_REQUESTED', utcnow()
+    from app.platform.tasks import enqueue
+    await enqueue(db, 'FILE_CLEANUP', row.family_id, row.id, 1)
     await audit.record(db, actor.user_id, 'FILE_DELETE_REQUESTED', 'FILE', row.id, row.family_id, request_id, metadata=idem.metadata)
     return {'status': 'PENDING'}
 
 
-async def cleanup(db, storage, now=None):
+async def prepare_cleanup(db, file_id):
+    row = await db.get(FileAsset, file_id)
+    if row and row.status == 'DELETE_REQUESTED':
+        return (row.object_key, row.object_key + '.safe'), row.created_at + timedelta(seconds=360), 'ALL'
+    if row and row.status == 'AVAILABLE' and row.created_at + timedelta(seconds=360) <= utcnow():
+        return (row.object_key,), None, 'RAW'
+    return None
+
+
+async def complete_cleanup(db, file_id, mode):
+    row = await db.get(FileAsset, file_id, with_for_update=True)
+    if row and mode == 'ALL' and row.status == 'DELETE_REQUESTED':
+        row.status, row.deleted_at = 'DELETED', utcnow()
+    elif row and mode == 'RAW' and row.status == 'AVAILABLE':
+        await audit.record(db, None, 'FILE_UPLOAD_WINDOW_CLOSED', 'FILE', row.id, row.family_id)
+
+
+async def schedule_cleanup(db):
+    from app.platform.tasks import enqueue
+    now = utcnow()
+    expired = (await db.scalars(select(FileAsset).where(FileAsset.status.in_(('PENDING_UPLOAD', 'QUARANTINED')),
+        FileAsset.retention_until <= now).limit(100).with_for_update(skip_locked=True))).all()
+    for row in expired:
+        row.status, row.deleted_at = 'DELETE_REQUESTED', now
+        await enqueue(db, 'FILE_CLEANUP', row.family_id, row.id, 1)
+    available = (await db.scalars(select(FileAsset).where(FileAsset.status == 'AVAILABLE',
+        FileAsset.created_at < now - timedelta(seconds=360),
+        ~FileAsset.id.in_(audit.recorded_targets('FILE_UPLOAD_WINDOW_CLOSED', 'FILE'))).limit(100))).all()
+    for row in available:
+        await enqueue(db, 'FILE_CLEANUP', row.family_id, row.id, 1, 'upload-window')
+
+
+async def cleanup(db, storage, now=None, requested=True):
     now = now or utcnow()
     rows = (await db.scalars(select(FileAsset).where(
-        (FileAsset.status == 'DELETE_REQUESTED') | ((FileAsset.status.in_(('PENDING_UPLOAD', 'QUARANTINED'))) & (FileAsset.retention_until <= now))
+        ((FileAsset.status == 'DELETE_REQUESTED') & requested) | ((FileAsset.status.in_(('PENDING_UPLOAD', 'QUARANTINED'))) & (FileAsset.retention_until <= now))
     ).limit(100).with_for_update(skip_locked=True))).all()
     for row in rows:
         try:

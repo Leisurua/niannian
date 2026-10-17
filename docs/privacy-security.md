@@ -371,3 +371,7 @@ Export 要求当前认证、必要时 recent re-auth、scope/owner/Consent 再�
 - 外部 provider、手机/短信/Push、BLE 协议、指定平板和 Kiosk policy 未完全确定，相关保证均为 `TBD / Decision Required`。
 - 已签发 URL、已发送 provider payload、设备物理访问、截图和用户主动外泄无法被系统完全收回，属于残余风险；必须缩短窗口、最小化内容并在 UI/政策中透明说明。
 - Android/Python 依赖版本应锁定并进行漏洞扫描、弃用包审查、更新 review 和 secret/static analysis；这些是后续 tooling 建议，本轮没有执行扫描。
+
+## W5-03/04 approved implementation policy
+
+Owner-only reminder cache is encrypted and scoped by family/owner/version with at most 24h freshness, bounded by known rule/authorization expiry. Pending feedback expires 24h after local feedback and is then not uploaded; payload is erased with a visible unsynced notice. Family views hide health data offline. Logout/unbind/known revocation/family switch clears matching cache and queue. A fully offline owner device learns remote revocation only on reconnection or local expiry, not instantaneously. No offline RAG or family summary cache is enabled. RAG uses explicit self-grants for own conversations, with current authorization rechecked before generation, publication and repeat; rejection preserves basic conversation. See approved W5 proposal for exact scope.

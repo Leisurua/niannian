@@ -2,13 +2,19 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Query, Request, Response
 
 from app.modules.reminder import service
-from app.modules.reminder.schemas import ReminderCreate, ReminderFeedback, ReminderType
+from app.modules.reminder.schemas import OfflineReminderFeedback, ReminderCreate, ReminderFeedback, ReminderType
 from app.platform.authentication import current_identity
 from app.platform.config import get_settings
 from app.platform.resource_access import expected_version
 from app.platform.uow import transaction
 
 router = APIRouter(prefix='/v1', tags=['Reminders'])
+
+
+@router.post('/reminders/{reminder_id}/offline-feedback', operation_id='submitOfflineReminderFeedback')
+async def offline_feedback(reminder_id: UUID, body: OfflineReminderFeedback, request: Request,
+    idempotency_key: str = Header(), actor=Depends(current_identity), db=Depends(transaction)):
+    return await service.offline_feedback(db, actor, reminder_id, body, idempotency_key, get_settings(), request.state.request_id)
 
 
 @router.get('/reminders', operation_id='listReminders')
