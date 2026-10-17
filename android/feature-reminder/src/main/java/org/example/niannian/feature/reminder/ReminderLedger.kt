@@ -130,7 +130,7 @@ class ReminderLedger(private val store: ReminderStore, private val clock: () -> 
                 due <= now && !ReminderCalendar.inQuietHours(now, parseRule(rule).quiet)
         }.toList()
     }
-    suspend fun presented(keys: List<String>) = transaction { data, _ ->
+    suspend fun recordNotificationSubmission(keys: List<String>) = transaction { data, _ ->
         keys.forEach { data.optJSONObject("occurrences")?.optJSONObject(it)?.put("presented", true) }
     }
     suspend fun feedback(key: String, status: String, next: Instant? = null) = transaction { data, now ->

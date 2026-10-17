@@ -91,7 +91,7 @@ class ReminderLedgerTest {
     @Test fun notificationSubmissionSurvivesRestartWithoutDuplicatingOccurrence() = runBlocking {
         val store = EphemeralReminderStore(); val ledger = ready(store)
         val due = ledger.notificationCandidates(); assertEquals(1, due.size)
-        ledger.presented(due)
+        ledger.recordNotificationSubmission(due)
         val restarted = ReminderLedger(store) { now }
         assertTrue(restarted.notificationCandidates().isEmpty())
         restarted.feedback(due.single(), "LATER", now.plusSeconds(600))

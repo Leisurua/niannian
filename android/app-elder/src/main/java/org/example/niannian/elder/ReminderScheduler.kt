@@ -55,8 +55,7 @@ object ReminderScheduler {
                     .setContentText("有一条本人提醒，请打开念念查看。")
                     .setVisibility(Notification.VISIBILITY_PRIVATE).setOnlyAlertOnce(true).setAutoCancel(true)
                     .setContentIntent(pending).build()) }
-                // Records notification submission, not delivery or medication completion.
-                if (submitted) ledger.presented(due)
+                if (submitted) ledger.recordNotificationSubmission(due)
             }
         }
         arm(context)
