@@ -142,7 +142,6 @@ async def complete_cleanup(db, file_id, mode):
 
 
 async def schedule_cleanup(db):
-    """Only enqueue here; all production storage I/O uses bounded fenced tasks."""
     from app.platform.tasks import enqueue
     now = utcnow()
     expired = (await db.scalars(select(FileAsset).where(FileAsset.status.in_(('PENDING_UPLOAD', 'QUARANTINED')),
