@@ -15,3 +15,6 @@ from app.modules.memory.index_models import MemoryChunk, MemoryEmbedding
 from app.platform.tasks import Task
 
 DOMAIN_MODELS += (MemoryChunk, MemoryEmbedding, Task)
+from app.modules.conversation.proactive_models import ProactivePreference, ProactiveDailyCounter
+
+DOMAIN_MODELS += (ProactivePreference, ProactiveDailyCounter)

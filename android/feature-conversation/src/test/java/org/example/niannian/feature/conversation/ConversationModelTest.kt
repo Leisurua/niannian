@@ -134,4 +134,14 @@ class ConversationModelTest {
         assertFalse(model.state.value.connected)
         model.clear()
     }
+
+    @Test fun successfulEndKeepsOnlyCurrentRecapIdUntilClear() = runBlocking {
+        val gateway = Gateway(); val model = ConversationModel(gateway, this)
+        model.bind("family", "elder"); model.start(); yield()
+        val id = model.state.value.id
+        model.end(); yield()
+        assertEquals(id, model.state.value.recapId)
+        assertEquals("", model.state.value.reply)
+        model.clear(); assertEquals("", model.state.value.recapId)
+    }
 }

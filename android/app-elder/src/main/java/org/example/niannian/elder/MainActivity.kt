@@ -10,6 +10,8 @@ import org.example.niannian.feature.memory.MemoryPanel
 import org.json.JSONObject
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import java.util.UUID
@@ -20,6 +22,9 @@ import org.example.niannian.feature.auth.CompanionModel
 import org.example.niannian.feature.auth.CompanionScreen
 import org.example.niannian.feature.auth.FamilyRepository
 import org.example.niannian.feature.auth.SecureSession
+import org.example.niannian.feature.auth.ConversationToolsGateway
+import org.example.niannian.feature.auth.ConversationToolsModel
+import org.example.niannian.feature.auth.ConversationToolsPanel
 import org.example.niannian.feature.conversation.ConversationGateway
 import org.example.niannian.feature.conversation.ConversationModel
 import org.example.niannian.feature.conversation.ConversationPanel
@@ -38,6 +43,10 @@ class MainActivity : ComponentActivity() {
             val repository = FamilyRepository(SecureSession(applicationContext) { reminderStore.revokeEncryptionKey(); ReminderScheduler.cancel(applicationContext) }, BuildConfig.DEBUG,
                 onCacheInvalidated = { reminderStore.revokeEncryptionKey(); ReminderScheduler.cancel(applicationContext) })
             val transport = ConversationTransport()
+            val toolsGateway = object : ConversationToolsGateway {
+                override suspend fun call(path: String, method: String, body: JSONObject?, version: Long?, reason: String?) =
+                    repository.call(path, method, body, method == "POST" && (path.endsWith("/confirm") || path.endsWith("/pause-today")), version, reason)
+            }
             val conversationGateway = object : ConversationGateway {
                 override suspend fun create(family: String) = repository.call("/v1/conversations", "POST",
                     JSONObject().put("family_id", family).put("input_mode", "TEXT")).getString("id")
@@ -67,6 +76,7 @@ class MainActivity : ComponentActivity() {
                         ReminderModel::class.java -> ReminderModel(reminderGateway, reminderStore, true, onCacheChanged = { ReminderScheduler.arm(applicationContext) })
                         MemoryModel::class.java -> MemoryModel(memoryGateway)
                         ConversationModel::class.java -> ConversationModel(conversationGateway)
+                        ConversationToolsModel::class.java -> ConversationToolsModel(toolsGateway)
                         else -> CompanionModel(repository, true, deviceId)
                     }
                 )!!
@@ -75,6 +85,7 @@ class MainActivity : ComponentActivity() {
             val reminderModel = ViewModelProvider(this, factory)[ReminderModel::class.java]
             val memoryModel = ViewModelProvider(this, factory)[MemoryModel::class.java]
             val conversationModel = ViewModelProvider(this, factory)[ConversationModel::class.java]
+            val toolsModel = ViewModelProvider(this, factory)[ConversationToolsModel::class.java]
             val runtime = RuntimeConfig.fromBuildValues(BuildConfig.ENVIRONMENT, BuildConfig.PROVIDER_MODE)
             setContent { CompanionScreen(model, runtime.statusLabel, offlineContent = { CachedReminderEntry(reminderModel, reminderStore, repository.savedUserId()) { ReminderScheduler.arm(applicationContext) } }) { state, unavailable ->
                 val subjects = if (model.elder) listOf(state.userId to state.userName)
@@ -82,6 +93,9 @@ class MainActivity : ComponentActivity() {
                 if (!state.busy) ReminderPanel(reminderModel, state.selected!!.id, state.userId, subjects, unavailable) { ReminderScheduler.arm(applicationContext) }
                 MemoryPanel(memoryModel, state.selected!!.id, state.userId, subjects, unavailable)
                 ConversationPanel(conversationModel, state.selected!!.id, state.userId, unavailable)
+                val conversationState by conversationModel.state.collectAsState()
+                ConversationToolsPanel(toolsModel, state.selected!!.id, subjects, true, unavailable,
+                    conversationState.recapId.ifEmpty { conversationState.id })
             } }
         }
     }

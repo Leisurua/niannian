@@ -572,3 +572,32 @@ WSS 两方向序号独立持久化；客户端可以递增跳号，旧序号拒�
 ## W5-02 approved offline feedback
 
 POST `/reminders/{id}/offline-feedback` accepts reminder_version, scheduled_at, feedback_at, status DONE/LATER/SKIPPED and optional next_due_at. Bearer + Idempotency-Key required; owner only. Recompute the exact occurrence from the current rule; reject stale versions (409), inactive/deleted/foreign resources (404), invalid/future/older-than-24h feedback (422), and elapsed LATER times (422). Merge via the existing occurrence uniqueness. New rows have source OFFLINE; existing rows preserve source. No fake delivery timestamp. Response is ReminderExecutionResponse (200). A valid replay returns the durable result; changed payload with the same key is 409. No client NO_RESPONSE.
+
+
+## Week 6 approved implementation (W6-01..04, 2026-10-18)
+
+Approval: [W6-01..04](plan/week6-contract-review.md), project owner replied “是” in this chat.
+This section supersedes earlier Week 3/4 “summary unavailable” implementation notes for the reviewed Mock path only.
+
+- Conversation adds summary_version > 0; outbox permits CONVERSATION_SUMMARY and CONVERSATION_SUMMARY_CLEANUP.
+  Store curated Mock themes only, at most 1000 characters; PENDING is unreadable. First input starts a non-renewable
+  maximum 24h lifetime, shortened by known self-grant expiry. No transcript/audio/summary export or local disk cache.
+- Explicit self CONVERSATION_SUMMARY grant enables generation; named family grant enables authorized reads separately.
+  Every read requires current family/member/role/SUMMARY_READ/grantee/scope/resource checks. Self revoke hides and
+  schedules cleanup; revoking one reader does not revoke other readers. Summary grants never enable notifications.
+- GET conversation and POST summary require X-Access-Reason FAMILY_CHECK_IN/FOLLOW_UP for non-owners (422 when
+  absent/invalid after access check), persisted as AuditLog.reason without content. Responses use no-store.
+  The known-id view exposes no history list, transcript or discovery API. Failure/empty/expired never falls back to raw input.
+- Four proactive operations: GET/PUT /families/{family_id}/proactive-preferences/{owner_user_id}, POST same path
+  /confirm and /pause-today. PUT requires If-Match; POST commands require Idempotency-Key. CHILD/CAREGIVER with
+  REMINDER_WRITE proposes; only ELDER owner confirms current version or pauses. GET needs owner/REMINDER_READ.
+  Default disabled, cap 0..3, IANA timezone, local minute times, paired quiet hours. No new permission codes.
+- ProactivePreference and ProactiveDailyCounter are the approved tables. Counter reservation is transactional and
+  survives failure/restart; retains no text, expires after 48h. Timezone changes carry recent usage and today's pause.
+  Worker sends only transient id/version/time hints through PostgreSQL NOTIFY to a currently connected owner WSS;
+  API rechecks current authorization/settings before a fixed Mock invitation. No offline/background wake or push.
+  Reconnect does not replay notifications. Failed/lost invitation can consume a slot and is never labelled delivered.
+  Necessary reminders and emergency access are independent of proactive pause. No new WSS message type/state.
+- Full candidate category/action vocabulary and SCAM_CODE_SECRECY are frozen in W6-03. Six types remain temporary
+  Mock candidates, not facts/events/notifications. Deterministic emergency/scam copy survives LLM/TTS failure.
+  SignalEvent persistence and notification delivery remain Week 7. Real voice/provider gates remain unapproved.

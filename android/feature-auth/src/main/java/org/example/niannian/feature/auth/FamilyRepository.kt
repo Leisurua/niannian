@@ -89,7 +89,7 @@ class FamilyRepository(
         throw ApiFailure(502, "PAGE_LIMIT", "列表过长，暂未完整读取，请稍后重试。")
     }
 
-    private fun exchange(origin: String, path: String, method: String, body: JSONObject?, access: String?, key: String?, ifMatch: String? = null): JSONObject {
+    private fun exchange(origin: String, path: String, method: String, body: JSONObject?, access: String?, key: String?, ifMatch: String? = null, reason: String? = null): JSONObject {
         val connection = connectionFactory(URL(origin + path))
         try {
             connection.instanceFollowRedirects = false
@@ -100,6 +100,7 @@ class FamilyRepository(
             access?.let { connection.setRequestProperty("Authorization", "Bearer $it") }
             key?.let { connection.setRequestProperty("Idempotency-Key", it) }
             ifMatch?.let { connection.setRequestProperty("If-Match", it) }
+            reason?.let { require(it in listOf("FAMILY_CHECK_IN", "FOLLOW_UP")); connection.setRequestProperty("X-Access-Reason", it) }
             body?.let {
                 connection.doOutput = true
                 connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
@@ -159,8 +160,8 @@ class FamilyRepository(
         }
     }
 
-    suspend fun call(path: String, method: String = "GET", body: JSONObject? = null, idempotent: Boolean = false, expectedVersion: Long? = null): JSONObject = requestMutex.withLock {
-        executeCall(path, method, body, idempotent, expectedVersion)
+    suspend fun call(path: String, method: String = "GET", body: JSONObject? = null, idempotent: Boolean = false, expectedVersion: Long? = null, reason: String? = null): JSONObject = requestMutex.withLock {
+        executeCall(path, method, body, idempotent, expectedVersion, reason = reason)
     }
 
     suspend fun <T> withConversationConnection(id: String, open: (String, String) -> T): T {
@@ -181,7 +182,7 @@ class FamilyRepository(
         executeCall(path, "POST", body, false, null, key)
     }
 
-    private suspend fun executeCall(path: String, method: String, body: JSONObject?, idempotent: Boolean, expectedVersion: Long?, explicitKey: String? = null): JSONObject = withContext(Dispatchers.IO) {
+    private suspend fun executeCall(path: String, method: String, body: JSONObject?, idempotent: Boolean, expectedVersion: Long?, explicitKey: String? = null, reason: String? = null): JSONObject = withContext(Dispatchers.IO) {
         var session = store.load()
         val origin = ConnectionPolicy.origin(session.getString("origin"), debug)
         var key: String? = explicitKey
@@ -199,11 +200,11 @@ class FamilyRepository(
         }
         val result = try {
             try {
-                exchange(origin, path, method, body, session.getString("access_token"), key, expectedVersion?.toString())
+                exchange(origin, path, method, body, session.getString("access_token"), key, expectedVersion?.toString(), reason)
             } catch (error: ApiFailure) {
                 if (error.status != 401 || error.code != "AUTH_TOKEN_EXPIRED") throw error
                 refreshSessionOrRequireLogin(origin, session)
-                exchange(origin, path, method, body, session.getString("access_token"), key, expectedVersion?.toString())
+                exchange(origin, path, method, body, session.getString("access_token"), key, expectedVersion?.toString(), reason)
             }
         } catch (error: ApiFailure) {
             if (error.status == 401) store.clear()

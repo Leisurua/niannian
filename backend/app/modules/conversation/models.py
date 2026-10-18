@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Index, String, Text, func
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,6 +19,7 @@ class Conversation(Base):
         CheckConstraint('client_sequence >= 0 AND server_sequence >= 0', name='ck_conversation_sequence'),
         CheckConstraint('ended_at IS NULL OR ended_at >= started_at', name='ck_conversation_ended'),
         CheckConstraint("jsonb_typeof(provider_metadata) = 'object'", name='ck_conversation_metadata'),
+        CheckConstraint('summary_version > 0', name='ck_conversation_summary_version'),
         Index('ix_conversation_owner_started', 'owner_user_id', 'started_at'),
     )
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
@@ -30,6 +31,7 @@ class Conversation(Base):
     status: Mapped[str] = mapped_column(String(20), default='ACTIVE', server_default='ACTIVE')
     summary_status: Mapped[str] = mapped_column(String(20), default='NOT_REQUESTED', server_default='NOT_REQUESTED')
     summary_text: Mapped[str | None] = mapped_column(Text)
+    summary_version: Mapped[int] = mapped_column(Integer, default=1, server_default='1')
     summary_retention_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     provider_metadata: Mapped[dict] = mapped_column(JSONB, default=dict, server_default='{}')
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -266,6 +266,7 @@ Purpose：会话生命周期、摘要和 AI 调用上下文。
 | ended_at | timestamptz | yes | null | CHECK >= started_at | 结束时间 | S2 |
 | status | varchar(20) | no | `ACTIVE` | CHECK ACTIVE/COMPLETED/INTERRUPTED/FAILED/DELETED | 会话状态 | S2 |
 | summary_status | varchar(20) | no | `NOT_REQUESTED` | CHECK NOT_REQUESTED/PENDING/READY/FAILED/DELETED | 摘要状态 | S2 |
+| summary_version | integer | no | 1 | CHECK > 0 | W6-01 input/cleanup version fence | S0 |
 | summary_text | text | yes | null | - | 受控摘要，不默认分享 | S3 |
 | summary_retention_until | timestamptz | yes | null | - | 摘要清理时间，TBD | S3 |
 | provider_metadata | jsonb | no | `{}` | redacted JSON | provider/model/prompt/latency | S1 |
@@ -511,7 +512,7 @@ W5-01 approved in docs/plan/week5-contract-review.md. Internal durable tasks onl
 | family_id | uuid | no | - | FK family.id RESTRICT | family boundary | S2 |
 | resource_id | uuid | no | - | service resolves by kind | source resource | S2 |
 | resource_version | integer | no | - | CHECK > 0 | source version | S0 |
-| kind | varchar(32) | no | - | CHECK MEMORY_INDEX/MEMORY_CLEANUP/FILE_CLEANUP | command | S0 |
+| kind | varchar(32) | no | - | CHECK MEMORY_INDEX/MEMORY_CLEANUP/FILE_CLEANUP/CONVERSATION_SUMMARY/CONVERSATION_SUMMARY_CLEANUP | command | S0 |
 | business_key | varchar(200) | no | - | UNIQUE | kind/resource/version/authorization epoch | S1 |
 | status | varchar(16) | no | PENDING | CHECK PENDING/RUNNING/RETRY/SUCCEEDED/DEAD | task state | S0 |
 | attempts | integer | no | 0 | CHECK 0..max_attempts | attempts consumed at claim | S0 |
@@ -526,3 +527,37 @@ W5-01 approved in docs/plan/week5-contract-review.md. Internal durable tasks onl
 W5-01 vector constraints: ACTIVE requires a non-null finite nonzero vector with vector_dims = dimension.
 Mock uses dimension 8; production model changes remain gated. Chunk uniqueness is (memory_id, ordinal).
 Embedding metadata carries source_version and retrieval requires equality with current Memory.version.
+
+## 27. proactive_preference
+
+Approved W6-04. See plan/week6-contract-review.md for constraints, permissions and retention.
+
+| Column | Type | Nullable | Default | Constraint | Description | Sensitivity |
+| --- | --- | --- | --- | --- | --- | --- |
+| family_id | NULL | no | - | PK | family_id | S1 |
+| owner_user_id | NULL | no | - | PK | owner_user_id | S1 |
+| timezone | VARCHAR(64) | no | - | W6-04 | timezone | S1 |
+| window_start | TIME | no | - | W6-04 | window_start | S1 |
+| window_end | TIME | no | - | W6-04 | window_end | S1 |
+| quiet_start | TIME | yes | - | W6-04 | quiet_start | S1 |
+| quiet_end | TIME | yes | - | W6-04 | quiet_end | S1 |
+| daily_cap | SMALLINT | no | 0 | W6-04 | daily_cap | S1 |
+| version | INTEGER | no | 1 | W6-04 | version | S1 |
+| proposed_by_user_id | NULL | no | - | FK | proposed_by_user_id | S1 |
+| confirmed_by_user_id | NULL | yes | - | FK | confirmed_by_user_id | S1 |
+| confirmed_version | INTEGER | yes | - | W6-04 | confirmed_version | S1 |
+| paused_on | DATE | yes | - | W6-04 | paused_on | S1 |
+| created_at | DATETIME | no | now() | W6-04 | created_at | S1 |
+| updated_at | DATETIME | no | now() | W6-04 | updated_at | S1 |
+
+## 28. proactive_daily_counter
+
+Approved W6-04. See plan/week6-contract-review.md for constraints, permissions and retention.
+
+| Column | Type | Nullable | Default | Constraint | Description | Sensitivity |
+| --- | --- | --- | --- | --- | --- | --- |
+| family_id | CHAR(32) | no | - | PK | family_id | S1 |
+| owner_user_id | CHAR(32) | no | - | PK | owner_user_id | S1 |
+| local_date | DATE | no | - | PK | local_date | S1 |
+| used_count | SMALLINT | no | 0 | W6-04 | used_count | S1 |
+| updated_at | DATETIME | no | now() | W6-04 | updated_at | S1 |

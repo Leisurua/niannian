@@ -130,6 +130,8 @@ async def revoke(db, actor, consent_id, body, key, settings, request_id):
     await db.flush()
     from app.modules.memory.rag import consent_changed
     await consent_changed(db, row.family_id, row.subject_user_id, row.scope, row.id)
+    from app.modules.conversation.summary import consent_changed as summary_consent_changed
+    await summary_consent_changed(db, row.family_id, row.subject_user_id, row.grantee_user_id, row.scope)
     return view(row)
 
 

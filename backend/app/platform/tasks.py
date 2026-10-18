@@ -13,7 +13,7 @@ class Task(Base):
     __tablename__ = 'task_outbox'
     __table_args__ = (
         CheckConstraint('resource_version > 0', name='ck_task_version'),
-        CheckConstraint("kind IN ('MEMORY_INDEX','MEMORY_CLEANUP','FILE_CLEANUP')", name='ck_task_kind'),
+        CheckConstraint("kind IN ('MEMORY_INDEX','MEMORY_CLEANUP','FILE_CLEANUP','CONVERSATION_SUMMARY','CONVERSATION_SUMMARY_CLEANUP')", name='ck_task_kind'),
         CheckConstraint("status IN ('PENDING','RUNNING','RETRY','SUCCEEDED','DEAD')", name='ck_task_status'),
         CheckConstraint('attempts >= 0 AND max_attempts > 0 AND attempts <= max_attempts', name='ck_task_attempts'),
         CheckConstraint("(status = 'RUNNING' AND lease_token IS NOT NULL AND lease_until IS NOT NULL) OR (status <> 'RUNNING' AND lease_token IS NULL AND lease_until IS NULL)", name='ck_task_lease'),

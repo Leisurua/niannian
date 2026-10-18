@@ -226,6 +226,26 @@
   },
   {
     "method": "GET",
+    "path": "/families/{family_id}/proactive-preferences/{owner_user_id}",
+    "operation_id": "getProactivePreference"
+  },
+  {
+    "method": "PUT",
+    "path": "/families/{family_id}/proactive-preferences/{owner_user_id}",
+    "operation_id": "putProactivePreference"
+  },
+  {
+    "method": "POST",
+    "path": "/families/{family_id}/proactive-preferences/{owner_user_id}/confirm",
+    "operation_id": "confirmProactivePreference"
+  },
+  {
+    "method": "POST",
+    "path": "/families/{family_id}/proactive-preferences/{owner_user_id}/pause-today",
+    "operation_id": "pauseProactiveToday"
+  },
+  {
+    "method": "GET",
     "path": "/signal-events",
     "operation_id": "listSignalEvents"
   },

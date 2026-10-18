@@ -8,6 +8,7 @@ from app.ai.conversation import IDENTITY
 from app.modules.auth.schemas import Input
 from app.modules.audit import service as audit
 from app.modules.conversation.models import Conversation
+from app.modules.conversation import summary
 from app.modules.device.service import require_active_binding
 from app.modules.family import service as family
 from app.platform.errors import AppError
@@ -32,7 +33,7 @@ async def access(db, actor, conversation_id, *, owner_only=False, active=False):
     try:
         await family.context(db, actor.user_id, row.family_id)
         await db.refresh(row)
-        if row.deleted_at or owner_only and row.owner_user_id != actor.user_id:
+        if row.deleted_at or row.status == 'DELETED' or owner_only and row.owner_user_id != actor.user_id:
             raise AppError('CONVERSATION_NOT_FOUND', '会话不存在或无权访问。', 404)
         await authorize(db, actor, row.family_id, row.owner_user_id, 'SUMMARY_READ', 'CONVERSATION_SUMMARY')
         if row.device_binding_id:
@@ -78,6 +79,7 @@ async def end(db, actor, conversation_id, body, request_id):
     if row.status == 'ACTIVE':
         finish(row, body.reason)
         await audit.record(db, actor.user_id, 'CONVERSATION_ENDED', 'CONVERSATION', row.id, row.family_id, request_id)
+        await summary.request(db, row)
     return view(row)
 
 

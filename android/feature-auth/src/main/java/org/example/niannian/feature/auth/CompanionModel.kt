@@ -145,7 +145,7 @@ class CompanionModel(private val repository: FamilyRepository, val elder: Boolea
     fun grantSelf(scope: String) = action {
         val snapshot = current.value
         val family = snapshot.selected ?: return@action
-        require(elder && scope in setOf("FAMILY_MEMORY", "HEALTH_MEDICATION"))
+        require(elder && scope in setOf("FAMILY_MEMORY", "HEALTH_MEDICATION", "CONVERSATION_SUMMARY"))
         repository.call("/v1/consents", "POST", JSONObject().put("family_id", family.id)
             .put("subject_user_id", snapshot.userId).put("grantee_user_id", snapshot.userId)
             .put("scope", scope).put("source", "SETTINGS"), true)

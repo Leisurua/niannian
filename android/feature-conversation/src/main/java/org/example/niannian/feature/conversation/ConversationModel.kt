@@ -27,7 +27,7 @@ interface ConversationGateway {
 
 data class ConversationState(val family: String = "", val user: String = "", val id: String = "",
     val state: String = "IDLE", val connected: Boolean = false, val busy: Boolean = false,
-    val reply: String = "", val message: String = "", val slow: Boolean = false)
+    val reply: String = "", val message: String = "", val slow: Boolean = false, val recapId: String = "")
 
 class ConversationModel(private val gateway: ConversationGateway, private val scope: CoroutineScope? = null) : ViewModel() {
     private val current = MutableStateFlow(ConversationState())
@@ -193,8 +193,8 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
         job = tasks.launch {
             try {
                 if (id.isNotEmpty()) gateway.end(id)
-                if (stamp == generation) current.value = current.value.copy(busy = false,
-                    message = "本次会话已结束。摘要功能尚未开放，不保存或展示完整逐字稿。")
+                if (stamp == generation) current.value = current.value.copy(busy = false, recapId = id,
+                    message = "本次会话已结束。编号：$id。已允许生成回顾时，可在下方请求或查看本次摘要；不会展示逐字稿。")
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) {
                 if (stamp == generation) {
