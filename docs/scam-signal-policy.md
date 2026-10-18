@@ -77,6 +77,7 @@ The engine uses explainable combination rules, not medical-style probabilities:
 | `TRANSFER + SECRECY` | `TRANSFER_AND_SECRECY` | L2 | pause sensitive action, family verification |
 | `IMPERSONATION + URGENT_PAYMENT` | `IMPERSONATION_URGENT_PAYMENT` | L2 | pause, family notification if authorized |
 | `VERIFICATION_CODE + CREDENTIAL` | `CREDENTIAL_REQUEST` | L2 | never relay code/credential; offer family contact |
+| `VERIFICATION_CODE + SECRECY` | `VERIFICATION_CODE_AND_SECRECY` | L2 | W6-03 / SCAM_CODE_SECRECY v1.1.0; never relay code; verify with family |
 | `UNKNOWN_LINK + URGENT_PAYMENT` | `UNKNOWN_LINK_PAYMENT` | L2 | do not open/click; verify with family |
 | `TRANSFER + BANK_ACCOUNT + URGENT_PAYMENT` | `URGENT_TRANSFER_REQUEST` | L3 | pause, high-priority notification if consented |
 | one low-specificity indicator | `SINGLE_INDICATOR` | L0/L1 | explain and ask a clarifying question; no family push by default |
@@ -183,3 +184,32 @@ Rules are reviewed YAML/JSON in source control. Each release has `rule_id`, sema
 API Change Proposals: **None.** Existing warning/signal/event/contact endpoints express the policy.
 
 Database Change Proposals: **None.** Rule bodies remain versioned config; existing `signal_event` fields store the audit-relevant result.
+
+
+## Week 6 approved implementation (W6-01..04, 2026-10-18)
+
+Approval: [W6-01..04](plan/week6-contract-review.md), project owner replied “是” in this chat.
+This section supersedes earlier Week 3/4 “summary unavailable” implementation notes for the reviewed Mock path only.
+
+- Conversation adds summary_version > 0; outbox permits CONVERSATION_SUMMARY and CONVERSATION_SUMMARY_CLEANUP.
+  Store curated Mock themes only, at most 1000 characters; PENDING is unreadable. First input starts a non-renewable
+  maximum 24h lifetime, shortened by known self-grant expiry. No transcript/audio/summary export or local disk cache.
+- Explicit self CONVERSATION_SUMMARY grant enables generation; named family grant enables authorized reads separately.
+  Every read requires current family/member/role/SUMMARY_READ/grantee/scope/resource checks. Self revoke hides and
+  schedules cleanup; revoking one reader does not revoke other readers. Summary grants never enable notifications.
+- GET conversation and POST summary require X-Access-Reason FAMILY_CHECK_IN/FOLLOW_UP for non-owners (422 when
+  absent/invalid after access check), persisted as AuditLog.reason without content. Responses use no-store.
+  The known-id view exposes no history list, transcript or discovery API. Failure/empty/expired never falls back to raw input.
+- Four proactive operations: GET/PUT /families/{family_id}/proactive-preferences/{owner_user_id}, POST same path
+  /confirm and /pause-today. PUT requires If-Match; POST commands require Idempotency-Key. CHILD/CAREGIVER with
+  REMINDER_WRITE proposes; only ELDER owner confirms current version or pauses. GET needs owner/REMINDER_READ.
+  Default disabled, cap 0..3, IANA timezone, local minute times, paired quiet hours. No new permission codes.
+- ProactivePreference and ProactiveDailyCounter are the approved tables. Counter reservation is transactional and
+  survives failure/restart; retains no text, expires after 48h. Timezone changes carry recent usage and today's pause.
+  Worker sends only transient id/version/time hints through PostgreSQL NOTIFY to a currently connected owner WSS;
+  API rechecks current authorization/settings before a fixed Mock invitation. No offline/background wake or push.
+  Reconnect does not replay notifications. Failed/lost invitation can consume a slot and is never labelled delivered.
+  Necessary reminders and emergency access are independent of proactive pause. No new WSS message type/state.
+- Full candidate category/action vocabulary and SCAM_CODE_SECRECY are frozen in W6-03. Six types remain temporary
+  Mock candidates, not facts/events/notifications. Deterministic emergency/scam copy survives LLM/TTS failure.
+  SignalEvent persistence and notification delivery remain Week 7. Real voice/provider gates remain unapproved.

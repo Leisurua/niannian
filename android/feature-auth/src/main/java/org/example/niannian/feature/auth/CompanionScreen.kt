@@ -52,7 +52,10 @@ fun CompanionScreen(model: CompanionModel, environmentLabel: String,
             val revoking = target.revokeId != null
             AlertDialog(onDismissRequest = { consentChange = null },
                 title = { Text(if (revoking) "撤回$label" else "允许$label") },
-                text = { Text(if (target.self) if (revoking) "撤回后，念念将不能在您的交流中继续引用这项记忆，基础聊天仍可用。"
+                text = { Text(if (target.self && target.scope == "CONVERSATION_SUMMARY")
+                    if (revoking) "停止生成并隐藏已有会话回顾，随后清理；基础聊天仍可用。"
+                    else "允许生成我的会话回顾。仅保存脱敏主题，最长 24 小时；不保存逐字稿。分享给家人和通知分别授权。"
+                    else if (target.self) if (revoking) "撤回后，念念将不能在您的交流中继续引用这项记忆，基础聊天仍可用。"
                     else "允许在您与念念的交流中引用已确认的${label}。此项不会授权家人查看，不会开启通知；有效至您撤回，您随时可以关闭。"
                     else if (revoking) "撤回后，当前家庭创建者不能继续使用这项授权。其他授权保持原设置，授权历史会保留。"
                     else "这会向当前家庭创建者授予“$label”权限。只有这一项会开启，您随时可以撤回。") },
@@ -132,11 +135,12 @@ fun CompanionScreen(model: CompanionModel, environmentLabel: String,
                     } else {
                         Text("用于我与念念的交流", fontSize = 22.sp)
                         Text("默认关闭；拒绝不影响基础聊天，与分享给家人的授权分别设置。")
-                        listOf("FAMILY_MEMORY", "HEALTH_MEDICATION").forEach { scope ->
+                        listOf("FAMILY_MEMORY", "HEALTH_MEDICATION", "CONVERSATION_SUMMARY").forEach { scope ->
                             val permission = state.selfPermissions.find { it.scope == scope }
                             val granted = permission?.let { permissionLabel(it) == "已授权" } == true
                             Text("${scopeLabels[scope]}：${permission?.let(::permissionLabel) ?: "未授权"}")
-                            Action(if (granted) "停止在交流中使用${scopeLabels[scope]}" else "允许在交流中使用${scopeLabels[scope]}", mutationUnavailable) {
+                            Action(if (scope == "CONVERSATION_SUMMARY") if (granted) "停止生成我的会话回顾" else "允许生成我的会话回顾"
+                                else if (granted) "停止在交流中使用${scopeLabels[scope]}" else "允许在交流中使用${scopeLabels[scope]}", mutationUnavailable) {
                                 consentChange = ConsentChange(selected.id, scope, if (granted) permission!!.id else null, self = true)
                             }
                         }

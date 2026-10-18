@@ -47,7 +47,8 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("和念念聊聊", fontSize = 26.sp)
             Text("Mock 演示 · 未启用录音和播音 · 简化形象", color = MaterialTheme.colorScheme.primary)
-            Text("我是 AI，不是真实家人。语音、自动联系和摘要尚未开放。", fontSize = 18.sp)
+            Text("我是 AI，不是真实家人。语音和自动联系尚未开放；会话回顾需要本人明确授权。", fontSize = 18.sp)
+            if (state.id.isNotEmpty()) Text("本次会话编号：${state.id}")
             val label = when (state.state) {
                 "LISTENING" -> "我在听（模拟状态，未采集声音）"
                 "THINKING" -> "念念正在想…"
@@ -67,6 +68,7 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
             Control("模拟说话：你好，念念", state.connected && !state.busy && !unavailable) { model.input("你好，念念") }
             Control("模拟说话：我女儿叫什么", state.connected && !state.busy && !unavailable) { model.input("我女儿叫什么") }
             Control("模拟说话：今天天气怎么样", state.connected && !state.busy && !unavailable) { model.input("今天天气怎么样") }
+            Control("今天少打扰我", state.connected && !state.busy && !unavailable) { model.input("今天少打扰我") }
             OutlinedTextField(draft, { draft = it.take(2000) }, label = { Text("文字备用入口") },
                 modifier = Modifier.fillMaxWidth(), enabled = state.connected && !state.busy && !unavailable)
             Control("发送", state.connected && !state.busy && !unavailable && draft.isNotBlank()) {

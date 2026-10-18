@@ -1,6 +1,7 @@
 import asyncio
 
 from app.modules.memory import rag, files
+from app.modules.conversation import summary
 from app.platform import tasks
 from app.platform.identifiers import utcnow
 
@@ -30,6 +31,24 @@ async def run_one(factory, storage=None):
                     if lease:
                         if prepared and prepared == current:
                             await rag.apply_index(db, task.resource_id, task.resource_version, prepared, result)
+                        await tasks.finish(db, task_id, token)
+                        await db.commit()
+            elif task.kind == 'CONVERSATION_SUMMARY':
+                async with factory() as db:
+                    prepared = await summary.prepare(db, task.resource_id, task.resource_version)
+                    await db.commit()
+                # Mock recap already contains only curated themes; no raw input/provider I/O.
+                async with factory() as db:
+                    current = await summary.prepare(db, task.resource_id, task.resource_version)
+                    if await tasks.leased(db, task_id, token):
+                        if prepared and current == prepared:
+                            await summary.complete(db, task.resource_id, task.resource_version, prepared)
+                        await tasks.finish(db, task_id, token)
+                        await db.commit()
+            elif task.kind == 'CONVERSATION_SUMMARY_CLEANUP':
+                async with factory() as db:
+                    if await tasks.leased(db, task_id, token):
+                        await summary.cleanup(db, task.resource_id, task.resource_version)
                         await tasks.finish(db, task_id, token)
                         await db.commit()
             elif task.kind == 'MEMORY_CLEANUP':

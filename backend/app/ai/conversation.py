@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from importlib.resources import files
 import time
 from typing import Literal
-from uuid import UUID
+from uuid import UUID, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -12,6 +12,8 @@ from app.integrations.contracts import (
     ProviderStatus, TTSRequest,
 )
 from app.integrations.mock import MockAvatar, MockLLM, MockTTS
+from app.ai.signal_candidates import extract_mock
+from app.modules.safety.rules import evaluate, WARNING, EMERGENCY_COPY, RULE_VERSION
 
 PROMPT_VERSION = '1.1.0'
 IDENTITY = '你好，我是念念 AI。今天想聊点什么？这是 Mock 演示，仅显示文字。'
@@ -20,7 +22,7 @@ UNAVAILABLE = '我现在没法回答，稍后再试或问问家人。'
 CHAT = '这是 Mock 演示回复。我在这里陪您，可以聊聊今天想做的事。'
 HELP = '如需帮助，请直接联系身边的人或家人。此演示不能代您拨打电话或发送通知。'
 SYSTEM_UNKNOWN = '我现在没有可核实的天气、时间安排或提醒信息，请查看相应页面或问问家人。'
-REPLIES = frozenset((IDENTITY, UNKNOWN, UNAVAILABLE, CHAT, HELP, SYSTEM_UNKNOWN))
+REPLIES = frozenset((IDENTITY, UNKNOWN, UNAVAILABLE, CHAT, HELP, SYSTEM_UNKNOWN, WARNING, EMERGENCY_COPY))
 
 
 class ConversationOutput(BaseModel):
@@ -65,6 +67,7 @@ class TurnResult:
     fallback_code: str | None
     trace: dict
     memory_records: tuple = ()
+    signal_candidates: tuple = ()
 
 
 def grounded_reply(text, memories):
@@ -100,6 +103,18 @@ class AIOrchestrator:
         state = AvatarState.IDLE
         optional_fallback = None
         used = ()
+        candidates = ()
+        safety = None
+        if isinstance(text, str) and text.strip() and len(text) <= 2000:
+            safety = evaluate(text)
+        if safety and safety.kind in ('SCAM_RISK', 'EMERGENCY'):
+            candidates = extract_mock(text, conversation_id=conversation_id, message_id=uuid5(conversation_id, request_id))
+            return TurnResult(safety.message, AvatarState.WARNING, None,
+                dict(request_id=request_id, conversation_id=str(conversation_id), provider='mock',
+                    model='deterministic-safety', provider_version=RULE_VERSION, prompt_id='fixed-safety',
+                    prompt_version=RULE_VERSION, policy_version='1.1.0', latency_ms=0,
+                    result_status='SUCCEEDED', fallback_code=None, memory_candidate_count=0,
+                    signal_candidate_count=len(candidates)), (), candidates)
         try:
             async with asyncio.timeout(self.timeout):
                 if not isinstance(text, str) or not text.strip() or len(text) > 2000:
@@ -127,6 +142,7 @@ class AIOrchestrator:
                         or output.blocked_action is not None or output.reply != expected_reply):
                     raise ValueError('Untrusted response')
                 reply = output.reply
+                candidates = extract_mock(text, conversation_id=conversation_id, message_id=uuid5(conversation_id, request_id))
                 optional_fallback = 'TTS_UNAVAILABLE'
                 used = tuple(r for r in memory_records if r.id in output.memory_refs)
                 try:
@@ -157,5 +173,6 @@ class AIOrchestrator:
             prompt_version=PROMPT_VERSION, policy_version='1.0.0',
             latency_ms=int((time.monotonic() - started) * 1000),
             result_status='FAILED' if state == AvatarState.ERROR else 'PARTIAL' if code else 'SUCCEEDED',
-            fallback_code=code, memory_candidate_count=0, signal_candidate_count=0)
-        return TurnResult(reply, state, code, trace, used if state != AvatarState.ERROR else ())
+            fallback_code=code, memory_candidate_count=0, signal_candidate_count=len(candidates) if state != AvatarState.ERROR else 0)
+        return TurnResult(reply, state, code, trace, used if state != AvatarState.ERROR else (),
+            candidates if state != AvatarState.ERROR else ())

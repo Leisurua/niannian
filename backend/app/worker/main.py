@@ -19,6 +19,7 @@ async def run_cycle():
     from app.platform.models import DOMAIN_MODELS
     from app.modules.memory.rag import maintenance
     from app.worker.tasks import run_one
+    from app.modules.conversation import summary, proactive
     settings = get_settings()
     logger = logging.getLogger('nianian.worker')
     try:
@@ -26,6 +27,8 @@ async def run_cycle():
             await tick(db, settings)
             next_memory_scan = await maintenance(db, _memory_scan_after)
             await schedule_cleanup(db)
+            await summary.maintenance(db)
+            await proactive.tick(db, settings)
             await db.commit()
             _memory_scan_after = next_memory_scan
         for _ in range(20):

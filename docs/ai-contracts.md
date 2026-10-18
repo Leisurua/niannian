@@ -328,6 +328,22 @@ Limits: max 5 candidates per turn; title 120 chars; content 1,000 chars; evidenc
 
 Limits: max 3 candidates per turn; evidence 240 chars; `confidence` is optional internally and, when present, must be 0..1; category and action are enums. The value is not a fraud probability and cannot independently trigger a notification or block. LLM output is merged with deterministic rules, then validated by policy. Only the application creates a database `SignalEvent` with `rule_id`, `rule_version`, `policy_version`, consent result and dedupe key.
 
+### 8.1 Approved candidate vocabulary
+
+W6-03 已批准候选 category/action 词表（SignalType 不变）：
+
+| type | trigger_category | recommended_action |
+| --- | --- | --- |
+| SCAM_RISK | TRANSFER_AND_SECRECY / IMPERSONATION_URGENT_PAYMENT / CREDENTIAL_REQUEST / UNKNOWN_LINK_PAYMENT / URGENT_TRANSFER_REQUEST / VERIFICATION_CODE_AND_SECRECY | PAUSE_AND_VERIFY_WITH_FAMILY |
+| PHYSICAL_DISCOMFORT | SELF_REPORTED_DISCOMFORT | CHECK_IN_AND_OFFER_CONTACT |
+| EMOTION_EXPRESSION | SAD_EXPRESSION / LONELY_EXPRESSION / HAPPY_EXPRESSION / WORRIED_EXPRESSION | OFFER_COMPANIONSHIP |
+| MISS_FAMILY | EXPLICIT_MISS_FAMILY / EXPLICIT_CONTACT_REQUEST | OFFER_FAMILY_CONTACT |
+| IMPORTANT_MEMORY | LIFE_STORY / PREFERENCE_OR_TABOO / PHOTO_BACKGROUND | OFFER_MEMORY_REVIEW |
+| EMERGENCY | EXPLICIT_HELP_REQUEST | OFFER_EMERGENCY_CONTACT |
+
+固定 Mock 输入经确定性来源/词表验证后产生暂态候选；rule_version=1.1.0。
+这些推荐动作不执行呼叫、通知或 Memory 确认，Provider 不能授予任何权限。
+
 ## 9. RetrievedMemory
 
 ```json
@@ -423,3 +439,32 @@ Before a third-party call, a `RedactionPolicy` removes or masks phone numbers, v
 | Scam semantic | current utterance with redaction | no unrelated health data | mask all credentials |
 
 Redaction produces a trace flag (`redacted_fields`) without retaining the original value in ordinary logs.
+
+
+## Week 6 approved implementation (W6-01..04, 2026-10-18)
+
+Approval: [W6-01..04](plan/week6-contract-review.md), project owner replied “是” in this chat.
+This section supersedes earlier Week 3/4 “summary unavailable” implementation notes for the reviewed Mock path only.
+
+- Conversation adds summary_version > 0; outbox permits CONVERSATION_SUMMARY and CONVERSATION_SUMMARY_CLEANUP.
+  Store curated Mock themes only, at most 1000 characters; PENDING is unreadable. First input starts a non-renewable
+  maximum 24h lifetime, shortened by known self-grant expiry. No transcript/audio/summary export or local disk cache.
+- Explicit self CONVERSATION_SUMMARY grant enables generation; named family grant enables authorized reads separately.
+  Every read requires current family/member/role/SUMMARY_READ/grantee/scope/resource checks. Self revoke hides and
+  schedules cleanup; revoking one reader does not revoke other readers. Summary grants never enable notifications.
+- GET conversation and POST summary require X-Access-Reason FAMILY_CHECK_IN/FOLLOW_UP for non-owners (422 when
+  absent/invalid after access check), persisted as AuditLog.reason without content. Responses use no-store.
+  The known-id view exposes no history list, transcript or discovery API. Failure/empty/expired never falls back to raw input.
+- Four proactive operations: GET/PUT /families/{family_id}/proactive-preferences/{owner_user_id}, POST same path
+  /confirm and /pause-today. PUT requires If-Match; POST commands require Idempotency-Key. CHILD/CAREGIVER with
+  REMINDER_WRITE proposes; only ELDER owner confirms current version or pauses. GET needs owner/REMINDER_READ.
+  Default disabled, cap 0..3, IANA timezone, local minute times, paired quiet hours. No new permission codes.
+- ProactivePreference and ProactiveDailyCounter are the approved tables. Counter reservation is transactional and
+  survives failure/restart; retains no text, expires after 48h. Timezone changes carry recent usage and today's pause.
+  Worker sends only transient id/version/time hints through PostgreSQL NOTIFY to a currently connected owner WSS;
+  API rechecks current authorization/settings before a fixed Mock invitation. No offline/background wake or push.
+  Reconnect does not replay notifications. Failed/lost invitation can consume a slot and is never labelled delivered.
+  Necessary reminders and emergency access are independent of proactive pause. No new WSS message type/state.
+- Full candidate category/action vocabulary and SCAM_CODE_SECRECY are frozen in W6-03. Six types remain temporary
+  Mock candidates, not facts/events/notifications. Deterministic emergency/scam copy survives LLM/TTS failure.
+  SignalEvent persistence and notification delivery remain Week 7. Real voice/provider gates remain unapproved.

@@ -715,6 +715,12 @@ paths:
     get:
       tags: [Conversations]
       operationId: getConversation
+      parameters:
+        - name: X-Access-Reason
+          in: header
+          required: false
+          description: Required for every non-owner access; missing or invalid reason is 422. Does not grant authorization. Response uses Cache-Control no-store.
+          schema: { type: string, enum: [FAMILY_CHECK_IN, FOLLOW_UP] }
       responses:
         '200':
           description: Session metadata and authorized summary status
@@ -742,6 +748,12 @@ paths:
     post:
       tags: [Conversations]
       operationId: requestConversationSummary
+      parameters:
+        - name: X-Access-Reason
+          in: header
+          required: false
+          description: Required for every non-owner access; missing or invalid reason is 422. Does not grant authorization. Response uses Cache-Control no-store.
+          schema: { type: string, enum: [FAMILY_CHECK_IN, FOLLOW_UP] }
       responses:
         '202':
           description: Summary generation requested
@@ -749,6 +761,113 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ConversationSummaryJob' }
         '403': { $ref: '#/components/responses/ForbiddenError' }
+  /families/{family_id}/proactive-preferences/{owner_user_id}:
+    parameters:
+      - name: family_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: owner_user_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Conversations]
+      operationId: getProactivePreference
+      responses:
+        '200':
+          description: Current setting; family and role checked, only owner confirms or pauses. Default disabled. No delivery promise.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProactivePreferenceResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '409': { description: Stale version or reused idempotency key }
+        '422': { description: Invalid time, timezone, cap, version or header }
+    put:
+      tags: [Conversations]
+      operationId: putProactivePreference
+      parameters:
+        - name: If-Match
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProactivePreferenceInput' }
+      responses:
+        '200':
+          description: Current setting; family and role checked, only owner confirms or pauses. Default disabled. No delivery promise.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProactivePreferenceResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '409': { description: Stale version or reused idempotency key }
+        '422': { description: Invalid time, timezone, cap, version or header }
+  /families/{family_id}/proactive-preferences/{owner_user_id}/confirm:
+    parameters:
+      - name: family_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: owner_user_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Conversations]
+      operationId: confirmProactivePreference
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProactiveConfirmInput' }
+      responses:
+        '200':
+          description: Current setting; family and role checked, only owner confirms or pauses. Default disabled. No delivery promise.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProactivePreferenceResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '409': { description: Stale version or reused idempotency key }
+        '422': { description: Invalid time, timezone, cap, version or header }
+  /families/{family_id}/proactive-preferences/{owner_user_id}/pause-today:
+    parameters:
+      - name: family_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: owner_user_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Conversations]
+      operationId: pauseProactiveToday
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Current setting; family and role checked, only owner confirms or pauses. Default disabled. No delivery promise.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProactivePreferenceResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '409': { description: Stale version or reused idempotency key }
+        '422': { description: Invalid time, timezone, cap, version or header }
   /signal-events:
     get:
       tags: [SignalEvents]
@@ -1694,6 +1813,42 @@ components:
         summary: { type: string, nullable: true }
         started_at: { $ref: '#/components/schemas/Timestamp' }
         ended_at: { $ref: '#/components/schemas/Timestamp' }
+    ProactivePreferenceInput:
+      type: object
+      additionalProperties: false
+      required: [timezone, window_start, window_end, daily_cap]
+      properties:
+        timezone: { type: string, maxLength: 64, description: IANA zone }
+        window_start: { type: string, example: '08:00:00' }
+        window_end: { type: string, example: '20:00:00' }
+        quiet_start: { type: string, nullable: true }
+        quiet_end: { type: string, nullable: true }
+        daily_cap: { type: integer, minimum: 0, maximum: 3 }
+    ProactiveConfirmInput:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        version: { type: integer, minimum: 1 }
+    ProactivePreferenceResponse:
+      allOf:
+        - type: object
+          required: [timezone, window_start, window_end, quiet_start, quiet_end, daily_cap]
+          properties:
+            timezone: { type: string }
+            window_start: { type: string }
+            window_end: { type: string }
+            quiet_start: { type: string, nullable: true }
+            quiet_end: { type: string, nullable: true }
+            daily_cap: { type: integer, minimum: 0, maximum: 3 }
+        - type: object
+          required: [family_id, owner_user_id, version, confirmed, paused_on]
+          properties:
+            family_id: { type: string, format: uuid }
+            owner_user_id: { type: string, format: uuid }
+            version: { type: integer, minimum: 1 }
+            confirmed: { type: boolean }
+            paused_on: { type: string, format: date, nullable: true }
     ConversationSummaryJob:
       type: object
       required: [conversation_id, status]

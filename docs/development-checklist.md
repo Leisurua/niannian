@@ -2,6 +2,20 @@
 
 这是开发期间的门禁清单，不是新的设计文档。每项填写 `NOT_STARTED / IN_PROGRESS / PASS / FAIL / BLOCKED`，并附 evidence path。
 
+## Week 6 Mock software closeout — 2026-10-18
+
+已批准 W6-01..04 的软件范围 `PASS`；含实际设备/语音的整周门禁仍为 `IN_PROGRESS`。
+见 [交付记录](evidence/week6-completion.md)、[已批准方案](plan/week6-contract-review.md)；
+[评审前准备记录](evidence/week6.md)保留历史状态。
+
+- [x] 受控摘要、自身处理授权与指定家属读取分离、一次 grant 跨两会话、理由审计、撤回/过期/删除和版本 fence：`PASS`。
+- [x] 六类暂态 Mock 候选、来源/词表校验、SC-001、确定性安全优先与 LLM/TTS 故障回退：`PASS`，不代表开放域识别质量。
+- [x] 默认关闭的主动设置、共同确认、并发限次、时区携带、在线邀请消费重验、今日暂停：`PASS`。
+- [x] 453 项完整后端回归、实际 PostgreSQL/pgvector/MinIO、迁移回滚/重升级/parity、wheel：`PASS`。
+- [x] 双端构建、138 次 JVM 测试、8 份 lint、83 文件源码一致性、12 APK 和 7 项最终隐私扫描：`PASS`。
+- [ ] 指定设备 UI/TalkBack、后台和实际语音：`NOT VERIFIED`；当前 NO_AUTHORIZED_DEVICE，Provider/audio 门禁未批准。
+- [ ] 远端 CI、正式签名发布及生产迁移：`NOT VERIFIED`。未自动启动第七周。
+
 ## Week 5 software closeout — 2026-10-17
 
 第五周软件实现与验证 `PASS`；含指定设备的整周验收仍为 `IN_PROGRESS`。见

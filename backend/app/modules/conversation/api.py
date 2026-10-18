@@ -2,16 +2,18 @@ import asyncio
 import hashlib
 import time
 from uuid import UUID
+import psycopg
 
 from anyio import CancelScope
-from fastapi import APIRouter, Depends, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Header, Request, Response, WebSocket, WebSocketDisconnect
 from sqlalchemy import text
 
 from app.ai.conversation import AIOrchestrator, REPLIES, UNKNOWN, UNAVAILABLE
 from app.modules.memory import rag
 from app.modules.audit import service as audit
 from app.modules.auth.service import authenticate
-from app.modules.conversation import service
+from app.modules.conversation import service, summary as recap, proactive
+from app.platform.identifiers import utcnow
 from app.modules.conversation.protocol import InputLimits, MessageBudget, ProtocolError, parse_client_frame
 from app.platform.authentication import current_identity
 from app.platform.config import get_settings
@@ -54,16 +56,28 @@ async def release_connection_lease(lease, actor_id):
                 _connections.pop(actor_id, None)
 
 
+async def listen_proactive(connection, queue):
+    async for notification in connection.notifies():
+        if queue.full():
+            queue.get_nowait()
+        queue.put_nowait(notification.payload)
+
+
 @router.post('/conversations', status_code=201, operation_id='createConversation')
 async def create(body: service.ConversationCreate, request: Request, actor=Depends(current_identity), db=Depends(transaction)):
     return await service.create(db, actor, body, request.state.request_id)
 
 
 @router.get('/conversations/{conversation_id}', operation_id='getConversation')
-async def detail(conversation_id: UUID, request: Request, actor=Depends(current_identity), db=Depends(transaction)):
+async def detail(conversation_id: UUID, request: Request, response: Response,
+                 x_access_reason: str | None = Header(default=None), actor=Depends(current_identity), db=Depends(transaction)):
     row = await service.access(db, actor, conversation_id)
-    await audit.record(db, actor.user_id, 'CONVERSATION_READ', 'CONVERSATION', row.id, row.family_id, request.state.request_id)
-    return service.view(row)
+    reason = access_reason(row, actor, x_access_reason)
+    content = await recap.readable(db, row)
+    event = await audit.record(db, actor.user_id, 'CONVERSATION_READ', 'CONVERSATION', row.id, row.family_id, request.state.request_id)
+    event.reason = reason
+    response.headers['Cache-Control'] = 'no-store'
+    return {**service.view(row), 'summary': content}
 
 
 @router.post('/conversations/{conversation_id}/end', operation_id='endConversation')
@@ -72,9 +86,21 @@ async def end(conversation_id: UUID, body: service.ConversationEnd, request: Req
 
 
 @router.post('/conversations/{conversation_id}/summary', status_code=202, operation_id='requestConversationSummary')
-async def summary(conversation_id: UUID, actor=Depends(current_identity), db=Depends(transaction)):
-    await service.access(db, actor, conversation_id)
-    raise AppError('PROVIDER_TEMPORARILY_UNAVAILABLE', '摘要生成尚未启用，不会保存或分享逐字稿。', 503)
+async def summary(conversation_id: UUID, request: Request, response: Response,
+                  x_access_reason: str | None = Header(default=None), actor=Depends(current_identity), db=Depends(transaction)):
+    row = await service.access(db, actor, conversation_id)
+    reason = access_reason(row, actor, x_access_reason)
+    await recap.request(db, row, explicit=True)
+    event = await audit.record(db, actor.user_id, 'CONVERSATION_SUMMARY_REQUESTED', 'CONVERSATION', row.id, row.family_id, request.state.request_id)
+    event.reason = reason
+    response.headers['Cache-Control'] = 'no-store'
+    return dict(conversation_id=str(row.id), status=row.summary_status if row.summary_status in ('READY', 'PENDING') else 'FAILED')
+
+
+def access_reason(row, actor, reason):
+    if (reason is not None and reason not in ('FAMILY_CHECK_IN', 'FOLLOW_UP')) or (actor.user_id != row.owner_user_id and reason is None):
+        raise AppError('VALIDATION_ERROR', '查看家人会话需要选择明确理由。', 422)
+    return reason
 
 
 @router.websocket('/ws/conversations/{conversation_id}')
@@ -94,6 +120,11 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
     turn_task = None
     last_reply = None
     last_records = ()
+    pending_topic = None
+    listener = None
+    listen_task = None
+    notices = asyncio.Queue(maxsize=1)
+    last_interaction = utcnow()
     orchestrator = getattr(websocket.app.state, 'conversation_orchestrator', None) or AIOrchestrator()
     try:
         async with factory() as db:
@@ -113,6 +144,11 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
             ready = service.event(row, 'session.ready', {'backend_state': row.backend_state})
             await audit.record(db, actor_id, 'CONVERSATION_WS_CONNECTED', 'CONVERSATION', row.id, row.family_id)
             await db.commit()
+        async with asyncio.timeout(5):
+            args, kwargs = lease.bind.dialect.create_connect_args(lease.bind.url)
+            listener = await psycopg.AsyncConnection.connect(*args, **kwargs, autocommit=True)
+            await listener.execute('LISTEN nn_proactive_' + conversation_id.hex)
+        listen_task = asyncio.create_task(listen_proactive(listener, notices))
         await websocket.accept()
         accepted = True
         await websocket.send_json(ready)
@@ -126,12 +162,16 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                 receive_task = None
             if raw and raw['type'] == 'websocket.disconnect':
                 break
+            if listen_task.done():
+                await websocket.close(code=1011)
+                break
+            notice = notices.get_nowait() if not notices.empty() else None
             async with factory() as db:
                 actor = await authenticate(db, bearer[7:], settings)
                 row = await service.access(db, actor, conversation_id, owner_only=True, active=True)
                 if last_records and not await rag.revalidate(db, actor, last_records):
                     last_reply, last_records = UNKNOWN, ()
-                if raw is None and (turn_task is None or turn_task not in done):
+                if raw is None and notice is None and (turn_task is None or turn_task not in done):
                     await db.commit()
                     continue
                 try:
@@ -140,6 +180,8 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                         budget.take(time.monotonic())
                         message = parse_client_frame(raw.get('text'), conversation_id=conversation_id, last_sequence=row.client_sequence, limits=limits)
                         row.client_sequence = message.sequence
+                        if message.type not in ('ping', 'session.start'):
+                            last_interaction = utcnow()
                         if message.type in ('interrupt', 'session.end'):
                             if turn_task:
                                 turn_task.cancel()
@@ -147,14 +189,25 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                                 turn_task = None
                             last_reply = None
                             last_records = ()
+                            pending_topic = None
                             outgoing = service.handle(row, message)
                         elif message.type == 'text.input':
                             if turn_task or not row.provider_metadata.get('identity_disclosed') or settings.provider_mode != 'mock':
                                 outgoing = [service.event(row, 'error', {'code': 'PROVIDER_TEMPORARILY_UNAVAILABLE', 'retryable': False})]
+                            elif message.payload['text'].strip('。！! ') in ('今天少打扰我', '今天别打扰我', '今天别主动提醒我', '不要打扰', '我在忙', '我在休息'):
+                                try:
+                                    await proactive.command(db, actor, row.family_id, actor.user_id, 'pause', {},
+                                        f'ws-pause:{conversation_id}:{message.sequence}', settings, f'turn-{message.sequence}')
+                                    reply = '今天已减少主动互动，必要提醒和紧急联系仍可使用。'
+                                except AppError:
+                                    reply = '当前没有已启用的主动陪伴设置；必要提醒和紧急联系仍可使用。'
+                                outgoing = [service.event(row, 'assistant.text', {'text': reply, 'source_labels': ['Mock']}),
+                                    service.event(row, 'assistant.state', {'state': 'IDLE'})]
                             else:
                                 last_reply = None
                                 last_records = ()
                                 row.backend_state = 'THINKING'
+                                pending_topic = recap.topic_for(message.payload['text'])
                                 outgoing = [service.event(row, 'assistant.state', {'state': 'THINKING'})]
                                 turn_task = asyncio.create_task(generate_turn(factory, bearer, settings, orchestrator,
                                     conversation_id, message.payload['text'], f'turn-{message.sequence}'))
@@ -184,10 +237,16 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                             raise RuntimeError('Invalid orchestrator output')
                         row.backend_state = result.avatar_state.value
                         row.provider_metadata = {**row.provider_metadata, 'trace': result.trace}
+                        if pending_topic and result.trace.get('result_status') != 'FAILED' and last_reply != UNAVAILABLE:
+                            await recap.add_topic(db, row, pending_topic)
+                        pending_topic = None
                         outgoing += [service.event(row, 'assistant.text', {'text': last_reply, 'source_labels': ['Mock']})]
                         if result.fallback_code:
                             outgoing += [service.event(row, 'error', {'code': 'PROVIDER_TEMPORARILY_UNAVAILABLE', 'retryable': False})]
                         outgoing += [service.event(row, 'assistant.state', {'state': row.backend_state})]
+                    if notice and raw is None and turn_task is None and not outgoing and await proactive.accept(db, row, notice, last_interaction):
+                        outgoing = [service.event(row, 'assistant.text', {'text': proactive.INVITATION, 'source_labels': ['Mock']})]
+                        last_interaction = utcnow()
                 except ProtocolError as error:
                     outgoing = [service.event(row, 'error', {'code': str(error), 'retryable': False})]
                     await audit.record(db, actor_id, 'CONVERSATION_WS_REJECTED', 'CONVERSATION', row.id, row.family_id,
@@ -199,6 +258,7 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                 ended = row.status != 'ACTIVE'
                 if ended:
                     await audit.record(db, actor_id, 'CONVERSATION_ENDED', 'CONVERSATION', row.id, row.family_id)
+                    await recap.request(db, row)
                 await db.commit()
             for outgoing_event in outgoing:
                 await websocket.send_json(outgoing_event)
@@ -215,9 +275,17 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
         else:
             await websocket.close(code=4403)
     finally:
-        tasks = [task for task in (receive_task, turn_task) if task is not None]
+        tasks = [task for task in (receive_task, turn_task, listen_task) if task is not None]
         for task in tasks:
             task.cancel()
-        with CancelScope(shield=True):
-            await asyncio.gather(*tasks, return_exceptions=True)
-        await release_connection_lease(lease, actor_id)
+        try:
+            with CancelScope(shield=True):
+                await asyncio.gather(*tasks, return_exceptions=True)
+                if listener:
+                    try:
+                        async with asyncio.timeout(2):
+                            await listener.close()
+                    except Exception:
+                        pass
+        finally:
+            await release_connection_lease(lease, actor_id)

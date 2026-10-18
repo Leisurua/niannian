@@ -24,6 +24,7 @@ from app.platform.models import DOMAIN_MODELS
 from app.modules.memory.api import router as memory_router
 from app.modules.reminder.api import router as reminder_router
 from app.modules.conversation.api import router as conversation_router
+from app.modules.conversation.proactive_api import router as proactive_router
 app.state.domain_models = DOMAIN_MODELS
 app.include_router(auth_router)
 app.include_router(family_router)
@@ -31,6 +32,7 @@ app.include_router(consent_router)
 app.include_router(memory_router)
 app.include_router(reminder_router)
 app.include_router(conversation_router)
+app.include_router(proactive_router)
 
 
 @app.exception_handler(AppError)
