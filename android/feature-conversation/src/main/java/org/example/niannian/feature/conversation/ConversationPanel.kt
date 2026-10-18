@@ -84,7 +84,7 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
 }
 
 @Composable private fun Control(label: String, enabled: Boolean, action: () -> Unit) {
-    Button(onClick = action, enabled = enabled, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
+    Button(onClick = action, enabled = enabled, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
         Text(label, fontSize = 20.sp)
     }
 }

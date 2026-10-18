@@ -1,4 +1,3 @@
-"""W6-04 reviewed preferences and bounded non-content counters."""
 from datetime import date, datetime, time
 from uuid import UUID
 

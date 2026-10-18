@@ -1,4 +1,3 @@
-"""W6-04 public service: family-serialized preferences, reservations and delivery checks."""
 from datetime import datetime, time, timedelta
 import hashlib
 import json
@@ -137,7 +136,6 @@ async def snapshot(db, conversation, now, *, reserved=False, last_interaction=No
     local_day = now.astimezone(ZoneInfo(preference.timezone)).date()
     counter = await db.get(ProactiveDailyCounter, (preference.family_id, preference.owner_user_id, local_day), populate_existing=True)
     count = counter.used_count if counter else 0
-    # A reservation is counted at most once, even if emission fails or API dies.
     recent = last_interaction or conversation.started_at
     if counter and not reserved:
         recent = max(recent, counter.updated_at)
@@ -145,7 +143,7 @@ async def snapshot(db, conversation, now, *, reserved=False, last_interaction=No
         window_end=preference.window_end, jointly_enabled=True, daily_cap=preference.daily_cap,
         daily_count=max(0, count - 1) if reserved else count, counter_date=local_day,
         quiet_start=preference.quiet_start, quiet_end=preference.quiet_end, paused_on=preference.paused_on,
-        last_interaction=recent, content_authorized=True)  # fixed general invitation contains no private data
+        last_interaction=recent, content_authorized=True)
     return preference, counter, state
 
 

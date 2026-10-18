@@ -1,4 +1,3 @@
-"""Week 6 policy tests, fictional text only; no delivery/hardware claims."""
 from dataclasses import replace
 from datetime import date, datetime, time, timedelta, timezone
 import json
@@ -62,7 +61,7 @@ def test_proactive_outputs_include_exit_and_do_not_mutate_counter(changes, actio
     result = decide(state)
     assert result.action == action
     assert '今天少打扰我' in result.exit_copy
-    assert state.daily_count == 0  # service reservation is a separate integration gate
+    assert state.daily_count == 0
 
 
 def test_proactive_local_day_cross_midnight_and_end_exclusive():
@@ -123,7 +122,7 @@ def test_safe_similar_text_never_becomes_scam_event(utterance):
 def test_emergency_precedes_scam_without_provider_or_connection_claim(utterance):
     result = evaluate(utterance)
     assert result.kind == 'EMERGENCY'
-    assert result.severity is None  # this component cannot choose emergency state/severity
+    assert result.severity is None
     assert '已接通' not in result.message
 
 

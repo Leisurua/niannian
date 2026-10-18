@@ -106,7 +106,7 @@ async def prepare(db, resource_id, version):
     row = await db.get(Conversation, resource_id)
     if not row:
         return None
-    grant = await eligible(db, row)  # locks family before task fence
+    grant = await eligible(db, row)
     await db.refresh(row)
     if grant is None or row.summary_version != version or row.summary_status != 'PENDING':
         return None

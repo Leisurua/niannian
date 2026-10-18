@@ -43,13 +43,13 @@ fun ConversationToolsPanel(model: ConversationToolsModel, family: String, subjec
             Text("Mock · 仅在线文字邀请；不会后台唤醒、播音或通知家人。")
             if (!elder) subjects.forEach { (id, name) -> OutlinedButton(onClick = { selected = id }, enabled = enabled) { Text(name) } }
             if (selected.isEmpty()) Text("当前没有可选择的长辈。")
-            Button(onClick = { model.refresh() }, enabled = enabled && selected.isNotEmpty()) { Text("读取当前设置") }
+            Button(onClick = { model.refresh() }, enabled = enabled && selected.isNotEmpty(), modifier = Modifier.fillMaxWidth().heightIn(min = if (elder) 64.dp else 48.dp)) { Text("读取当前设置") }
             if (state.loaded) {
                 Text("时间窗 ${state.start}—${state.end}，每日上限 ${state.cap}；" + if (state.confirmed) "长辈已确认" else "等待长辈确认")
                 if (state.paused.isNotEmpty()) Text("最近暂停日期：${state.paused}")
                 if (elder) {
-                    Button(onClick = { model.confirm() }, enabled = enabled && !state.confirmed) { Text("确认家人提出的设置", fontSize = 20.sp) }
-                    Button(onClick = { model.pause() }, enabled = enabled) { Text("今天少打扰我", fontSize = 20.sp) }
+                    Button(onClick = { model.confirm() }, enabled = enabled && !state.confirmed, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) { Text("确认家人提出的设置", fontSize = 20.sp) }
+                    Button(onClick = { model.pause() }, enabled = enabled, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) { Text("今天少打扰我", fontSize = 20.sp) }
                 } else {
                     OutlinedTextField(zone, { zone = it }, label = { Text("时区，例如 Asia/Shanghai") }, enabled = enabled)
                     OutlinedTextField(start, { start = it }, label = { Text("开始 HH:mm") }, enabled = enabled)
@@ -70,8 +70,8 @@ fun ConversationToolsPanel(model: ConversationToolsModel, family: String, subjec
                     OutlinedButton(onClick = { reason = "FOLLOW_UP" }, enabled = enabled) { Text(if (reason == "FOLLOW_UP") "✓ 跟进交流" else "跟进交流") }
                 }
             }
-            Button(onClick = { model.summary(cid, if (elder) null else reason); reason = null }, enabled = enabled && cid.isNotBlank() && (elder || reason != null)) { Text("查看本次摘要") }
-            if (elder) Button(onClick = { model.summary(cid, null, true) }, enabled = enabled && cid.isNotBlank()) { Text("请求生成本次摘要") }
+            Button(onClick = { model.summary(cid, if (elder) null else reason); reason = null }, enabled = enabled && cid.isNotBlank() && (elder || reason != null), modifier = Modifier.fillMaxWidth().heightIn(min = if (elder) 64.dp else 48.dp)) { Text("查看本次摘要") }
+            if (elder) Button(onClick = { model.summary(cid, null, true) }, enabled = enabled && cid.isNotBlank(), modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) { Text("请求生成本次摘要") }
             if (state.summary.isNotEmpty()) Text(state.summary, fontSize = 22.sp)
             if (state.message.isNotEmpty()) Text(state.message, fontSize = 18.sp)
         }

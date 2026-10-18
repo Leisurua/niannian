@@ -37,7 +37,6 @@ async def run_one(factory, storage=None):
                 async with factory() as db:
                     prepared = await summary.prepare(db, task.resource_id, task.resource_version)
                     await db.commit()
-                # Mock recap already contains only curated themes; no raw input/provider I/O.
                 async with factory() as db:
                     current = await summary.prepare(db, task.resource_id, task.resource_version)
                     if await tasks.leased(db, task_id, token):

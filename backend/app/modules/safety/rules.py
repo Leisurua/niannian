@@ -12,7 +12,6 @@ RULE_VERSION = '1.1.0'
 WARNING = '存在风险，建议先联系家人核实。请不要转账、分享验证码或打开陌生链接。'
 EMERGENCY_COPY = '如需紧急帮助，请立即联系身边的人或使用紧急联系入口。'
 
-# This is a deterministic, bounded baseline, not general semantic detection.
 INDICATORS = {
     'TRANSFER': ('转账', '汇款', '打钱', '转钱'),
     'VERIFICATION_CODE': ('验证码', '短信码', '动态码'),
@@ -59,11 +58,9 @@ def evaluate(text: str) -> SafetyDecision:
     if not isinstance(text, str) or not text.strip() or len(text) > 2000:
         raise ValueError('Invalid safety input')
     normalized = unicodedata.normalize('NFKC', text)
-    # Explicit emergency detection is independent of LLM/ASR confidence logic.
     if any(word in normalized for word in ('救命', '帮我叫人', '我要联系急救')):
         return SafetyDecision('EMERGENCY', 'EMERGENCY_EXPLICIT', None, None, (), (), EMERGENCY_COPY)
     indicators = tuple(sorted(key for key, words in INDICATORS.items() if any(word in normalized for word in words)))
-    # General vocabulary questions do not request a sensitive operation.
     if re.fullmatch(r'(?:验证码|短信码|动态码|密码)(?:和(?:验证码|短信码|动态码|密码))?'
             r'(?:是什么(?:东西|意思)?|什么意思)[？?。\s]*', normalized):
         return SafetyDecision('CLARIFY' if indicators else 'NONE', None, None, None, indicators, (), None)

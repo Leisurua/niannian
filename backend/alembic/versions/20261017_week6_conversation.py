@@ -1,4 +1,3 @@
-"""Approved W6-01/04; no change to previous migration history."""
 from alembic import op
 import sqlalchemy as sa
 

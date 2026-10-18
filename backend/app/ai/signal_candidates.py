@@ -1,4 +1,3 @@
-"""W6-03 bounded Mock candidates; no events, facts, diagnosis or notification."""
 import json
 import re
 from typing import Literal
@@ -55,7 +54,6 @@ def supported(text):
 
 
 def extract_mock(text, *, conversation_id, message_id):
-    """Deterministic fixture extractor routed through the same output validator."""
     try:
         rows = supported(text)
     except (ValueError, TypeError):

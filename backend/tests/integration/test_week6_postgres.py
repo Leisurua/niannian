@@ -1,4 +1,3 @@
-"""Actual isolated PostgreSQL: W6 summary authorization, fencing and proactive quota."""
 import asyncio
 from datetime import timedelta
 from uuid import UUID
@@ -81,7 +80,7 @@ def test_standing_grant_two_sessions_reason_audit_and_revoke(system):
 def test_summary_denial_preserves_basic_conversation_and_never_stores_raw_text(system):
     client, engine, factory, _ = system
     home = household(client)
-    grant(client, home, 'CONVERSATION_SUMMARY')  # reader grant does not permit processing
+    grant(client, home, 'CONVERSATION_SUMMARY')
     cid = converse(client, home, 'synthetic-private-unapproved-text')
     assert post(client, '/v1/conversations/' + cid + '/summary', home[4]).status_code == 403
     with engine.connect() as conn:
@@ -248,12 +247,12 @@ def test_named_reader_needs_summary_permission_and_live_processing_grant(system)
     cid = converse(client, home); drain(factory)
     grant_body = dict(family_id=home[0], subject_user_id=home[3], grantee_user_id=reader, scope='CONVERSATION_SUMMARY', source='SETTINGS')
     assert post(client, '/v1/consents', home[4], grant_body).status_code == 201
-    assert read(client, cid, headers).status_code == 404  # consent alone is not SUMMARY_READ
+    assert read(client, cid, headers).status_code == 404
     with engine.begin() as conn:
         conn.execute(text('UPDATE family_member SET permission_codes=CAST(:codes AS jsonb) WHERE user_id=:id'),
             {'codes': '{"SUMMARY_READ":true}', 'id': reader})
     assert read(client, cid, headers).json()['summary']
-    assert read(client, cid, home[2]).status_code == 404  # creator was not the named grantee
+    assert read(client, cid, home[2]).status_code == 404
     with engine.begin() as conn:
         conn.execute(text("UPDATE consent SET expires_at=now()-interval '1 second' WHERE subject_user_id=grantee_user_id AND scope='CONVERSATION_SUMMARY'"))
     assert read(client, cid, headers).json()['summary'] is None
