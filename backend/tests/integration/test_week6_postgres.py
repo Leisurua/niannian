@@ -1,5 +1,6 @@
 import asyncio
 from datetime import timedelta
+from threading import Event
 from uuid import UUID
 
 import pytest
@@ -310,14 +311,21 @@ def test_listener_failure_closes_and_releases_socket_lease(system, monkeypatch):
     from starlette.websockets import WebSocketDisconnect
     client, _, _, _ = system
     home = household(client); cid = start(client, home)
+    released = Event()
+    release_connection_lease = api.release_connection_lease
+    async def observed_release(lease, actor_id):
+        await release_connection_lease(lease, actor_id)
+        released.set()
     async def failed_listener(connection, queue):
         raise RuntimeError('fictional listener failure')
     with monkeypatch.context() as patch:
         patch.setattr(api, 'listen_proactive', failed_listener)
+        patch.setattr(api, 'release_connection_lease', observed_release)
         with client.websocket_connect('/v1/ws/conversations/' + cid, headers=home[4]) as ws:
             assert ws.receive_json()['type'] == 'session.ready'
             with pytest.raises(WebSocketDisconnect):
                 ws.receive_json()
+        assert released.wait(5), 'Server cleanup did not finish after listener failure'
     assert not api._connections
     with client.websocket_connect('/v1/ws/conversations/' + cid, headers=home[4]) as ws:
         handshake(ws, cid)
