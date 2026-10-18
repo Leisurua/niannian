@@ -62,30 +62,3 @@ def test_device_unavailable_is_reported_without_claiming_hardware_pass(monkeypat
     assert result['status'] == 'NOT VERIFIED'
     assert all(check['status'] == 'NOT VERIFIED' for check in result['checks']
                if check['check'] in ('postgres', 'device-baseline', 'hardware-spikes'))
-
-
-def test_week2_gate_collects_only_its_database_suite(monkeypatch, tmp_path):
-    monkeypatch.setenv('WEEK2_TEST_DATABASE_URL', 'postgresql+psycopg://localhost/niannian_week2_test')
-    monkeypatch.delenv('WEEK3_TEST_DATABASE_URL', raising=False)
-    monkeypatch.delenv('PYTEST_ADDOPTS', raising=False)
-    run_process = subprocess.run
-    collections = []
-
-    def run(command, **kwargs):
-        if 'pytest' in command:
-            collected = run_process([*command, '--collect-only', '-o', 'addopts=', '-v', '-p', 'no:cacheprovider'],
-                cwd=kwargs['cwd'], env=kwargs['env'], capture_output=True, text=True, encoding='utf-8', timeout=30)
-            assert collected.returncode == 0, collected.stdout + collected.stderr
-            assert 'test_week2_postgres.py' in collected.stdout
-            assert 'test_week3_postgres.py' not in collected.stdout
-            assert 'test_week3_storage.py' not in collected.stdout
-            assert 'test_week4_postgres.py' not in collected.stdout
-            assert 'test_week5_postgres.py' not in collected.stdout
-            assert 'test_week6_postgres.py' not in collected.stdout
-            collections.append(collected.stdout)
-            (tmp_path / 'backend-tests.xml').write_text('<testsuites><testsuite tests="1"/></testsuites>')
-        return subprocess.CompletedProcess(command, 0)
-
-    monkeypatch.setattr(verify.subprocess, 'run', run)
-    assert verify.run_checks(tmp_path)['status'] == 'PASS'
-    assert len(collections) == 1

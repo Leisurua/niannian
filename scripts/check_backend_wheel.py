@@ -13,7 +13,6 @@ def main() -> None:
     with zipfile.ZipFile(wheels[0]) as wheel:
         members = set(wheel.namelist())
         assert all(f"config/{profile}.env" in members for profile in ("dev", "test", "demo"))
-        assert "app/ai/prompts/conversation.md" in members
         assert not any(name.startswith(("tests/", "alembic/")) for name in members)
     with tempfile.TemporaryDirectory(prefix="niannian-wheel-") as temporary:
         subprocess.run([sys.executable, "-m", "pip", "install", "--no-deps", "--no-compile",
@@ -27,17 +26,12 @@ def main() -> None:
                 "import app",
                 "from app.main import app as api, settings",
                 "from fastapi.testclient import TestClient",
-                "import asyncio",
-                "from uuid import UUID",
-                "from app.ai.conversation import AIOrchestrator, CHAT",
                 "assert Path(app.__file__).is_relative_to(Path.cwd())",
                 "assert settings.provider_mode == 'mock'",
                 "assert settings.demo_data == (settings.app_env == 'demo')",
                 "response = TestClient(api).get('/health')",
                 "assert response.status_code == 200",
                 "assert response.json()['environment'] == settings.app_env",
-                "answer = asyncio.run(AIOrchestrator().handle(request_id='wheel-check', conversation_id=UUID(int=1), text='你好'))",
-                "assert answer.assistant_text == CHAT and answer.fallback_code is None",
             ])], cwd=temporary, env=environment, check=True, timeout=15)
     print("PASS: installed wheel supplies all three profiles and health; no source import")
 

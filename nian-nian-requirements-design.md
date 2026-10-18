@@ -4,10 +4,10 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 文档版本 | v1.1 |
+| 文档版本 | v1.2 |
 | 文档状态 | 约 3 个月课程/竞赛开发基线，可用于评审、开发、测试和答辩 |
 | 产品名称 | 念念（NianNian） |
-| 产品形态 | 老人端 + 子女端；产品分为手机/平板 App 阶段和设备化阶段。本项目 12 周交付双端 App，并在指定 Android 平板上完成设备化演示 |
+| 产品形态 | Android 老人随身端 + Android 家庭平板端 + Android 子女端，连接 Windows 服务器；本项目以三个独立 App 演示四段逻辑互通 |
 | 目标用户 | 独居/空巢老人、异地或工作繁忙的子女、紧急联系人 |
 | 核心定位 | 透明、可信、能把老人重新连接到真实家人的 AI 陪伴者 |
 
@@ -38,7 +38,7 @@
 
 ### 1.4 成功目标
 
-**项目目标**：完成可演示、可评审、可扩展的双端原型，并验证“陪伴 -> 识别线索 -> 家属响应 -> 反馈老人”的闭环。
+**项目目标**：完成可演示、可评审、可扩展的三端 Android 原型和 Windows 服务端，并验证“陪伴 -> 识别线索 -> 家属响应 -> 反馈老人”的闭环与四段消息互通。
 
 **比赛原型目标（12 周）**：
 
@@ -188,6 +188,7 @@
 | FR-061 | 离线语音唤醒和基础离线提醒 | 断网时成熟唤醒词 SDK 能唤醒应用，已缓存提醒可正常播报；联网对话能力不可用时明确提示，不伪造回答 |
 | FR-062 | 人员接近唤醒 | 摄像头仅检测设备前方存在人脸/人员并持续达到配置时长后唤醒界面；不做人脸身份识别、不保存生物特征，未授权摄像头时功能关闭 |
 | FR-063 | BLE 实体呼叫按钮 | 指定按钮完成配对后，按下能在本地立即显示呼叫状态并触发紧急联系流程；断连、低电量或权限不足时显示明确状态 |
+| FR-064 | Windows 服务器、老人随身端、家庭平板端、子女端在同家庭和授权范围内逻辑任意互通 | 三类 Android 客户端通过受信服务器完成六个客户端方向的短消息收发；目标离线时持久化，重连按 sequence 补齐；`RECEIVED`/`READ` 由真实设备/界面动作产生；不承诺客户端公网直连或永久后台 WebSocket |
 
 ## 5. 交互与信息架构
 
@@ -310,26 +311,25 @@ ASR、TTS、LLM 和数字人均通过适配器接入成熟 SDK/API；模型不�
 
 ### 6.7 自研与第三方边界
 
-允许使用成熟 SDK/API：ASR、TTS、LLM、数字人、天气、推送、地图/新闻外部服务、离线唤醒词 SDK。项目主要自主实现：双端产品、家庭体系、授权体系、家庭记忆与 RAG、对话编排、主动陪伴策略、SignalEvent、亲情桥接、诈骗风险规则、通知闭环、周报、审计、紧急联系业务和 Android 设备化集成。
+允许使用成熟 SDK/API：ASR、TTS、LLM、数字人、天气、推送、地图/新闻外部服务、离线唤醒词 SDK。项目主要自主实现：三端 Android 产品、家庭体系、授权体系、家庭记忆与 RAG、对话编排、主动陪伴策略、SignalEvent、亲情桥接、诈骗风险规则、通用消息中枢、通知闭环、周报、审计、紧急联系业务和 Android 设备化集成。
 
 ## 7. 技术架构
 
 ### 7.1 总体架构
 
 ```text
-┌──────────────── 老人端 ────────────────┐      ┌──────────── 子女端 ────────────┐
-│ Android/iOS App                       │      │ Android/iOS App               │
-│ 语音、数字人、提醒、按钮、离线缓存      │      │ 动态、记忆、周报、授权、联系    │
-└───────────────┬───────────────────────┘      └─────────────┬─────────────────┘
-                │ HTTPS/WebSocket/推送                         │
-                └──────────────────┬──────────────────────────┘
+┌──────── 老人随身端 ───────┐ ┌──────── 家庭平板端 ────────┐ ┌──────── 子女端 ─────────┐
+│ Android：语音/求助/缓存    │ │ Android：家庭状态/消息/陪伴 │ │ Android：动态/记忆/联系 │
+└──────────┬───────────────┘ └──────────┬─────────────────┘ └─────────┬──────────────┘
+           └──────────────── HTTPS / Device WSS ───────────────────────┘
                                    │
                          ┌─────────▼─────────┐
-                         │ 模块化单体 Backend │
+                         │ Windows 模块化单体  │
                          │ auth/family/consent│
                          │ memory/conversation│
                          │ reminder/signal    │
                          │ notification/report│
+                         │ messaging/device   │
                          │ audit/emergency    │
                          └─────────┬─────────┘
                                    │
@@ -346,8 +346,8 @@ ASR、TTS、LLM 和数字人均通过适配器接入成熟 SDK/API；模型不�
 
 ### 7.2 推荐实现边界
 
-- **客户端**：Flutter 或 React Native；若课程已有技术栈，优先沿用。原生 Android 能更好支持 kiosk、蓝牙按钮和开机自启。
-- **后端**：模块化单体，提供 REST API + WebSocket；事件通知优先使用数据库任务表/后台 worker，避免为比赛版本引入不必要的消息中间件。
+- **客户端**：第一阶段固定 Kotlin + Jetpack Compose，交付 `app-elder`、`app-home`、`app-family` 三个 Android App；iOS、macOS、Windows 客户端不在本阶段承诺中。
+- **后端**：Windows 上运行 FastAPI 模块化单体，提供 REST API + Conversation/Device WebSocket；事件和离线消息使用 PostgreSQL 事实表与独立 worker，不引入 Kafka/Redis。
 - **数据层**：关系库保存账号、授权、提醒、事件状态；对象存储保存经授权的图片/音频；向量索引保存家庭记忆 embedding，并与原文权限绑定。
 - **模型层**：ASR、LLM、TTS、数字人接第三方服务或成熟 SDK；接口必须抽象成可替换适配器，演示时支持 mock 模式和超时兜底。
 - **离线能力**：设备端保留唤醒词、基础提醒、紧急联系人和最近配置；离线时不保留不必要的完整音频，联网对话不可用时显示真实状态。
@@ -363,6 +363,8 @@ ASR、TTS、LLM 和数字人均通过适配器接入成熟 SDK/API；模型不�
 | Memory | id, family_id, type, content_ref, source_user, verification_status, visibility |
 | Reminder | owner_id, type, schedule, content, escalation_policy, active |
 | Conversation | id, owner_id, started_at, ended_at, summary_ref, retention_until |
+| MessageEnvelope | id, family_id, sender_device_id, destination, message_type, priority, payload, sequence, expires_at |
+| MessageDelivery | id, message_id, recipient_device_id, status, attempt_count, received_at, read_at, expires_at |
 | InteractionMetric | owner_id, date, first_interaction_at, last_interaction_at, night_count, response_stats |
 | SignalEvent | type, source_conversation, evidence_ref, confidence, severity, status, policy_version |
 | Notification | event_id, recipient_id, channel, sent_at, read_at, action |
@@ -389,6 +391,11 @@ GET    /v1/emergency/contacts             查看紧急联系人
 POST   /v1/emergency/call                 发起紧急联系
 POST   /v1/devices/{id}/heartbeat         更新设备在线、kiosk、离线能力状态
 POST   /v1/devices/{id}/button-event      接收 BLE 呼叫按钮事件
+POST   /v1/messages                       创建并路由授权消息
+GET    /v1/messages                       按设备 cursor 同步 inbox/outbox
+GET    /v1/messages/{id}                  查询消息及本设备投递状态
+POST   /v1/message-deliveries/{id}/received  确认设备已持久化消息
+POST   /v1/message-deliveries/{id}/read      确认界面已展示消息
 GET    /v1/audit-logs                     查看本人可见访问记录
 DELETE /v1/memories/{id}                  删除记忆并触发索引清理
 ```
@@ -513,9 +520,9 @@ DELETE /v1/memories/{id}                  删除记忆并触发索引清理
 - 在指定平板完成 kiosk、开机自启、离线唤醒、基础离线提醒、人员接近唤醒和指定 BLE 按钮。
 - 明确设备权限、网络、SIM、蓝牙断连和离线时的降级状态。
 
-### 第 11 周：双端联调与异常测试
+### 第 11 周：三端联调与异常测试
 
-- 覆盖断网、ASR/LLM/TTS 超时、推送失败、权限撤回、记忆删除、RAG 越权、诈骗误报、紧急联系失败。
+- 覆盖三种 Android 客户端六个消息方向、断网补拉、重启去重，以及 ASR/LLM/TTS 超时、推送失败、权限撤回、记忆删除、RAG 越权、诈骗误报、紧急联系失败。
 - 完成数据删除、审计日志、通知幂等、设备重启和重复操作测试。
 
 ### 第 12 周：稳定性、演示和答辩
@@ -539,7 +546,7 @@ DELETE /v1/memories/{id}                  删除记忆并触发索引清理
 
 这些问题不应在代码中隐式决定，应在项目启动时由团队记录选择：
 
-1. 第一阶段采用 Flutter、React Native 还是原生 Android/iOS。
+1. 已决：第一阶段采用 Kotlin + Jetpack Compose 原生 Android；服务器运行在 Windows；iOS/macOS/Windows 客户端后置。
 2. 是否允许保存原始音频；默认建议“不保存或短期自动删除”。
 3. 短信/电话通知使用哪家服务，以及费用和合规限制。
 4. 医嘱内容由谁录入、谁负责核对；建议仅允许家属录入并要求二次确认。
@@ -554,7 +561,7 @@ DELETE /v1/memories/{id}                  删除记忆并触发索引清理
 ## 14. 交付物清单
 
 - 本文档及版本变更记录。
-- 老人端、子女端原型/可运行包。
+- 老人随身端、家庭平板端、子女端原型/可运行包，以及 Windows 服务端启动包。
 - API 文档、数据字典、权限矩阵和部署说明。
 - AI 话术与测试集说明、风险规则表。
 - 演示脚本、测试报告、已知问题清单。
@@ -564,7 +571,7 @@ DELETE /v1/memories/{id}                  删除记忆并触发索引清理
 
 本需求与设计文档已经确定产品边界，但正式开发前还需要形成以下可执行文档：
 
-- **页面与交互规格**：老人端、子女端、设备端页面清单、状态图、字号/对比度/语音话术、异常态和空数据态。
+- **页面与交互规格**：老人端、家庭平板端、子女端页面清单、状态图、字号/对比度/语音话术、异常态和空数据态。
 - **需求追踪矩阵**：FR -> 页面/接口/数据实体/测试用例/演示步骤的映射，确保 9 项核心能力均可追踪。
 - **API/OpenAPI 文档**：请求/响应 schema、错误码、鉴权、幂等、分页、超时和权限矩阵。
 - **数据库 ERD 与迁移脚本**：包括 Consent、Memory、SignalEvent、InteractionMetric、WeeklyReport、DeviceBinding 和 AuditLog 的索引与删除策略。
