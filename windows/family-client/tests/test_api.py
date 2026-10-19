@@ -6,7 +6,7 @@ from threading import Thread
 import unittest
 from unittest.mock import patch
 
-from niannian_family_client.api import ApiError, NianNianClient, normalize_base_url, run_e2e_probe
+from niannian_family_client.api import ApiError, ClientError, NianNianClient, normalize_base_url, run_e2e_probe
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -27,6 +27,8 @@ class Handler(BaseHTTPRequestHandler):
         Handler.requests.append({"method": "GET", "path": self.path, "authorization": self.headers.get("Authorization")})
         if self.path == "/health":
             self._reply(200, {"status": "ok", "environment": "test", "request_id": "health-1"})
+        elif self.path == "/openapi.json":
+            self._reply(200, {"paths": {"/v1/auth/login": {}, "/v1/families": {}}})
         elif self.path.startswith("/v1/families"):
             self._reply(200, {"items": [{"id": "family-1", "name": "测试家庭"}]})
         else:
@@ -89,6 +91,15 @@ class ApiClientTests(unittest.TestCase):
         self.assertEqual(client.list_families()[0]["id"], "family-1")
         self.assertEqual(Handler.requests[-1]["authorization"], "Bearer access-test")
 
+    def test_unsupported_main_messages_are_blocked_before_post(self):
+        client = NianNianClient(self.url)
+        client.login()
+        self.assertEqual(client.backend_features(), {"devices": False, "messages": False})
+        before = len(Handler.requests)
+        with self.assertRaises(ClientError):
+            client.send_text_to_role("虚构文本")
+        self.assertEqual(len(Handler.requests), before)
+
     def test_api_error_is_human_readable(self):
         client = NianNianClient(self.url)
         client.login()
@@ -115,6 +126,9 @@ class FakeProbeClient:
 
     def login(self, *_args, **_kwargs):
         return {"user": {"id": f"user-{self.index}"}}
+
+    def backend_features(self):
+        return {"devices": True, "messages": True}
 
     def create_family(self, _name):
         return {"id": "family-1"}

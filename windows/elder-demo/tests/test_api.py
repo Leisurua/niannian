@@ -26,6 +26,8 @@ class Handler(BaseHTTPRequestHandler):
         Handler.requests.append({"method": "GET", "path": self.path, "auth": self.headers.get("Authorization")})
         if self.path == "/health":
             self._reply(200, {"status": "ok", "environment": "test"})
+        elif self.path == "/openapi.json":
+            self._reply(200, {"paths": {"/v1/devices/register": {}, "/v1/devices": {}, "/v1/messages": {}, "/v1/messages/{id}": {}, "/v1/message-deliveries/{id}/received": {}, "/v1/message-deliveries/{id}/read": {}}})
         elif self.path.startswith("/v1/families"):
             self._reply(200, {"items": [{"id": "family-1", "name": "演示家庭", "member_status": "ACTIVE"}]})
         elif self.path.startswith("/v1/messages"):
@@ -92,6 +94,10 @@ class ElderClientTests(unittest.TestCase):
         request = Handler.requests[-1]
         self.assertEqual(request["body"]["credential"], {"type": "DEMO", "identifier": "demo-elder"})
         self.assertEqual(request["body"]["device"]["name"], "Windows 老人演示端")
+
+    def test_mock_server_advertises_message_apis(self):
+        client = ElderClient(self.url)
+        self.assertEqual(client.backend_features(), {"devices": True, "messages": True})
 
     def test_invitation_and_device_registration(self):
         client = ElderClient(self.url)
