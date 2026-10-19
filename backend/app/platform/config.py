@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     embedding_api_key: str | None = Field(default=None, repr=False)
     push_api_key: str | None = Field(default=None, repr=False)
     s3_endpoint: str = "http://localhost:9000"
+    s3_public_endpoint: str | None = None
     s3_bucket: str = "nianian-private"
     s3_access_key: str | None = Field(default=None, repr=False)
     s3_secret_key: str | None = Field(default=None, repr=False)

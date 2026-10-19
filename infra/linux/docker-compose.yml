@@ -1,0 +1,133 @@
+name: niannian-linux
+
+x-backend-environment: &backend-environment
+  APP_ENV: demo
+  PROVIDER_MODE: mock
+  DEMO_DATA: "true"
+  LOG_LEVEL: INFO
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+  AUTH_SIGNING_KEY: ${AUTH_SIGNING_KEY}
+  PUBLIC_BASE_URL: http://${NIANNIAN_HOST}:${API_PORT}
+  S3_ENDPOINT: http://minio:9000
+  S3_PUBLIC_ENDPOINT: http://${NIANNIAN_HOST}:${MINIO_PORT}
+  S3_PUBLIC_ENDPOINT: http://${NIANNIAN_HOST}:${MINIO_PORT}
+  S3_BUCKET: nianian-private
+  S3_ACCESS_KEY: ${MINIO_ROOT_USER}
+  S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+
+x-backend-service: &backend-service
+  build:
+    context: ../../backend
+    dockerfile: Dockerfile.linux
+  image: niannian-backend:linux-local
+  environment: *backend-environment
+  restart: unless-stopped
+  init: true
+  networks:
+    - backend
+  logging:
+    options:
+      max-size: 10m
+      max-file: "3"
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    networks:
+      - backend
+
+  minio:
+    image: niannian-minio:RELEASE.2025-02-18T16-25-55Z
+    build:
+      context: ../minio
+      target: server
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "0.0.0.0:${MINIO_PORT}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    networks:
+      - backend
+
+  bucket-init:
+    image: niannian-mc:RELEASE.2025-02-08T19-14-21Z
+    build:
+      context: ../minio
+      target: client
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"
+        mc mb --ignore-existing local/nianian-private
+        mc anonymous set none local/nianian-private
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - backend
+
+  migrate:
+    <<: *backend-service
+    command: ["python", "-m", "alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *backend-service
+    command: ["python", "-m", "app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "0.0.0.0:${API_PORT}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      bucket-init:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *backend-service
+    command: ["python", "-m", "app.worker.main", "--serve"]
+    healthcheck:
+      disable: true
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      bucket-init:
+        condition: service_completed_successfully
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  minio_data:
