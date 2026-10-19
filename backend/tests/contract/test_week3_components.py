@@ -36,7 +36,7 @@ def test_internal_values_match_frozen_openapi():
 
 def test_all_implemented_models_match_the_approved_dictionary():
     dictionary = (ROOT / 'docs/data-dictionary.md').read_text(encoding='utf-8')
-    assert len(DOMAIN_MODELS) == 18
+    assert len(DOMAIN_MODELS) == 22
     for model in DOMAIN_MODELS:
         section = re.search(r'^## \d+\. ' + model.__tablename__ + r'\n(.*?)(?=^## |\Z)', dictionary, re.M | re.S)[1]
         columns = set(re.findall(r'^\| ([a-z][a-z0-9_]*) \|', section, re.M))

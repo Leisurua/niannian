@@ -765,3 +765,10 @@ This section supersedes earlier Week 3/4 “summary unavailable” implementatio
 - Full candidate category/action vocabulary and SCAM_CODE_SECRECY are frozen in W6-03. Six types remain temporary
   Mock candidates, not facts/events/notifications. Deterministic emergency/scam copy survives LLM/TTS failure.
   SignalEvent persistence and notification delivery remain Week 7. Real voice/provider gates remain unapproved.
+
+
+## Week 7 approved contract — 2026-10-19
+
+[W7-01..04](plan/week7-contract-review.md) 已由项目负责人在本聊天回复“是”批准。
+
+W7 家属收件箱只在前台内存展示，每 30 秒刷新并支持手动刷新；显示同步失败、Mock 和未验证设备推送到达。后台/退出/换家庭/离线/已知授权变更清空；查看事件详情仍服务端授权。渠道设置与分项 Consent 分开；默认 IN_APP，MockPush 默认关闭；可关闭全部渠道和免打扰。SENT 文案为应用内可查看/模拟发送，READ 才已读，FAILED 明示失败；不展示严重度代码或 confidence。不提供第八周联系/误报/确认动作。

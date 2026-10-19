@@ -13,7 +13,7 @@ class Task(Base):
     __tablename__ = 'task_outbox'
     __table_args__ = (
         CheckConstraint('resource_version > 0', name='ck_task_version'),
-        CheckConstraint("kind IN ('MEMORY_INDEX','MEMORY_CLEANUP','FILE_CLEANUP','CONVERSATION_SUMMARY','CONVERSATION_SUMMARY_CLEANUP')", name='ck_task_kind'),
+        CheckConstraint("kind IN ('MEMORY_INDEX','MEMORY_CLEANUP','FILE_CLEANUP','CONVERSATION_SUMMARY','CONVERSATION_SUMMARY_CLEANUP','NOTIFICATION_DISPATCH','SIGNAL_CLEANUP','NOTIFICATION_CLEANUP')", name='ck_task_kind'),
         CheckConstraint("status IN ('PENDING','RUNNING','RETRY','SUCCEEDED','DEAD')", name='ck_task_status'),
         CheckConstraint('attempts >= 0 AND max_attempts > 0 AND attempts <= max_attempts', name='ck_task_attempts'),
         CheckConstraint("(status = 'RUNNING' AND lease_token IS NOT NULL AND lease_until IS NOT NULL) OR (status <> 'RUNNING' AND lease_token IS NULL AND lease_until IS NULL)", name='ck_task_lease'),
@@ -91,3 +91,7 @@ async def defer_cleanup(db, task_id, token, available_at):
     row.available_at, row.last_error_code = available_at, 'UPLOAD_WINDOW_OPEN'
     row.lease_token, row.lease_until, row.updated_at = None, None, utcnow()
     return True
+
+
+async def dead_resource_ids(db, kind):
+    return set((await db.scalars(select(Task.resource_id).where(Task.kind == kind, Task.status == 'DEAD'))).all())

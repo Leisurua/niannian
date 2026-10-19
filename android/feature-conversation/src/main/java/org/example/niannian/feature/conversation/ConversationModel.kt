@@ -141,6 +141,22 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
                     require(text.length <= 2000)
                     current.value = current.value.copy(reply = text)
                 }
+                "warning" -> {
+                    val category = payload.getString("reason_category")
+                    val text = payload.getString("display_text")
+                    require(category.isNotBlank() && category.length <= 64)
+                    require(text.isNotBlank() && text.length <= 2000)
+                    // Keep the pending-turn deadline and busy flag until completion.
+                    // This is a local safety warning, not evidence of family delivery.
+                    current.value = current.value.copy(state = "WARNING", message = text)
+                }
+                "signal.created" -> {
+                    UUID.fromString(payload.getString("signal_event_id"))
+                    require(payload.getString("type") in listOf("PHYSICAL_DISCOMFORT", "EMOTION_EXPRESSION",
+                        "IMPORTANT_MEMORY", "MISS_FAMILY", "SCAM_RISK", "EMERGENCY"))
+                    require(payload.getString("severity") in listOf("L0", "L1", "L2", "L3", "L4"))
+                    // Event creation is not proof of notification delivery. Preserve safety copy.
+                }
                 "error" -> current.value = current.value.copy(busy = false, message = "暂时无法完成，请稍后再试。当前仅显示文字。")
                 "pong" -> Unit
                 else -> error("Unsupported event")

@@ -12,7 +12,7 @@ async def authorize_index_then_lock_lease(db, task, token):
     return current, lease
 
 
-async def run_one(factory, storage=None):
+async def run_one(factory, storage=None, *, push=None):
     async with factory() as db:
         task = await tasks.claim(db)
         await db.commit()
@@ -21,7 +21,19 @@ async def run_one(factory, storage=None):
         task_id, token = task.id, task.lease_token
     try:
         async with asyncio.timeout(20):
-            if task.kind == 'MEMORY_INDEX':
+            if task.kind == 'NOTIFICATION_DISPATCH':
+                from app.modules.notification.service import dispatch
+                await dispatch(factory, task_id, token, task.resource_id, push)
+            elif task.kind in ('SIGNAL_CLEANUP', 'NOTIFICATION_CLEANUP'):
+                from app.modules.signal import service as signals
+                from app.modules.notification import service as notifications
+                async with factory() as db:
+                    if await tasks.leased(db, task_id, token):
+                        cleanup = signals.cleanup if task.kind == 'SIGNAL_CLEANUP' else notifications.cleanup
+                        await cleanup(db, task.resource_id)
+                        await tasks.finish(db, task_id, token)
+                        await db.commit()
+            elif task.kind == 'MEMORY_INDEX':
                 async with factory() as db:
                     prepared = await rag.prepare_index(db, task.resource_id, task.resource_version)
                     await db.commit()

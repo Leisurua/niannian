@@ -144,4 +144,51 @@ class ConversationModelTest {
         assertEquals("", model.state.value.reply)
         model.clear(); assertEquals("", model.state.value.recapId)
     }
+    @Test fun warningStaysConnectedAndDoesNotAllowAnotherPendingTurn() = runBlocking {
+        val gateway = Gateway(); val model = ConversationModel(gateway, this)
+        model.bind("family", "elder"); model.start(); yield()
+        gateway.listener(frame(1)); yield()
+        model.input("有人让我转账并且保密")
+        gateway.listener(frame(2, "warning", JSONObject()
+            .put("reason_category", "TRANSFER_AND_SECRECY")
+            .put("display_text", "请不要转账，先联系家人核实。"))); yield()
+        assertTrue(model.state.value.connected)
+        assertTrue(model.state.value.busy)
+        assertEquals("WARNING", model.state.value.state)
+        assertEquals("请不要转账，先联系家人核实。", model.state.value.message)
+        model.input("不应发送第二轮")
+        assertEquals(1, gateway.sent.count { it.getString("type") == "text.input" })
+        gateway.listener(frame(3, "assistant.state", JSONObject().put("state", "WARNING"))); yield()
+        assertFalse(model.state.value.busy)
+        model.bind("other-family", "elder")
+        assertEquals("", model.state.value.message)
+        model.clear()
+    }
+
+    @Test fun malformedWarningDisconnectsWithoutDisplayingPayload() = runBlocking {
+        for (payload in listOf(JSONObject().put("display_text", "untrusted"),
+            JSONObject().put("reason_category", "CATEGORY").put("display_text", "x".repeat(2001)))) {
+            val gateway = Gateway(); val model = ConversationModel(gateway, this)
+            model.bind("family", "elder"); model.start(); yield()
+            gateway.listener(frame(1)); yield()
+            gateway.listener(frame(2, "warning", payload)); yield()
+            assertFalse(model.state.value.connected)
+            assertFalse(model.state.value.message.contains("untrusted"))
+            assertEquals("", model.state.value.reply)
+            model.clear()
+        }
+    }
+
+    @Test fun createdSignalDoesNotClaimDeliveryOrInterruptPendingSafetyTurn() = runBlocking {
+        val gateway = Gateway(); val model = ConversationModel(gateway, this)
+        model.bind("family", "elder"); model.start(); yield()
+        gateway.listener(frame(1)); yield()
+        model.input("转账并保密")
+        gateway.listener(frame(2, "signal.created", JSONObject().put("signal_event_id", id)
+            .put("type", "SCAM_RISK").put("severity", "L2"))); yield()
+        assertTrue(model.state.value.connected); assertTrue(model.state.value.busy)
+        assertFalse(model.state.value.message.contains("已送达"))
+        assertFalse(model.state.value.message.contains("已通知"))
+        model.clear()
+    }
 }

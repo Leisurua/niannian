@@ -468,3 +468,10 @@ This section supersedes earlier Week 3/4 “summary unavailable” implementatio
 - Full candidate category/action vocabulary and SCAM_CODE_SECRECY are frozen in W6-03. Six types remain temporary
   Mock candidates, not facts/events/notifications. Deterministic emergency/scam copy survives LLM/TTS failure.
   SignalEvent persistence and notification delivery remain Week 7. Real voice/provider gates remain unapproved.
+
+
+## Week 7 approved contract — 2026-10-19
+
+[W7-01..04](plan/week7-contract-review.md) 已由项目负责人在本聊天回复“是”批准。
+
+新增 SignalEvent/Notification/Attempt/NotificationPreference 及新迁移；事件类别、7 天期限和通知 24h 派发期限按字典实现。source_message_id/evidence_hash 为 null，无逐字稿表。复用 outbox 租约/fence/重试/DEAD，增加三个 W7 kind。删除顺序 Attempt → Notification → Signal，审计 append-only。去重含 family/owner/type/category/severity/30m 桶，家庭事务锁串行化。

@@ -351,6 +351,17 @@ Purpose：可解释、可追踪的关注/诈骗/紧急事件。
 | resolution_code | varchar(32) | yes | null | - | 解决/误报原因 | S2 |
 | resolved_at | timestamptz | yes | null | - | 解决时间 | S2 |
 
+W7-01/02 approved additions (2026-10-19):
+
+| Column | Type | Nullable | Default | Constraint | Description | Sensitivity |
+| --- | --- | --- | --- | --- | --- | --- |
+| trigger_category | varchar(64) | no | - | W6-03 vocabulary | 固定规则类别 | S2 |
+| retention_until | timestamptz | no | - | >= detected_at | 首次创建起最多 7 天，不续期 | S2 |
+| deleted_at | timestamptz | yes | null | - | 先隐藏，后 worker 清理 | S2 |
+
+W7 Mock 的 source_message_id/evidence_hash 必须为 null；没有 ConversationMessage 表或原文。
+source_conversation_id 仍为真实会话 FK。created_at API 字段映射 detected_at。
+
 ## 18. notification
 
 Purpose：业务通知，与具体 Push/SMS/PHONE provider 解耦。
@@ -375,6 +386,17 @@ Purpose：业务通知，与具体 Push/SMS/PHONE provider 解耦。
 | action_at | timestamptz | yes | null | - | 动作时间 | S2 |
 | error_code | varchar(64) | yes | null | - | 脱敏错误码 | S0 |
 | dedupe_key | char(64) | yes | null | UNIQUE where active | 幂等/去重键 | S0 |
+
+W7-02 approved additions:
+
+| Column | Type | Nullable | Default | Constraint | Description | Sensitivity |
+| --- | --- | --- | --- | --- | --- | --- |
+| retention_until | timestamptz | no | - | >= created_at | 最多 7 天且不超过来源期限 | S2 |
+| dispatch_deadline | timestamptz | no | - | >= created_at | 创建后 24 小时，重试/免打扰不延长 | S2 |
+| deleted_at | timestamptz | yes | null | - | 撤回/失效立即隐藏 | S2 |
+
+W7 active dedupe index predicate: status <> CANCELLED AND deleted_at IS NULL。
+Mock/IN_APP SENT 仅表示模拟接受/收件箱可用；delivered_at 不写，显式 read 才 READ。
 
 ## 19. notification_attempt
 
@@ -561,3 +583,23 @@ Approved W6-04. See plan/week6-contract-review.md for constraints, permissions a
 | local_date | DATE | no | - | PK | local_date | S1 |
 | used_count | SMALLINT | no | 0 | W6-04 | used_count | S1 |
 | updated_at | DATETIME | no | now() | W6-04 | updated_at | S1 |
+
+## 29. notification_preference
+
+Approved W7-04; per family/elder/recipient, not an authorization grant.
+
+| Column | Type | Nullable | Default | Constraint | Description | Sensitivity |
+| --- | --- | --- | --- | --- | --- | --- |
+| id | uuid | no | UUIDv7 | PK | 设置标识 | S1 |
+| family_id | uuid | no | - | FK family.id RESTRICT | 家庭 | S2 |
+| owner_user_id | uuid | no | - | FK user.id RESTRICT | 长辈 | S2 |
+| recipient_user_id | uuid | no | - | FK user.id RESTRICT; unique tuple | 当前登录收件人 | S2 |
+| channels | jsonb | no | - | array subset IN_APP/PUSH | 本轮仅 Mock | S1 |
+| timezone | varchar(64) | no | - | IANA service validation | 缺省 Demo Asia/Shanghai | S1 |
+| quiet_hours_start | time | yes | null | paired with end | 本地分钟 | S1 |
+| quiet_hours_end | time | yes | null | paired with start | 相同表示关闭 | S1 |
+| version | integer | no | 1 | > 0 | 缺省未落库 GET version=0 | S0 |
+| created_at | timestamptz | no | now() | - | 首次设置 | S1 |
+| updated_at | timestamptz | no | now() | - | 修改时间 | S1 |
+
+W7 task_outbox.kind 增加 NOTIFICATION_DISPATCH / SIGNAL_CLEANUP / NOTIFICATION_CLEANUP。

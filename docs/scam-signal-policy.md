@@ -213,3 +213,10 @@ This section supersedes earlier Week 3/4 “summary unavailable” implementatio
 - Full candidate category/action vocabulary and SCAM_CODE_SECRECY are frozen in W6-03. Six types remain temporary
   Mock candidates, not facts/events/notifications. Deterministic emergency/scam copy survives LLM/TTS failure.
   SignalEvent persistence and notification delivery remain Week 7. Real voice/provider gates remain unapproved.
+
+
+## Week 7 approved contract — 2026-10-19
+
+[W7-01..04](plan/week7-contract-review.md) 已由项目负责人在本聊天回复“是”批准。
+
+W7-03 消除 §8/§9 歧义：去重 hash 加入 severity，不同类别/严重度新事件，同桶重复只返回原有事实、不追加通知且不续期。SCAM 不需要健康 scope，不适需要健康 scope。无授权走本地警告路径，不持久化敏感 WITHHELD 证据。已批准触发类别落库；仅来源会话引用，Mock 来源消息 ID 为 null。所有非紧急通知（含 L3）遵守免打扰；情绪/思念/待核实记忆仅应用内。本轮 EMERGENCY 只保留本地提示，第八周处理。

@@ -969,6 +969,41 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SignalEventDetailResponse' }
+  /families/{family_id}/notification-preferences/{owner_user_id}:
+    parameters:
+      - { name: family_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: owner_user_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Notifications]
+      operationId: getNotificationPreference
+      responses:
+        '200':
+          description: Own recipient preference; default version 0, IN_APP only, 22-08 Asia/Shanghai when no family timezone is available. No consent implied.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationPreferenceResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+    put:
+      tags: [Notifications]
+      operationId: putNotificationPreference
+      parameters:
+        - { name: If-Match, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotificationPreferenceInput' }
+      responses:
+        '200':
+          description: Updated own preferences, version incremented. Mock PUSH only; SMS/PHONE unsupported. Does not grant consent.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationPreferenceResponse' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+        '422': { description: Invalid channel, timezone or quiet hours }
   /notifications:
     get:
       tags: [Notifications]
@@ -1893,6 +1928,28 @@ components:
       type: object
       required: [reason]
       properties: { reason: { type: string, maxLength: 500 } }
+    NotificationPreferenceInput:
+      type: object
+      additionalProperties: false
+      required: [channels, timezone]
+      properties:
+        channels: { type: array, maxItems: 2, uniqueItems: true, items: { type: string, enum: [IN_APP, PUSH] } }
+        timezone: { type: string, maxLength: 64 }
+        quiet_hours_start: { type: [string, 'null'], format: time }
+        quiet_hours_end: { type: [string, 'null'], format: time }
+    NotificationPreferenceResponse:
+      type: object
+      additionalProperties: false
+      required: [family_id, owner_user_id, recipient_user_id, version, channels, timezone, quiet_hours_start, quiet_hours_end]
+      properties:
+        family_id: { $ref: '#/components/schemas/Id' }
+        owner_user_id: { $ref: '#/components/schemas/Id' }
+        recipient_user_id: { $ref: '#/components/schemas/Id' }
+        version: { type: integer, minimum: 0 }
+        channels: { type: array, maxItems: 2, uniqueItems: true, items: { type: string, enum: [IN_APP, PUSH] } }
+        timezone: { type: string, maxLength: 64 }
+        quiet_hours_start: { type: [string, 'null'], format: time }
+        quiet_hours_end: { type: [string, 'null'], format: time }
     NotificationResponse:
       type: object
       required: [id, channel, status, summary, created_at]

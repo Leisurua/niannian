@@ -26,3 +26,12 @@ backend/.venv/Scripts/python.exe scripts/seed_demo_data.py --apply
 The CLI requires all three demo settings and `DATABASE_URL`; it does not automatically load `backend/config/demo.env`. It verifies required columns and the fixed rows' family/user/resource associations before any deletion. Replay deletes only fixed IDs in reverse dependency order, then inserts the fixture in one transaction. A namespace collision or missing schema aborts before writes; a write failure rolls back. Driver failures print only the exception type, with details redacted.
 
 The in-memory replay tests verify fixed ID/content stability, unrelated row preservation and rollback behavior using a cursor double. They do not establish PostgreSQL constraints, cascade behavior or live replay idempotency. Database-generated defaults may change after delete/reinsert. Live first-write/repeated-replay acceptance is **NOT VERIFIED**, blocked by the missing schema. See [current evidence](../docs/evidence/E0-T08-completion-20261002.md).
+
+
+## Week 7 verification
+
+Run `python scripts/verify_week7.py --integration --source <new empty ASCII directory outside the repo>`
+after migrating both explicitly disposable WEEK2_TEST_DATABASE_URL and WEEK3_TEST_DATABASE_URL databases.
+WEEK3_STORAGE_CONFIG must reference the isolated local MinIO test bucket. Missing infrastructure or skipped
+tests is NOT VERIFIED. The default mode runs unit/contract/source checks only; Android/APK/device checks
+need separate evidence. See [Week 7 delivery](../docs/evidence/week7-completion.md).

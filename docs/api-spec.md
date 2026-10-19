@@ -601,3 +601,10 @@ This section supersedes earlier Week 3/4 “summary unavailable” implementatio
 - Full candidate category/action vocabulary and SCAM_CODE_SECRECY are frozen in W6-03. Six types remain temporary
   Mock candidates, not facts/events/notifications. Deterministic emergency/scam copy survives LLM/TTS failure.
   SignalEvent persistence and notification delivery remain Week 7. Real voice/provider gates remain unapproved.
+
+
+## Week 7 approved contract — 2026-10-19
+
+[W7-01..04](plan/week7-contract-review.md) 已由项目负责人在本聊天回复“是”批准。
+
+新增 GET/PUT /families/{family_id}/notification-preferences/{owner_user_id}，当前登录收件人、SIGNAL_READ、同家庭 ACTIVE CHILD/CAREGIVER；PUT If-Match，默认 version=0。channels 仅 IN_APP/PUSH(Mock)，空数组关闭，默认 IN_APP；成对 quiet hours 和 IANA timezone。现有 Signal list/detail、Notification list/detail/read 实现；read 需幂等键，不修改事件处理动作。所有响应 no-store。SCAM 只需通知 scope；PHYSICAL_DISCOMFORT 另需健康 scope；SUMMARY scope 独立。列表在分页前过滤授权，详情不可见 404。未发布 PENDING/QUEUED 不在收件箱返回。第八周动作保持未实现。

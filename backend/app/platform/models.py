@@ -18,3 +18,7 @@ DOMAIN_MODELS += (MemoryChunk, MemoryEmbedding, Task)
 from app.modules.conversation.proactive_models import ProactivePreference, ProactiveDailyCounter
 
 DOMAIN_MODELS += (ProactivePreference, ProactiveDailyCounter)
+from app.modules.signal.models import SignalEvent
+from app.modules.notification.models import Notification, NotificationAttempt, NotificationPreference
+
+DOMAIN_MODELS += (SignalEvent, Notification, NotificationAttempt, NotificationPreference)

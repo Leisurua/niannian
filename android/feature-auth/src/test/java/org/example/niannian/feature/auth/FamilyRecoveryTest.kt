@@ -86,6 +86,24 @@ private suspend fun CompanionModel.idle() = withTimeout(5000) {
 }
 
 class FamilyRecoveryTest {
+    @Test fun notificationReadUsesIdempotencyWithoutPersistingContentOrPendingAction() = runBlocking {
+        val api = FakeApi()
+        val id = "0192f1e4-6ed8-7c21-a4c1-5d58db7c3002"
+        val key = java.util.UUID.randomUUID().toString()
+        api.handler = { request ->
+            assertEquals("/v1/notifications/$id/read", request.url.path)
+            assertEquals(key, request.getRequestProperty("Idempotency-Key"))
+            Reply(body = JSONObject().put("id", id).put("status", "READ").put("summary", "fictional-private-summary"))
+        }
+        val before = api.store.load().toString()
+        assertEquals("READ", api.repository.markNotificationRead(id, key).getString("status"))
+        assertEquals(before, api.store.load().toString())
+        api.offline = true
+        try { api.repository.markNotificationRead(id, key); fail("Expected offline failure") } catch (_: IOException) { }
+        assertFalse(api.repository.hasPending())
+        assertFalse(api.store.load().toString().contains("fictional-private-summary"))
+    }
+
     @Test fun lostRefreshResponseRequiresLoginInsteadOfReusingARotatedToken() = runBlocking {
         val api = FakeApi()
         api.handler = { request ->

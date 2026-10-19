@@ -6,7 +6,7 @@
 
 ## 当前进度
 
-截至 **2026-10-18，已完成第六周 Mock 软件范围**。当前可以分别验证家庭记忆、授权检索、离线提醒、受控摘要及在线主动陪伴等路径：
+截至 **2026-10-19，已完成第七周获批的 Mock 软件范围**。现可验证规则警告、持久事件与授权家属应用内通知；见 [第七周交付记录](docs/evidence/week7-completion.md)。家庭记忆、离线提醒、摘要与主动陪伴仍沿用各自授权：
 
 **虚构 DEMO 登录 → 家庭绑定与分项授权 → 家庭记忆/照片管理 → 授权 RAG 与长辈端 Mock 会话 → 本次会话回顾。**
 
@@ -24,13 +24,14 @@
 | 生活与用药提醒 | 双端软件已实现 | 周期/时区、完成/稍后/跳过反馈、长辈端加密离线缓存及幂等回传；缓存与待同步反馈按批准策略最多保留 24 小时；“尚未收到反馈”不等于“未服药”，系统不自动改医嘱 |
 | 受控会话摘要 | Mock 软件已实现 | 本人明确允许后生成最多四条脱敏主题，最长保留 24 小时；指定家属授权可跨会话复用，每次访问仍鉴权、选择理由并审计；摘要授权与通知授权分开，失败不回退逐字稿 |
 | 主动陪伴 | 在线 Mock 邀请已实现 | 家人提出设置、长辈确认；时间窗、免打扰、每日 0—3 次上限与“今天少打扰我”；仅向活跃本人会话发文字邀请，不后台唤醒或播音 |
-| 关注线索与风险规则 | 候选/规则子路径已实现 | 六类暂态 Mock 候选、版本化规则及固定安全提示，明确求助优先；不输出诊断或确定诈骗结论，尚未形成持久 SignalEvent、家属通知或实际呼叫 |
-| 家属通知、周报与紧急联系闭环 | 按后续周计划推进 | Mock 适配器和设计合同不代表业务闭环、通知送达或电话接通已经实现 |
+| 关注线索与风险规则 | Mock 事件已实现 | 六类暂态候选、规则警告和五类非紧急事件持久化；来源复验、授权与去重；明确求助保留本地提示，实际联系留后续任务 |
+| 家属通知 | IN_APP/Mock 软件闭环已实现 | 独立通知授权、健康 scope、收件人偏好/免打扰、持久 worker/重试/死信、前台轮询与已读；7 天留存/24h 派发期限，Mock 不表示设备已送达 |
+| 家属处理动作、周报与紧急联系 | 后续周范围 | 确认/联系/误报、报告与真实电话闭环未提前实现 |
 | 实际语音与设备化能力 | 待门禁与指定设备验收 | 录音→ASR→编排→TTS→口型、离线唤醒、BLE、存在检测、kiosk、开机恢复及电话能力分别验证 |
 
 离线副本仅限长辈已缓存的提醒与待同步反馈。完全断网时，远端撤权在重新联网或缓存到期后生效；系统/OEM 也可能延迟后台提醒与清理。摘要、家属敏感内容和 RAG 不提供离线读取。
 
-部分照片场景已在一台小米 12（Android 12 / API 31）上复验：双端分别运行 Demo App，实际完成有效图片上传与查看，以及取消、超限/格式拒绝和损坏图片隔离。该结果不扩展为两台设备同步、全部界面、Keystore 或整套硬件验收。见 [照片真机复验](https://github.com/Leisurua/niannian/blob/198eff8c348410900b317d843089beede8562cca/docs/evidence/photo-retest-20261014.md)。第六周新增界面、离线/后台表现及完整语音仍待指定设备验收。
+部分照片场景已在一台小米 12（Android 12 / API 31）上复验：双端分别运行 Demo App，实际完成有效图片上传与查看，以及取消、超限/格式拒绝和损坏图片隔离。该结果不扩展为两台设备同步、全部界面、Keystore 或整套硬件验收。见 [照片真机复验](https://github.com/Leisurua/niannian/blob/198eff8c348410900b317d843089beede8562cca/docs/evidence/photo-retest-20261014.md)。第六、七周新增界面、离线/后台表现及完整语音仍待指定设备验收。
 
 ## 产品原则
 
@@ -49,7 +50,7 @@
 | 后端 | Python 3.12、FastAPI、Pydantic v2、异步 SQLAlchemy 2、psycopg 与 Alembic；模块化单体，权限在服务/查询层执行 |
 | 数据与文件 | PostgreSQL 为事实源；pgvector 在同一家庭/授权边界内保存并查询记忆向量；私有 S3 兼容对象存储/MinIO 保存照片 |
 | 实时会话与 AI | REST + WebSocket；通过 provider-neutral DTO/Adapter 接入能力，当前会话使用确定性 Mock 与版本化 prompt |
-| 后台任务 | 独立 APScheduler worker + PostgreSQL task/outbox；处理提醒、记忆索引/清理、摘要生成/清理和主动邀请，具备幂等键、租约、有限重试与死信状态 |
+| 后台任务 | 独立 APScheduler worker + PostgreSQL task/outbox；处理提醒、记忆索引/清理、摘要生成/清理、主动邀请与通知派发/清理，具备幂等键、租约、有限重试与死信状态 |
 
 ## 已验证交付
 
@@ -57,6 +58,7 @@
 
 | 检查 | 已记录结果 | 证据 |
 | --- | --- | --- |
+| 第七周本地完整验证 | 513 项后端、36 项相关 JVM 测试、3 份 lint、2 个 Demo APK 与 7 项隐私扫描；迁移与 wheel 验证通过 | [第七周交付](docs/evidence/week7-completion.md) |
 | 第六周开发阶段完整回归 | 453 项，0 failure/error/skip，含实际 PostgreSQL/pgvector、WSS 与 MinIO | [第六周交付](docs/evidence/week6-completion.md) |
 | 发布分支 PostgreSQL 回归 | 第二周独立门禁 384 项；第三周双数据库门禁 456 项；均为 0 failure/error/skip，后者不含独立 MinIO 用例 | [第二周 CI](https://github.com/Leisurua/niannian/actions/runs/39139786518)、[第三周 CI](https://github.com/Leisurua/niannian/actions/runs/39139786522) |
 | 发布分支 Android | 双端完整构建、150 次 JVM 测试、lint 及 12 APK 隐私扫描通过；真机另行验收 | [发布验证说明](https://github.com/Leisurua/niannian/pull/11) |
@@ -83,9 +85,9 @@ python -m pip install -r backend/requirements.lock -r requirements-ci.txt
 
 1. 在进程环境中选择 `APP_ENV=dev`、`test` 或 `demo`，应用会加载 `backend/config/<environment>.env`。将 `.env.example` 复制为忽略提交的 `.env`，配置指向自己授权的本地库的 `DATABASE_URL`，以及本地随机生成、至少 32 字符的 `AUTH_SIGNING_KEY`。
 2. 从仓库根目录执行 `docker compose -f infra/docker-compose.yml up -d` 启动开发基础设施；将 `DATABASE_URL` 的账号、密码、主机和数据库名与该实例对应。Compose 默认账户仅用于本机开发。
-3. 从 `backend/` 执行 `python -m alembic upgrade head` 应用迁移。第六周迁移头为 `20261017_week6_conversation`，共 18 个已实现模型；先完成第三周基础表和第五周索引/outbox，再升级第六周摘要版本与主动设置/计数。部署前备份，回滚演练只在空的隔离库执行，已有业务数据优先前向修复。合同修订见 [W3-01..05](docs/plan/week3-contract-review.md)、[W5-01..04](docs/plan/week5-contract-review.md)、[W6-01..04](docs/plan/week6-contract-review.md)。
+3. 从 `backend/` 执行 `python -m alembic upgrade head` 应用迁移。当前迁移头为 `20261019_week7_notifications`，共 22 个已实现模型；按迁移链依次升级至第七周事件、通知与偏好。部署前备份，回滚演练只在空的隔离库执行，已有业务数据优先前向修复。合同修订见 [W3-01..05](docs/plan/week3-contract-review.md)、[W5-01..04](docs/plan/week5-contract-review.md)、[W6-01..04](docs/plan/week6-contract-review.md)、[W7-01..04](docs/plan/week7-contract-review.md)。
 4. 仍在 `backend/` 执行 `python -m app --reload` 启动 API。该入口会在 Windows 上配置异步 psycopg 所需的事件循环。`GET /health` 不要求数据库连接，因此通过该端点不能替代数据库或业务链路检查。
-5. 另开终端，在同一环境、同样配置下，从 `backend/` 执行 `python -m app.worker.main --serve`。默认每 15 秒触发一次周期，执行提醒、索引/清理、摘要任务及在线主动邀请；`--once` 运行一次周期，无参数仅检查 worker 启动。受控摘要和记忆索引需要 worker 实际运行。
+5. 另开终端，在同一环境、同样配置下，从 `backend/` 执行 `python -m app.worker.main --serve`。默认每 15 秒触发一次周期，执行提醒、索引/清理、摘要任务、在线主动邀请及通知派发/清理；`--once` 运行一次周期，无参数仅检查 worker 启动。受控摘要、记忆索引与家属通知需要 worker 实际运行。
 6. 从 `android/` 执行 `.\gradlew.bat clean build`，安装所需变体并配置 API 地址。Gradle flavor 为 `dev`、`qa`、`demo`，其中 `qa` 对应 `test` 环境。Windows 构建使用英文路径；副本构建需核对源码哈希。见 [Android 说明](android/README.md)。
 
 照片还需要私有存储配置 `S3_ENDPOINT`、`S3_BUCKET`、`S3_ACCESS_KEY`、`S3_SECRET_KEY`。`PUBLIC_BASE_URL` 应为客户端可访问的 API 地址；照片上传地址的存储主机也必须能被设备访问。默认照片上限 5 MiB、1200 万像素，下载每次重查登录与授权。部署环境需配置独立凭证和 HTTPS。
@@ -102,11 +104,12 @@ python scripts/verify_week3.py --postgres-only
 python scripts/verify_week4.py
 python scripts/verify_week5.py --source C:/nian-nian-checks/week5-source
 python scripts/verify_week6.py --integration --source C:/nian-nian-checks/week6-source
+python scripts/verify_week7.py --integration --source C:/nian-nian-checks/week7-source
 ```
 
-`WEEK2_TEST_DATABASE_URL`、`WEEK3_TEST_DATABASE_URL` 的数据库名分别必须以 `_week2_test`、`_week3_test` 结尾。第二周入口只需要前者；第三周 PostgreSQL 及第四至第六周完整后端入口需要两者。第五、六周完整验证还需要 `WEEK3_STORAGE_CONFIG` 指向隔离 MinIO 设置；第六周入口运行前先在两个测试库完成 `alembic upgrade head`。`--postgres-only` 明确不验收真实 MinIO。
+`WEEK2_TEST_DATABASE_URL`、`WEEK3_TEST_DATABASE_URL` 的数据库名分别必须以 `_week2_test`、`_week3_test` 结尾。第二周入口只需要前者；第三周 PostgreSQL 及第四至第七周完整后端入口需要两者。第五至第七周完整验证还需要 `WEEK3_STORAGE_CONFIG` 指向隔离 MinIO 设置；第六、七周入口运行前先在两个测试库完成 `alembic upgrade head`。`--postgres-only` 明确不验收真实 MinIO。
 
-示例 `--source` 路径必须位于仓库之外并使用 ASCII 字符；第六周要求新的空目录，复验时换用新目录。缺少依赖、报告无效、跳过或未运行均不能视为 `PASS`，以具体报告和退出状态为准。
+示例 `--source` 路径必须位于仓库之外并使用 ASCII 字符；第六、七周要求新的空目录，复验时换用新目录。缺少依赖、报告无效、跳过或未运行均不能视为 `PASS`，以具体报告和退出状态为准。
 
 其他开发命令：
 
