@@ -48,8 +48,11 @@ async def access(db, actor, fid, owner):
 async def current(db, fid, owner, recipient):
     row = await db.scalar(select(NotificationPreference).where(NotificationPreference.family_id == fid,
         NotificationPreference.owner_user_id == owner, NotificationPreference.recipient_user_id == recipient).execution_options(populate_existing=True))
-    # Existing Family has no timezone column: the baseline Demo timezone is Shanghai.
-    return row or SimpleNamespace(version=0, channels=['IN_APP'], timezone='Asia/Shanghai',
+    return row or _demo_default_preference()
+
+
+def _demo_default_preference():
+    return SimpleNamespace(version=0, channels=['IN_APP'], timezone='Asia/Shanghai',
         quiet_hours_start=time(22), quiet_hours_end=time(8))
 
 

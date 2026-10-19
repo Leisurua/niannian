@@ -1,4 +1,3 @@
-"""W7 actual PostgreSQL/worker/API: privacy, concurrency and delivery truth."""
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
@@ -361,7 +360,6 @@ def test_named_recipient_revoke_does_not_cancel_other_grantee(system):
     second=(home[0],other,headers,home[3],home[4])
     grant(client,second,'NOTIFICATION_TO_FAMILY')
     cid=start(client,home)
-    # A grant cannot override missing role permission.
     event=emit(factory,home,cid)[0]['signal_event_id']
     assert client.get('/v1/signal-events/'+event,headers=headers).status_code==404
     with engine.begin() as conn:

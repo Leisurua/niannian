@@ -1,4 +1,3 @@
-"""W7 public event commands: deterministic grounding, current authorization, dedupe."""
 from datetime import timedelta
 import hashlib
 from types import SimpleNamespace
@@ -44,39 +43,39 @@ async def recipient(db, fid, owner, user_id, kind):
 
 
 async def record_turn(db, actor, conversation_id, request_id, text, candidates):
-    source = await conversation.signal_source(db, conversation_id, actor=actor, active=True)
-    if not source:
+    locked_source = await conversation.signal_source(db, conversation_id, actor=actor, active=True)
+    if not locked_source:
         return []
     expected = extract_mock(text, conversation_id=conversation_id, message_id=uuid5(conversation_id, request_id))
     if tuple(candidates) != expected:
-        return []  # a model or caller cannot invent a category, severity or source
+        return []
     idem = audit.Idempotency(request_id, 'signal-turn:' + str(conversation_id),
         {'candidates': [(c.type, c.trigger_category) for c in expected]})
     if await idem.previous(db, actor.user_id, 7 * 86400):
         return []
     now, events = utcnow(), []
     for candidate in expected:
-        if candidate.type not in COPY:  # Emergency persistence is Week 8
+        if candidate.type not in COPY:
             continue
         recipients = []
-        for uid in await family.active_subjects(db, source['family_id']):
+        for uid in await family.active_subjects(db, locked_source['family_id']):
             try:
-                await recipient(db, source['family_id'], actor.user_id, uid, candidate.type)
+                await recipient(db, locked_source['family_id'], actor.user_id, uid, candidate.type)
                 recipients.append(uid)
             except AppError:
                 continue
         if not recipients:
-            continue  # approved local-only path; no sensitive WITHHELD evidence
+            continue
         rule = evaluate(text)
         severity = rule.severity if candidate.type == 'SCAM_RISK' else 'L1'
-        key = dedupe_key(source['family_id'], actor.user_id, candidate.type, candidate.trigger_category, severity, now)
+        key = dedupe_key(locked_source['family_id'], actor.user_id, candidate.type, candidate.trigger_category, severity, now)
         old = await db.scalar(select(SignalEvent).where(SignalEvent.dedupe_key == key,
             SignalEvent.deleted_at.is_(None), SignalEvent.retention_until > now))
         if old:
             await audit.record(db, actor.user_id, 'SIGNAL_DUPLICATE', 'SIGNAL', old.id, old.family_id,
                 metadata=idem.metadata)
-            continue  # family row lock serializes concurrent writers; never renew retention
-        row = SignalEvent(id=uuid7(), owner_user_id=actor.user_id, family_id=source['family_id'],
+            continue
+        row = SignalEvent(id=uuid7(), owner_user_id=actor.user_id, family_id=locked_source['family_id'],
             type=candidate.type, severity=severity, source_conversation_id=conversation_id,
             evidence_summary=COPY[candidate.type][0], rule_id=rule.rule_id if candidate.type == 'SCAM_RISK' else candidate.trigger_category,
             rule_version=RULE_VERSION, policy_version=POLICY_VERSION, trigger_category=candidate.trigger_category,
@@ -122,9 +121,10 @@ async def accessible(db, row, actor, *, owner_status=False):
 
 async def delivery_context(db, event_id, recipient_id):
     row = await db.get(SignalEvent, event_id, populate_existing=True)
-    if not await accessible(db, row, SimpleNamespace(user_id=recipient_id)):
+    authorized_with_family_lock = await accessible(db, row, SimpleNamespace(user_id=recipient_id))
+    if not authorized_with_family_lock:
         return None
-    await db.refresh(row)  # family lock acquired before refreshing mutable state
+    await db.refresh(row)
     if row.deleted_at or row.status in ('WITHHELD','FALSE_POSITIVE','RESOLVED'):
         return None
     grants = await recipient(db, row.family_id, row.owner_user_id, recipient_id, row.type)
@@ -159,14 +159,13 @@ async def detail(db, actor, event_id, request_id):
 
 
 async def visible_ids(db, actor, *, owner_status=False):
-    ids = []
-    # Course-size scan; revalidate before pagination so hidden rows never leak cursors/counts.
-    rows = (await db.scalars(select(SignalEvent).where(SignalEvent.deleted_at.is_(None),
+    authorized_event_ids = []
+    permission_candidates = (await db.scalars(select(SignalEvent).where(SignalEvent.deleted_at.is_(None),
         SignalEvent.retention_until > utcnow()).order_by(SignalEvent.family_id, SignalEvent.id))).all()
-    for row in rows:
+    for row in permission_candidates:
         if await accessible(db, row, actor, owner_status=owner_status):
-            ids.append(row.id)
-    return ids
+            authorized_event_ids.append(row.id)
+    return authorized_event_ids
 
 
 async def listing(db, actor, filters, limit, cursor, settings, request_id):

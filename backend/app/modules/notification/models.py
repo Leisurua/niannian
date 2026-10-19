@@ -1,4 +1,3 @@
-"""Approved W7 delivery truth and per-recipient preferences."""
 from datetime import datetime, time
 from uuid import UUID
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, Time, UniqueConstraint, func

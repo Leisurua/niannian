@@ -1,4 +1,3 @@
-"""Approved W7-01..04. Frozen DDL snapshot, no runtime model imports."""
 from alembic import op
 import sqlalchemy as sa
 

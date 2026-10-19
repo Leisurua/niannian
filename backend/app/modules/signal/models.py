@@ -1,4 +1,3 @@
-"""W7-01/02 approved minimal event storage; no transcript/message table."""
 from datetime import datetime
 from uuid import UUID
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Numeric, String, Text, func
@@ -16,7 +15,6 @@ class SignalEvent(Base):
         CheckConstraint("consent_check_result IN ('ALLOWED','DENIED','WITHHELD')", name='ck_signal_consent'),
         CheckConstraint('confidence BETWEEN 0 AND 1', name='ck_signal_confidence'),
         CheckConstraint('retention_until >= detected_at', name='ck_signal_retention'),
-        # W7 Mock source has no persisted message or raw evidence hash.
         CheckConstraint('source_message_id IS NULL AND evidence_hash IS NULL', name='ck_signal_mock_source'),
         Index('ix_signal_family_owner', 'family_id', 'owner_user_id', 'detected_at'),
         Index('ix_signal_dedupe', 'dedupe_key'),

@@ -1,4 +1,3 @@
-"""Real PostgreSQL/WSS warning, without unapproved Signal/Notification tables."""
 import pytest
 from sqlalchemy import text
 

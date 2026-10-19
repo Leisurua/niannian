@@ -1,4 +1,3 @@
-"""W7 notification persistence, current permission checks and fenced Mock dispatch."""
 import asyncio
 from datetime import timedelta
 import hashlib
@@ -106,7 +105,7 @@ async def aggregate(db, event_id):
 
 async def prepare(db, task_id, token, notification_id):
     row = await db.get(Notification, notification_id, populate_existing=True)
-    source = await context(db, row)  # family lock before task fence
+    locked_source = await context(db, row)
     task = await tasks.leased(db, task_id, token)
     if not task:
         return None
@@ -117,11 +116,11 @@ async def prepare(db, task_id, token, notification_id):
     if row.status in ('SENT','DELIVERED','READ','FAILED','CANCELLED'):
         await tasks.finish(db, task_id, token)
         return None
-    if not source or row.dispatch_deadline <= utcnow():
+    if not locked_source or row.dispatch_deadline <= utcnow():
         await cancel(db, row)
         await tasks.finish(db, task_id, token)
         return None
-    pref = await preferences.current(db, source['family_id'], source['owner_user_id'], row.recipient_user_id)
+    pref = await preferences.current(db, locked_source['family_id'], locked_source['owner_user_id'], row.recipient_user_id)
     if row.channel not in pref.channels or row.channel not in ('IN_APP','PUSH'):
         await cancel(db, row, 'CHANNEL_DISABLED')
         await tasks.finish(db, task_id, token)
@@ -129,18 +128,21 @@ async def prepare(db, task_id, token, notification_id):
     now = utcnow()
     ready = preferences.ready_at(pref, now)
     if ready > now:
-        task.status, task.available_at = 'RETRY', min(ready, row.dispatch_deadline)
-        task.attempts -= 1  # waiting for quiet hours is not a provider attempt
-        task.lease_token, task.lease_until = None, None
+        _defer_without_provider_attempt(task, min(ready, row.dispatch_deadline))
         return None
-    # An abandoned attempt is an observed failure, not a delivery success.
     old = (await db.scalars(select(NotificationAttempt).where(NotificationAttempt.notification_id == row.id,
         NotificationAttempt.status == 'STARTED'))).all()
     for attempt in old:
         attempt.status, attempt.finished_at, attempt.error_code = 'FAILED', now, 'LEASE_EXPIRED'
     db.add(NotificationAttempt(notification_id=row.id, attempt_no=task.attempts, provider='mock', status='STARTED'))
     await db.flush()
-    return (source, pref.version, row.channel, task.attempts)
+    return (locked_source, pref.version, row.channel, task.attempts)
+
+
+def _defer_without_provider_attempt(task, ready_at):
+    task.status, task.available_at = 'RETRY', ready_at
+    task.attempts -= 1
+    task.lease_token, task.lease_until = None, None
 
 
 async def dispatch(factory, task_id, token, notification_id, push=None):
@@ -167,7 +169,7 @@ async def dispatch(factory, task_id, token, notification_id, push=None):
         source = await context(db, row)
         task = await tasks.leased(db, task_id, token)
         if not task:
-            return  # stale worker cannot write completion
+            return
         if not row:
             await tasks.finish(db, task_id, token)
             await db.commit()
@@ -200,7 +202,6 @@ async def invalidate(db, fid, owner, grantee, scope):
         return
     rows = (await db.scalars(select(Notification).where(Notification.recipient_user_id == grantee,
         Notification.deleted_at.is_(None)))).all()
-    # Public signal metadata, never a cross-module model import.
     for row in rows:
         source = await signals.internal_metadata(db, row.signal_event_id)
         if source and source['family_id'] == fid and source['owner_user_id'] == owner and (
@@ -216,7 +217,7 @@ async def maintenance(db):
     for row in rows:
         source = await signals.internal_metadata(db, row.signal_event_id)
         if source is None:
-            await db.delete(row)  # orphan source: worker erases payload and cascading attempts
+            await db.delete(row)
             continue
         current = await context(db, row)
         if row.deleted_at or row.retention_until <= utcnow() or not current:
