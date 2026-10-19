@@ -16,6 +16,11 @@ class S3Storage:
             aws_access_key_id=settings.s3_access_key, aws_secret_access_key=settings.s3_secret_key,
             region_name='us-east-1', config=Config(signature_version='s3v4', connect_timeout=3,
                 read_timeout=10, retries={'max_attempts': 1}, s3={'addressing_style': 'path'}))
+        public = getattr(settings, 's3_public_endpoint', None)
+        self.upload_client = boto3.client('s3', endpoint_url=public,
+            aws_access_key_id=settings.s3_access_key, aws_secret_access_key=settings.s3_secret_key,
+            region_name='us-east-1', config=Config(signature_version='s3v4',
+                s3={'addressing_style': 'path'})) if public and public != settings.s3_endpoint else self.client
 
     async def _call(self, operation, **kwargs):
         try:
@@ -25,7 +30,7 @@ class S3Storage:
 
     async def upload_url(self, key, mime, size, seconds):
         try:
-            return await asyncio.to_thread(self.client.generate_presigned_url, 'put_object',
+            return await asyncio.to_thread(self.upload_client.generate_presigned_url, 'put_object',
                 Params={'Bucket': self.bucket, 'Key': key, 'ContentType': mime, 'ContentLength': size}, ExpiresIn=seconds)
         except Exception:
             raise AppError('PROVIDER_TEMPORARILY_UNAVAILABLE', '暂时无法生成上传地址。', 503) from None

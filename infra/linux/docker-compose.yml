@@ -10,6 +10,7 @@ x-backend-environment: &backend-environment
   PUBLIC_BASE_URL: http://${NIANNIAN_HOST}:${API_PORT}
   S3_ENDPOINT: http://minio:9000
   S3_PUBLIC_ENDPOINT: http://${NIANNIAN_HOST}:${MINIO_PORT}
+  S3_PUBLIC_ENDPOINT: http://${NIANNIAN_HOST}:${MINIO_PORT}
   S3_BUCKET: nianian-private
   S3_ACCESS_KEY: ${MINIO_ROOT_USER}
   S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
@@ -53,10 +54,6 @@ services:
     build:
       context: ../minio
       target: server
-      args:
-        ALPINE_MIRROR: https://mirrors.tuna.tsinghua.edu.cn/alpine
-        GO_PROXY: https://goproxy.cn,direct
-        GITHUB_BASE_URL: https://gh-proxy.com/https://github.com
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
@@ -80,10 +77,6 @@ services:
     build:
       context: ../minio
       target: client
-      args:
-        ALPINE_MIRROR: https://mirrors.tuna.tsinghua.edu.cn/alpine
-        GO_PROXY: https://goproxy.cn,direct
-        GITHUB_BASE_URL: https://gh-proxy.com/https://github.com
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |

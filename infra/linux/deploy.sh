@@ -49,6 +49,7 @@ if [[ ! -f "${env_file}" ]]; then
   [[ -n "${public_host}" ]] || public_host="$(detect_host)"
   [[ "${public_host}" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]] || die "Host must be an IPv4 address or DNS name."
   umask 077
+  [[ -f "${template_file}" ]] || die "Missing .env.example"
   cp "${template_file}" "${env_file}"
   sed -i \
     -e "s/REPLACE_WITH_KALI_LAN_IP/${public_host}/" \
