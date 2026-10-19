@@ -1,25 +1,26 @@
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$Python = "C:\Users\lenovo\AppData\Local\Programs\Python\Python312\python.exe"
-
-if (-not (Test-Path -LiteralPath $Python)) {
-    throw "未找到 Python 3.12：$Python"
-}
-
 $Venv = Join-Path $ProjectRoot ".venv"
-if (-not (Test-Path -LiteralPath (Join-Path $Venv "Scripts\python.exe"))) {
-    & $Python -m venv $Venv
-}
-
 $VenvPython = Join-Path $Venv "Scripts\python.exe"
-& $VenvPython -m pip install --disable-pip-version-check --upgrade pip
+if (-not (Test-Path $VenvPython)) {
+    if (Get-Command py -ErrorAction SilentlyContinue) {
+        & py -3.12 -m venv $Venv
+    } else {
+        & python -m venv $Venv
+    }
+    if ($LASTEXITCODE -ne 0) { throw "无法创建 Python 3.12 虚拟环境" }
+}
+& $VenvPython -c "import sys; assert sys.version_info[:2] == (3, 12)"
+if ($LASTEXITCODE -ne 0) { throw "需要 Python 3.12" }
 & $VenvPython -m pip install --disable-pip-version-check -e $ProjectRoot pyinstaller
+if ($LASTEXITCODE -ne 0) { throw "依赖安装失败" }
+$env:PYTHONPATH = Join-Path $ProjectRoot "src"
 & $VenvPython -m unittest discover -s (Join-Path $ProjectRoot "tests") -v
-
+if ($LASTEXITCODE -ne 0) { throw "客户端测试失败" }
 & $VenvPython -m PyInstaller --noconfirm --clean --onefile --windowed `
     --name "念念-Windows老人演示端" `
     --specpath (Join-Path $ProjectRoot "build") `
     --paths (Join-Path $ProjectRoot "src") `
     (Join-Path $ProjectRoot "launcher.py")
-
-Write-Host "已生成：$(Join-Path $ProjectRoot 'dist\念念-Windows老人演示端.exe')"
+if ($LASTEXITCODE -ne 0) { throw "打包失败" }
+Write-Host "构建完成"

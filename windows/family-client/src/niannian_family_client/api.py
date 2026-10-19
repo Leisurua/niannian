@@ -106,6 +106,7 @@ class NianNianClient:
         self.refresh_token: str | None = None
         self.user: dict[str, Any] | None = None
         self.binding: dict[str, Any] | None = None
+        self._feature_cache: dict[str, bool] | None = None
         self.login_device_id = f"windows-family-login-{uuid4()}"
 
     def _request(
@@ -117,6 +118,7 @@ class NianNianClient:
         auth: bool = True,
         idempotency_key: str | None = None,
     ) -> dict[str, Any]:
+        self._check_optional_api(path)
         headers = {"Accept": "application/json", "User-Agent": f"NianNian-Windows/{APP_VERSION}"}
         data = None
         if body is not None:
@@ -150,6 +152,28 @@ class NianNianClient:
 
     def health(self) -> dict[str, Any]:
         return self._request("GET", "/health", auth=False)
+
+    def backend_features(self) -> dict[str, bool]:
+        """Inspect the running FastAPI server without modifying any data."""
+        if self._feature_cache is None:
+            paths = self._request("GET", "/openapi.json", auth=False).get("paths", {})
+            if not isinstance(paths, dict):
+                raise NetworkError("服务器没有返回有效接口清单。")
+            self._feature_cache = {
+                "devices": "/v1/devices/register" in paths and "/v1/devices" in paths,
+                "messages": "/v1/messages" in paths
+                    and any(p.startswith("/v1/messages/{") for p in paths)
+                    and any(p.startswith("/v1/message-deliveries/") and p.endswith("/received") for p in paths)
+                    and any(p.startswith("/v1/message-deliveries/") and p.endswith("/read") for p in paths),
+            }
+        return dict(self._feature_cache)
+
+    def _check_optional_api(self, path: str) -> None:
+        feature = ("devices" if path.startswith("/v1/devices") else
+                   "messages" if path.startswith(("/v1/messages", "/v1/message-deliveries")) else None)
+        if feature and not self.backend_features()[feature]:
+            raise ClientError("当前 main 服务器尚未提供设备注册或消息收发 API，"
+                              "现可使用登录、家庭和邀请功能；消息功能仍待服务端实现。")
 
     def tcp_check(self) -> tuple[str, int]:
         parsed = urlparse(self.base_url)
@@ -298,6 +322,8 @@ def run_e2e_probe(base_url: str) -> ProbeReport:
         if health.get("status") != "ok":
             raise ClientError("健康接口未返回 status=ok。")
         report.add(current_name, f"environment={health.get('environment', 'unknown')}", started)
+        if not all(child.backend_features().values()):
+            raise ClientError("当前 main 尚未提供消息与设备 API，联机消息验收未运行。")
 
         current_name, started = "双账号登录", time.perf_counter()
         child.login("demo-child", device_name="Windows E2E 虚构子女端")

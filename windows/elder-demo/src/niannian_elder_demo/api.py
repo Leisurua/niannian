@@ -71,6 +71,7 @@ class ElderClient:
         self.access_token: str | None = None
         self.user: dict[str, Any] | None = None
         self.binding: dict[str, Any] | None = None
+        self._feature_cache: dict[str, bool] | None = None
         self.login_device_id = f"windows-elder-login-{uuid4()}"
 
     def _request(
@@ -82,6 +83,7 @@ class ElderClient:
         auth: bool = True,
         idempotency_key: str | None = None,
     ) -> dict[str, Any]:
+        self._check_optional_api(path)
         headers = {"Accept": "application/json", "User-Agent": f"NianNian-Windows-Elder/{APP_VERSION}"}
         data = None
         if body is not None:
@@ -112,6 +114,28 @@ class ElderClient:
         except (URLError, TimeoutError, socket.timeout, ConnectionError, OSError) as exc:
             reason = getattr(exc, "reason", exc)
             raise NetworkError(f"无法连接 {self.base_url}：{reason}") from exc
+
+    def backend_features(self) -> dict[str, bool]:
+        """Inspect the running FastAPI server without modifying any data."""
+        if self._feature_cache is None:
+            paths = self._request("GET", "/openapi.json", auth=False).get("paths", {})
+            if not isinstance(paths, dict):
+                raise NetworkError("服务器没有返回有效接口清单。")
+            self._feature_cache = {
+                "devices": "/v1/devices/register" in paths and "/v1/devices" in paths,
+                "messages": "/v1/messages" in paths
+                    and any(p.startswith("/v1/messages/{") for p in paths)
+                    and any(p.startswith("/v1/message-deliveries/") and p.endswith("/received") for p in paths)
+                    and any(p.startswith("/v1/message-deliveries/") and p.endswith("/read") for p in paths),
+            }
+        return dict(self._feature_cache)
+
+    def _check_optional_api(self, path: str) -> None:
+        feature = ("devices" if path.startswith("/v1/devices") else
+                   "messages" if path.startswith(("/v1/messages", "/v1/message-deliveries")) else None)
+        if feature and not self.backend_features()[feature]:
+            raise ClientError("当前 main 服务器尚未提供设备注册或消息收发 API，"
+                              "现可使用登录、家庭和邀请功能；消息功能仍待服务端实现。")
 
     def tcp_check(self) -> tuple[str, int]:
         parsed = urlparse(self.base_url)
