@@ -276,6 +276,16 @@
   },
   {
     "method": "GET",
+    "path": "/families/{family_id}/notification-preferences/{owner_user_id}",
+    "operation_id": "getNotificationPreference"
+  },
+  {
+    "method": "PUT",
+    "path": "/families/{family_id}/notification-preferences/{owner_user_id}",
+    "operation_id": "putNotificationPreference"
+  },
+  {
+    "method": "GET",
     "path": "/notifications",
     "operation_id": "listNotifications"
   },

@@ -2,6 +2,19 @@
 
 这是开发期间的门禁清单，不是新的设计文档。每项填写 `NOT_STARTED / IN_PROGRESS / PASS / FAIL / BLOCKED`，并附 evidence path。
 
+## Week 7 Mock software closeout — 2026-10-19
+
+已批准 W7-01..04 的 Mock 软件范围 `PASS`；设备/生产验收保持开放。
+见 [完成记录](evidence/week7-completion.md)和 [已批准方案](plan/week7-contract-review.md)。
+
+- [x] warning → 持久事件 → 家属 IN_APP/MockPush/已读：`PASS`，不代表真实推送到达。
+- [x] 摘要/通知授权独立、健康/指定收件人、撤回/过期/来源/成员检查：`PASS`。
+- [x] 并发/跨桶重放去重、worker 租约/重试/死信/旧写回拒绝、7 天/24h 清理策略：`PASS`。
+- [x] 513 项完整后端、实际 PostgreSQL/pgvector/MinIO、独立 worker、迁移 parity：`PASS`。
+- [x] 双端 Demo Debug APK、36 项相关 JVM 测试、3 份 lint、7 项 APK/源码隐私扫描：`PASS`。
+- [x] 源码 hash 一致、离线 wheel 构建和源码外安装：`PASS`。
+- [ ] 指定设备 UI/TalkBack/后台、真实 Provider、其他发行变体/签名/远端 CI/生产：`NOT VERIFIED`。
+
 ## Week 6 Mock software closeout — 2026-10-18
 
 已批准 W6-01..04 的软件范围 `PASS`；含实际设备/语音的整周门禁仍为 `IN_PROGRESS`。
@@ -35,13 +48,13 @@
 第四周 Mock 软件范围完成；实际语音和真机验收保持 `NOT VERIFIED`。见 [第四周记录](evidence/week4.md)。后续完整 RAG/摘要/安全事件闭环没有提前执行。
 
 - [x] Mock 编排、版本化 prompt、未知事实/故障兜底、输出负例与取消：`PASS`。
-- [x] PostgreSQL/WSS 生成期间的打断、结束、断线、注销撤权及重连不重播：`PASS`；总回归 291 tests，0 failure/error/skip。
+- [x] PostgreSQL/WSS 生成期间的打断、结束、断线、注销撤权及重连不重播：`PASS`；总回归 289 tests，0 failure/error/skip。
 - [x] 长辈端语音主线入口、显式 Mock 话题、大字状态与控制、文字备用入口：软件实现与 JVM 验证 `PASS`；不表示真实语音已开放。
-- [x] 12 APK、94 次 JVM 测试、7 份 lint XML 无错误、63 文件 hash 一致与 APK 扫描：`PASS`。
+- [x] 12 APK、82 次 JVM 测试、7 份 lint XML 无错误、63 文件 hash 一致与 APK 扫描：`PASS`。
 - [ ] 真机 UI/可听可说/单一音频占用、实际语音 Provider：`NOT VERIFIED`，当前无授权设备，音频/Provider 门禁尚未通过。
 - [ ] 完整 E4-T03 RAG/引用正例与完整 VS-03：依赖第五周及后续范围，本周仅验证 Mock 子路径。
 
-## Week 3 historical checkout — 2026-10-14
+## Week 3 historical checkout — 2026-10-13
 
 **第三周软件交付 PASS；含真机的整周验收仍为 IN_PROGRESS。** 继承第二周的设备待验项，不启动第四周。具体证据见 [第三周交付记录](evidence/week3.md)。
 
@@ -54,9 +67,7 @@
 - [x] 双端 12 APK、68 次 JVM 测试、6 份 lint 报告无错误、57 个源码文件 SHA-256 一致：PASS。
 - [x] 源码/fixture/Git/APK 隐私检查 7 tests：PASS；后端 wheel 源码目录外三环境验证：PASS。
 - [x] 第三周复现脚本与 PostgreSQL CI 已添加；远端当前提交 CI 以 PR 实际运行结果为准。
-- [x] 小米 12 / API 31 与已安装双端 APK 身份已核对；PHONE-09 候选展示隔离、PHONE-12 编辑后重新确认和原照片查看：PASS，见 [PHONE-09](evidence/phone-09-20261014.md)、[PHONE-12](evidence/phone-12-20261014.md)。两端在同一手机运行。
-- [x] PHOTO-SELECT-01 修复后真机复验：取消、超限 PNG、GIF、损坏 PNG 隔离和有效 PNG 上传/双端查看 PASS；9 项照片模块 JVM、lint 和双端 Demo 构建 PASS，见 [复验报告](evidence/photo-retest-20261014.md)。[原失败记录](evidence/photo-errors-20261014.md)保留。
-- [ ] 选择期间旋转/进程死亡、断网恢复、退出/Keystore、物理删除及完整撤权/跨家庭真机负例：NOT VERIFIED；第三周整体验收仍为 INCOMPLETE。照片复验后的新虚构登录未复现旧长辈会话读取失败，其根因未核查。
+- [ ] 真机记忆页面、照片选择器/生命周期、Keystore：NOT VERIFIED，当前 ADB 为 NO_AUTHORIZED_DEVICE。
 - [ ] 指定硬件 kiosk/BLE/camera/wake/telephony：保留第二周未通过状态。
 
 ## Week 2 current checkout — 2026-10-09

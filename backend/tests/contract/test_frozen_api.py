@@ -31,9 +31,9 @@ def test_rest_operation_inventory() -> None:
         for method, operation in methods.items()
         if method.lower() in HTTP_METHODS
     ]
-    assert len(expected) == len(actual) == 80
-    assert len({(entry["method"], entry["path"]) for entry in actual}) == 80
-    assert len({entry["operation_id"] for entry in actual}) == 80
+    assert len(expected) == len(actual) == 82
+    assert len({(entry["method"], entry["path"]) for entry in actual}) == 82
+    assert len({entry["operation_id"] for entry in actual}) == 82
     assert actual == expected
 
 

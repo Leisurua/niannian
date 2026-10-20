@@ -23,6 +23,9 @@ import org.example.niannian.feature.auth.SecureSession
 import org.example.niannian.feature.auth.ConversationToolsGateway
 import org.example.niannian.feature.auth.ConversationToolsModel
 import org.example.niannian.feature.auth.ConversationToolsPanel
+import org.example.niannian.feature.auth.NotificationGateway
+import org.example.niannian.feature.auth.NotificationModel
+import org.example.niannian.feature.auth.NotificationPanel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,6 +41,12 @@ class MainActivity : ComponentActivity() {
             val toolsGateway = object : ConversationToolsGateway {
                 override suspend fun call(path: String, method: String, body: JSONObject?, version: Long?, reason: String?) =
                     repository.call(path, method, body, method == "POST" && (path.endsWith("/confirm") || path.endsWith("/pause-today")), version, reason)
+            }
+            val notificationGateway = object : NotificationGateway {
+                override suspend fun list() = repository.readAll("/v1/notifications?limit=100")
+                override suspend fun call(path: String, method: String, body: JSONObject?, version: Long?) =
+                    repository.call(path, method, body, false, version)
+                override suspend fun read(id: String, key: String) = repository.markNotificationRead(id, key)
             }
             val memoryGateway = object : MemoryGateway {
                 override suspend fun call(path: String, method: String, body: JSONObject?, idempotent: Boolean, version: Long?) = try { repository.call(path, method, body, idempotent, version) } catch (failure: ApiFailure) { throw MemoryFailure(failure.message ?: "请求未完成，请重试。") }
@@ -60,6 +69,7 @@ class MainActivity : ComponentActivity() {
                         ReminderModel::class.java -> ReminderModel(reminderGateway, reminderStore, false)
                         MemoryModel::class.java -> MemoryModel(memoryGateway)
                         ConversationToolsModel::class.java -> ConversationToolsModel(toolsGateway)
+                        NotificationModel::class.java -> NotificationModel(notificationGateway)
                         else -> CompanionModel(repository, false, deviceId)
                     }
                 )!!
@@ -68,6 +78,7 @@ class MainActivity : ComponentActivity() {
             val reminderModel = ViewModelProvider(this, factory)[ReminderModel::class.java]
             val memoryModel = ViewModelProvider(this, factory)[MemoryModel::class.java]
             val toolsModel = ViewModelProvider(this, factory)[ConversationToolsModel::class.java]
+            val notificationModel = ViewModelProvider(this, factory)[NotificationModel::class.java]
             val runtime = RuntimeConfig.fromBuildValues(BuildConfig.ENVIRONMENT, BuildConfig.PROVIDER_MODE)
             setContent { CompanionScreen(model, runtime.statusLabel) { state, unavailable ->
                 val subjects = if (model.elder) listOf(state.userId to state.userName)
@@ -75,6 +86,8 @@ class MainActivity : ComponentActivity() {
                 if (!state.busy) ReminderPanel(reminderModel, state.selected!!.id, state.userId, subjects, unavailable)
                 MemoryPanel(memoryModel, state.selected!!.id, state.userId, subjects, unavailable)
                 ConversationToolsPanel(toolsModel, state.selected!!.id, subjects, false, unavailable)
+                NotificationPanel(notificationModel, state.selected!!.id, state.userId, subjects, unavailable,
+                    state.permissions.toString() + state.members.toString())
             } }
         }
     }

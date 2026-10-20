@@ -8,6 +8,8 @@ NAMESPACE = "DEMO_DATA:E0-T08"
 FAMILY_NAME = "演示家庭（虚构数据）"
 STAMP = "2026-09-01T09:00:00+08:00"
 END = "2026-09-07T23:59:00+08:00"
+SIGNAL_EXPIRY = "2026-09-08T09:00:00+08:00"
+DISPATCH_DEADLINE = "2026-09-02T09:00:00+08:00"
 
 
 def uid(number: int) -> str:
@@ -103,26 +105,32 @@ ROWS: dict[str, list[dict[str, object]]] = {
     ],
     "signal_event": [
         {"id": SIGNAL_MISS, "owner_user_id": ELDER, "family_id": FAMILY, "type": "MISS_FAMILY",
+         "trigger_category": "EXPLICIT_MISS_FAMILY", "retention_until": SIGNAL_EXPIRY,
          "severity": "L1", "evidence_summary": "演示：表达想念家人。", "policy_version": "demo-1",
          "consent_check_result": "ALLOWED", "status": "NOTIFIED", "detected_at": STAMP, "notified_at": STAMP},
         {"id": SIGNAL_SCAM, "owner_user_id": ELDER, "family_id": FAMILY, "type": "SCAM_RISK",
+         "trigger_category": "TRANSFER_AND_SECRECY", "retention_until": SIGNAL_EXPIRY,
          "severity": "L2", "evidence_summary": "演示：出现可疑转账请求，已阻止敏感操作。",
          "rule_id": "demo-scam-warning", "rule_version": "demo-1", "policy_version": "demo-1",
          "consent_check_result": "WITHHELD", "status": "WITHHELD", "detected_at": STAMP},
         {"id": SIGNAL_PHYSICAL, "owner_user_id": ELDER, "family_id": FAMILY, "type": "PHYSICAL_DISCOMFORT",
+         "trigger_category": "SELF_REPORTED_DISCOMFORT", "retention_until": SIGNAL_EXPIRY,
          "severity": "L1", "evidence_summary": "演示：表达身体不适；不作诊断。", "policy_version": "demo-1",
          "consent_check_result": "WITHHELD", "status": "WITHHELD", "detected_at": STAMP},
         {"id": SIGNAL_MISS_FAILED, "owner_user_id": ELDER, "family_id": FAMILY, "type": "MISS_FAMILY",
+         "trigger_category": "EXPLICIT_MISS_FAMILY", "retention_until": SIGNAL_EXPIRY,
          "severity": "L1", "evidence_summary": "演示：另一条想念家人的动态，Mock 推送失败。",
          "policy_version": "demo-1", "consent_check_result": "ALLOWED",
          "status": "NOTIFICATION_FAILED", "detected_at": STAMP},
     ],
     "notification": [
         {"id": NOTIFICATION_READ, "signal_event_id": SIGNAL_MISS, "recipient_user_id": CHILD,
+         "created_at": STAMP, "retention_until": SIGNAL_EXPIRY, "dispatch_deadline": DISPATCH_DEADLINE,
          "channel": "IN_APP", "status": "READ", "summary": "演示：有一条家人关注动态。",
          "policy_version": "demo-1", "provider": "mock", "action": "NONE", "sent_at": STAMP,
-         "delivered_at": STAMP, "read_at": STAMP},
+         "read_at": STAMP},
         {"id": NOTIFICATION_FAILED, "signal_event_id": SIGNAL_MISS_FAILED, "recipient_user_id": CHILD,
+         "created_at": STAMP, "retention_until": SIGNAL_EXPIRY, "dispatch_deadline": DISPATCH_DEADLINE,
          "channel": "PUSH", "status": "FAILED", "summary": "演示：有一条待查看的关注动态。",
          "policy_version": "demo-1", "provider": "mock", "action": "NONE", "error_code": "MOCK_FAILURE"},
     ],

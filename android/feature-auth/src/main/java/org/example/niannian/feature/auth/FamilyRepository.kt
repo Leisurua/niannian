@@ -182,6 +182,11 @@ class FamilyRepository(
         executeCall(path, "POST", body, false, null, key)
     }
 
+    suspend fun markNotificationRead(id: String, key: String): JSONObject = requestMutex.withLock {
+        require(UUID.fromString(id).toString() == id && UUID.fromString(key).toString() == key)
+        executeCall(path = "/v1/notifications/$id/read", method = "POST", body = JSONObject(), idempotent = false, expectedVersion = null, explicitKey = key)
+    }
+
     private suspend fun executeCall(path: String, method: String, body: JSONObject?, idempotent: Boolean, expectedVersion: Long?, explicitKey: String? = null, reason: String? = null): JSONObject = withContext(Dispatchers.IO) {
         var session = store.load()
         val origin = ConnectionPolicy.origin(session.getString("origin"), debug)

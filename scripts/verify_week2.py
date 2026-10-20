@@ -77,7 +77,9 @@ def run_checks(output: Path, *, device: bool = False) -> dict:
             "--ignore=backend/tests/integration/test_week3_storage.py",
             "--ignore=backend/tests/integration/test_week4_postgres.py",
             "--ignore=backend/tests/integration/test_week5_postgres.py",
-            "--ignore=backend/tests/integration/test_week6_postgres.py"]
+            "--ignore=backend/tests/integration/test_week6_postgres.py",
+            "--ignore=backend/tests/integration/test_week7_notifications.py",
+            "--ignore=backend/tests/integration/test_week7_warning_postgres.py"]
         if not ready:
             command += ["--ignore=backend/tests/integration"]
         if not ready:

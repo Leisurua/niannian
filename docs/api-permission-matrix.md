@@ -233,3 +233,10 @@ This section supersedes earlier Week 3/4 “summary unavailable” implementatio
 - Full candidate category/action vocabulary and SCAM_CODE_SECRECY are frozen in W6-03. Six types remain temporary
   Mock candidates, not facts/events/notifications. Deterministic emergency/scam copy survives LLM/TTS failure.
   SignalEvent persistence and notification delivery remain Week 7. Real voice/provider gates remain unapproved.
+
+
+## Week 7 approved contract — 2026-10-19
+
+[W7-01..04](plan/week7-contract-review.md) 已由项目负责人在本聊天回复“是”批准。
+
+W7-03 明确：CHILD/CAREGIVER + SIGNAL_READ（含既有家庭创建者能力）+ 当前指定 grantee NOTIFICATION_TO_FAMILY；PHYSICAL_DISCOMFORT 另需 HEALTH_MEDICATION。SCAM 不自动要求健康 scope。IMPORTANT_MEMORY 本周仅固定待核实模板，不取实际记忆；实际记忆内容仍需 FAMILY_MEMORY。本人只见自己的安全状态，不见家属通知。摘要与通知互不代替。偏好不授予 Consent；GET/PUT 只能管理当前收件人的设置。

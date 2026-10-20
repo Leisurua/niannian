@@ -99,3 +99,10 @@ This section supersedes earlier Week 3/4 “summary unavailable” implementatio
 - Full candidate category/action vocabulary and SCAM_CODE_SECRECY are frozen in W6-03. Six types remain temporary
   Mock candidates, not facts/events/notifications. Deterministic emergency/scam copy survives LLM/TTS failure.
   SignalEvent persistence and notification delivery remain Week 7. Real voice/provider gates remain unapproved.
+
+
+## Week 7 approved contract — 2026-10-19
+
+[W7-01..04](plan/week7-contract-review.md) 已由项目负责人在本聊天回复“是”批准。
+
+R-008/R-011 的虚构 Mock 本轮例外已批准：事件/通知最长 7 天，从首次创建起不续期；通知派发最长 24h，免打扰和重试不延长。来源删除、撤回、主体/成员失效在下一次读/发立即隐藏，worker 再清理。撤回某收件人不关闭其他人；摘要撤回不关闭独立通知。通知不落 Android 磁盘。R-002 原文仍不落库；真实数据/Provider/备份/审计最终期限仍独立门禁。

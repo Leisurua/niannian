@@ -121,6 +121,7 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
     last_reply = None
     last_records = ()
     pending_topic = None
+    pending_signal_input = None
     listener = None
     listen_task = None
     notices = asyncio.Queue(maxsize=1)
@@ -190,6 +191,7 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                             last_reply = None
                             last_records = ()
                             pending_topic = None
+                            pending_signal_input = None
                             outgoing = service.handle(row, message)
                         elif message.type == 'text.input':
                             if turn_task or not row.provider_metadata.get('identity_disclosed') or settings.provider_mode != 'mock':
@@ -208,7 +210,9 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                                 last_records = ()
                                 row.backend_state = 'THINKING'
                                 pending_topic = recap.topic_for(message.payload['text'])
+                                pending_signal_input = (message.payload['text'], f'turn-{message.sequence}')
                                 outgoing = [service.event(row, 'assistant.state', {'state': 'THINKING'})]
+                                outgoing += service.scam_warning(row, message.payload['text'])
                                 turn_task = asyncio.create_task(generate_turn(factory, bearer, settings, orchestrator,
                                     conversation_id, message.payload['text'], f'turn-{message.sequence}'))
                         elif message.type in ('repeat', 'slow_down'):
@@ -240,6 +244,12 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                         if pending_topic and result.trace.get('result_status') != 'FAILED' and last_reply != UNAVAILABLE:
                             await recap.add_topic(db, row, pending_topic)
                         pending_topic = None
+                        if pending_signal_input and result.trace.get('result_status') != 'FAILED':
+                            from app.modules.signal.service import record_turn
+                            signal_events = await record_turn(db, actor, row.id, pending_signal_input[1],
+                                pending_signal_input[0], result.signal_candidates)
+                            outgoing += [service.event(row, 'signal.created', item) for item in signal_events]
+                        pending_signal_input = None
                         outgoing += [service.event(row, 'assistant.text', {'text': last_reply, 'source_labels': ['Mock']})]
                         if result.fallback_code:
                             outgoing += [service.event(row, 'error', {'code': 'PROVIDER_TEMPORARILY_UNAVAILABLE', 'retryable': False})]

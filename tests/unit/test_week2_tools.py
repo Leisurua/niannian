@@ -82,6 +82,8 @@ def test_week2_gate_collects_only_its_database_suite(monkeypatch, tmp_path):
             assert 'test_week4_postgres.py' not in collected.stdout
             assert 'test_week5_postgres.py' not in collected.stdout
             assert 'test_week6_postgres.py' not in collected.stdout
+            assert 'test_week7_notifications.py' not in collected.stdout
+            assert 'test_week7_warning_postgres.py' not in collected.stdout
             collections.append(collected.stdout)
             (tmp_path / 'backend-tests.xml').write_text('<testsuites><testsuite tests="1"/></testsuites>')
         return subprocess.CompletedProcess(command, 0)

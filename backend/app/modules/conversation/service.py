@@ -11,6 +11,7 @@ from app.modules.conversation.models import Conversation
 from app.modules.conversation import summary
 from app.modules.device.service import require_active_binding
 from app.modules.family import service as family
+from app.modules.safety.rules import evaluate
 from app.platform.errors import AppError
 from app.platform.identifiers import iso_utc, utcnow, uuid7
 from app.platform.resource_access import authorize, resolve_family
@@ -91,6 +92,37 @@ def finish(row, reason):
 def event(row, kind, payload):
     row.server_sequence += 1
     return dict(type=kind, conversation_id=str(row.id), sequence=row.server_sequence, occurred_at=utcnow().isoformat(), payload=payload)
+
+
+def scam_warning(row, text):
+    """Current-input warning only; never implies an event, consent or delivery."""
+    decision = evaluate(text)
+    if decision.kind != 'SCAM_RISK':
+        return []
+    return [event(row, 'warning', {
+        'reason_category': decision.category, 'display_text': decision.message,
+    })]
+
+
+async def signal_source(db, conversation_id, *, actor=None, active=False):
+    """Public, content-free source check for signals and queued delivery."""
+    from app.modules.auth.service import active_user
+    row = await db.get(Conversation, conversation_id, populate_existing=True)
+    if not row:
+        return None
+    try:
+        await active_user(db, row.owner_user_id, lock=False)
+        _, member = await family.context(db, row.owner_user_id, row.family_id)
+        if member.role != 'ELDER':
+            return None
+        await db.refresh(row)
+        if row.deleted_at or row.status == 'DELETED' or active and row.status != 'ACTIVE':
+            return None
+        if actor is not None and actor.user_id != row.owner_user_id:
+            return None
+        return dict(id=row.id, family_id=row.family_id, owner_user_id=row.owner_user_id)
+    except AppError:
+        return None
 
 
 def handle(row, message):

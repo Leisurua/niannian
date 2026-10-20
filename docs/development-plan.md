@@ -2,6 +2,11 @@
 
 本计划把 Design Freeze Review 的结果转换为可交给 Coding Agent 的工作单。它不新增需求，不重写 API/DB/UI/AI/Device/Security 设计；所有实现都必须以现有 Source of Truth 和 [`open-decisions.md`](open-decisions.md) 为准。
 
+第七周当前状态（2026-10-19）：**已批准的 Mock 软件范围 PASS**。
+已完成规则 warning、SignalEvent、可靠 Mock/IN_APP 通知、家属收件箱及独立授权验证。
+依据 [已批准 W7-01..04](plan/week7-contract-review.md)，见 [交付证据](evidence/week7-completion.md)。
+实际设备/真实 Provider/生产验收仍 NOT VERIFIED；未自动启动第八周。
+
 ## 1. Development Principles
 
 1. 先建立可运行、可测试的纵向骨架，再逐步接入业务。
