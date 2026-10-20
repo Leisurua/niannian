@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.time.Instant
+import org.example.niannian.core.common.parseApiInstant
 
 private val scopeLabels = linkedMapOf("VOICE" to "语音处理", "PORTRAIT" to "数字人形象", "FAMILY_MEMORY" to "家庭记忆",
     "HEALTH_MEDICATION" to "健康与用药信息", "CONVERSATION_SUMMARY" to "交流摘要", "CAMERA_PROXIMITY" to "摄像头存在检测",
@@ -177,6 +178,6 @@ private fun roleLabel(role: String) = when (role) { "ELDER" -> "长辈"; "CHILD"
 private fun statusLabel(status: String) = when (status) { "ACTIVE" -> "已加入"; "PENDING" -> "待确认"; "LEFT" -> "已离开"; "REVOKED" -> "已撤销"; else -> "未知状态" }
 private fun permissionLabel(permission: Permission): String {
     if (permission.status == "REVOKED") return "已撤回"
-    if (permission.status == "EXPIRED" || permission.expiry.isNotEmpty() && runCatching { Instant.parse(permission.expiry).isBefore(Instant.now()) }.getOrDefault(true)) return "已过期"
+    if (permission.status == "EXPIRED" || permission.expiry.isNotEmpty() && runCatching { parseApiInstant(permission.expiry).isBefore(Instant.now()) }.getOrDefault(true)) return "已过期"
     return if (permission.status == "GRANTED") "已授权" else "未授权"
 }

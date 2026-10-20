@@ -1,5 +1,6 @@
 package org.example.niannian.feature.reminder
 
+import org.example.niannian.core.common.parseApiInstant
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
@@ -73,7 +74,7 @@ class ReminderLedger(private val store: ReminderStore, private val clock: () -> 
         data.put("rules", cached).put("occurrences", occurrences).put("synced_at", now.epochSecond)
         cached.objects().forEach { r ->
             val parsed = parseRule(r)
-            val server = r.optJSONArray("executions")?.objects().orEmpty().associateBy { Instant.parse(it.getString("scheduled_at")) }
+            val server = r.optJSONArray("executions")?.objects().orEmpty().associateBy { parseApiInstant(it.getString("scheduled_at")) }
             ReminderCalendar.occurrences(parsed, now.minusSeconds(86400), now.plusSeconds(86400)).forEach { occurrence ->
                 val known = server[occurrence.scheduledAt]
                 if (occurrence.scheduledAt < now && known == null) return@forEach
@@ -102,7 +103,7 @@ class ReminderLedger(private val store: ReminderStore, private val clock: () -> 
                     item.put("action", next); item.remove("next_action")
                 } else entries.remove(key)
                 data.put("notice", "部分反馈未同步且已过期，请联网核对。")
-            } else if (action == null && Instant.parse(item.getString("scheduled_at")) < now.minusSeconds(86400)) entries.remove(key)
+            } else if (action == null && parseApiInstant(item.getString("scheduled_at")) < now.minusSeconds(86400)) entries.remove(key)
         }
         val fresh = rules.objects().filter { now.epochSecond < it.getLong("cache_expiry") }
         if (fresh.size < rules.length()) data.put("notice", "部分提醒缓存已过期，请联网更新。")
@@ -125,7 +126,7 @@ class ReminderLedger(private val store: ReminderStore, private val clock: () -> 
         return entries.keys().asSequence().filter { key ->
             val item = entries.getJSONObject(key)
             val rule = rules[item.getString("reminder_id")]
-            val due = Instant.parse(if (item.getString("status") == "LATER") item.getString("next_due_at") else item.getString("scheduled_at"))
+            val due = parseApiInstant(if (item.getString("status") == "LATER") item.getString("next_due_at") else item.getString("scheduled_at"))
             rule != null && item.getString("status") !in setOf("DONE", "SKIPPED") && !item.optBoolean("presented") &&
                 due <= now && !ReminderCalendar.inQuietHours(now, parseRule(rule).quiet)
         }.toList()
@@ -133,12 +134,37 @@ class ReminderLedger(private val store: ReminderStore, private val clock: () -> 
     suspend fun recordNotificationSubmission(keys: List<String>) = transaction { data, _ ->
         keys.forEach { data.optJSONObject("occurrences")?.optJSONObject(it)?.put("presented", true) }
     }
+    /** Wake for actual reminders or cache expiry instead of consuming idle-alarm quota by polling. */
+    suspend fun nextCheckAt(): Instant? {
+        val data = snapshot()
+        val now = clock()
+        val rules = data.optJSONArray("rules")?.objects().orEmpty().associateBy { it.getString("id") }
+        val times = rules.values.map { Instant.ofEpochSecond(it.getLong("cache_expiry")) }.toMutableList()
+        val entries = data.optJSONObject("occurrences") ?: return times.minOrNull()
+        for (key in entries.keys()) {
+            val item = entries.getJSONObject(key)
+            listOf("action", "next_action").forEach { slot ->
+                item.optJSONObject(slot)?.let { times.add(Instant.ofEpochSecond(it.getLong("expires_at"))) }
+            }
+            val rule = rules[item.getString("reminder_id")] ?: continue
+            if (item.getString("status") in setOf("DONE", "SKIPPED") || item.optBoolean("presented")) continue
+            var due = maxOf(now, parseApiInstant(if (item.getString("status") == "LATER") item.getString("next_due_at") else item.getString("scheduled_at")))
+            val quiet = parseRule(rule).quiet
+            if (ReminderCalendar.inQuietHours(due, quiet)) {
+                val local = due.atZone(ZoneId.of(quiet!!.timezone))
+                val day = if (quiet.start > quiet.end && local.toLocalTime() >= quiet.start) local.toLocalDate().plusDays(1) else local.toLocalDate()
+                due = day.atTime(quiet.end).atZone(local.zone).toInstant()
+            }
+            if (due < Instant.ofEpochSecond(rule.getLong("cache_expiry"))) times.add(due)
+        }
+        return times.minOrNull()
+    }
     suspend fun feedback(key: String, status: String, next: Instant? = null) = transaction { data, now ->
         require(status in setOf("DONE", "LATER", "SKIPPED"))
         require(if (status == "LATER") next != null && next > now && next <= now.plusSeconds(86400) else next == null)
         val item = data.getJSONObject("occurrences").getJSONObject(key)
         val rule = data.getJSONArray("rules").objects().single { it.getString("id") == item.getString("reminder_id") }
-        require(now.epochSecond < rule.getLong("cache_expiry") && Instant.parse(item.getString("scheduled_at")) <= now)
+        require(now.epochSecond < rule.getLong("cache_expiry") && parseApiInstant(item.getString("scheduled_at")) <= now)
         require(item.getString("status") !in setOf("DONE", "SKIPPED"))
         require(!item.has("action") || item.getString("status") == "LATER" && status in setOf("DONE", "SKIPPED") && !item.has("next_action"))
         val body = JSONObject().put("reminder_version", item.getLong("version")).put("scheduled_at", item.getString("scheduled_at"))
@@ -163,7 +189,7 @@ class ReminderLedger(private val store: ReminderStore, private val clock: () -> 
         if (item.optJSONObject("action")?.optString("key") != actionKey) return@transaction
         UUID.fromString(result.getString("id"))
         require(result.getString("reminder_id") == item.getString("reminder_id"))
-        require(Instant.parse(result.getString("scheduled_at")) == Instant.parse(item.getString("scheduled_at")))
+        require(parseApiInstant(result.getString("scheduled_at")) == parseApiInstant(item.getString("scheduled_at")))
         require(result.getString("feedback_status") in setOf("PENDING", "LATER", "DONE", "SKIPPED", "NO_RESPONSE"))
         require(result.getString("source") in setOf("ONLINE", "OFFLINE"))
         item.put("source", result.getString("source"))

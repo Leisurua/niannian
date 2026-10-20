@@ -18,29 +18,47 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** Elder-only registration. Inexact alarms are an observed fallback, never exact delivery. */
 object ReminderScheduler {
     private const val NOTIFICATION = 501
     private const val CHANNEL = "local-reminders"
+    private val mutex = Mutex()
     private fun intent(context: Context) = PendingIntent.getBroadcast(context, 501,
         Intent(context, ReminderReceiver::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     fun arm(context: Context) {
-        context.getSystemService(AlarmManager::class.java).setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,
-            System.currentTimeMillis() + 60000, intent(context))
+        val application = context.applicationContext
+        CoroutineScope(Dispatchers.IO).launch {
+            try { withTimeout(8000) { mutex.withLock { scheduleNext(application) } } }
+            catch (_: Exception) { cancel(application) }
+        }
+    }
+    private suspend fun scheduleNext(context: Context) {
+        val storage = ReminderStorage.get(context)
+        val ledger = ReminderLedger(storage)
+        val snapshot = ledger.snapshot()
+        val next = ledger.nextCheckAt()
+        storage.whenCurrent(snapshot) {
+            val alarms = context.getSystemService(AlarmManager::class.java)
+            if (next == null) cancel(context)
+            else alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,
+                maxOf(System.currentTimeMillis() + 1000, next.toEpochMilli()), intent(context))
+        }
     }
     fun cancel(context: Context) {
         context.getSystemService(AlarmManager::class.java).cancel(intent(context))
         context.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION)
     }
-    suspend fun check(context: Context) {
+    suspend fun check(context: Context) = mutex.withLock {
         val storage = ReminderStorage.get(context)
         val ledger = ReminderLedger(storage)
         val snapshot = ledger.snapshot()
         if ((snapshot.optJSONArray("rules")?.length() ?: 0) == 0) {
             cancel(context)
-            if ((snapshot.optJSONObject("occurrences")?.length() ?: 0) > 0) arm(context)
-            return
+            scheduleNext(context)
+            return@withLock
         }
         val due = ledger.notificationCandidates()
         val manager = context.getSystemService(NotificationManager::class.java)
@@ -58,7 +76,7 @@ object ReminderScheduler {
                 if (submitted) ledger.recordNotificationSubmission(due)
             }
         }
-        arm(context)
+        scheduleNext(context)
     }
 }
 

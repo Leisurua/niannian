@@ -116,6 +116,29 @@ class ReminderLedgerTest {
         restarted.acknowledge(key, finalKey, ack("DONE"))
         assertFalse(restarted.snapshot().getJSONObject("occurrences").getJSONObject(key).has("action"))
     }
+    @Test fun nextWakeupUsesDueTimeSnoozeAndExpiryInsteadOfMinutePolling() = runBlocking {
+        val ledger = ready()
+        val key = first(ledger.snapshot())
+        assertEquals(now, ledger.nextCheckAt())
+        ledger.recordNotificationSubmission(listOf(key))
+        assertEquals(Instant.parse("2026-10-16T00:00:00Z"), ledger.nextCheckAt())
+        ledger.feedback(key, "LATER", now.plusSeconds(600))
+        assertEquals(now.plusSeconds(600), ledger.nextCheckAt())
+        now = now.plusSeconds(600)
+        ledger.feedback(key, "DONE")
+        assertEquals(Instant.parse("2026-10-16T00:00:00Z"), ledger.nextCheckAt())
+    }
+    @Test fun futureWakeupRespectsDueTimeAndOvernightQuietHours() = runBlocking {
+        val ledger = ReminderLedger(EphemeralReminderStore()) { now }
+        ledger.bind("family", "elder")
+        ledger.refresh("family", "elder", listOf(rule()))
+        assertEquals(now.plusSeconds(60), ledger.nextCheckAt())
+        val quiet = JSONObject().put("start", "23:00").put("end", "07:00").put("timezone", "UTC")
+        ledger.refresh("family", "elder", listOf(rule().put("quiet_hours", quiet)))
+        assertEquals(Instant.parse("2026-10-15T07:00:00Z"), ledger.nextCheckAt())
+        now = now.plusSeconds(86400)
+        assertNull(ledger.nextCheckAt())
+    }
     @Test fun wrongResourceAckCannotErasePendingFeedback() = runBlocking {
         val ledger = ready(); val key = first(ledger.snapshot()); ledger.feedback(key, "DONE")
         val pending = ledger.attempted(key)!!.getJSONObject("action").getString("key")

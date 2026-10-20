@@ -1,6 +1,7 @@
 package org.example.niannian.feature.reminder
 
 import org.example.niannian.data.ApiFailure
+import org.example.niannian.core.common.parseApiInstant
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -73,7 +74,7 @@ class ReminderModel(private val gateway: ReminderGateway, store: ReminderStore, 
         val cards = entries.keys().asSequence().mapNotNull { key ->
             val e = entries.getJSONObject(key)
             val r = byId[e.getString("reminder_id")] ?: return@mapNotNull null
-            val instant = Instant.parse(e.optString("next_due_at").takeIf { e.getString("status") == "LATER" && it.isNotBlank() } ?: e.getString("scheduled_at"))
+            val instant = parseApiInstant(e.optString("next_due_at").takeIf { e.getString("status") == "LATER" && it.isNotBlank() } ?: e.getString("scheduled_at"))
             val action = e.optJSONObject("action")
             ReminderCard(key, r.getString("id"), r.getString("title"), r.getString("content"),
                 instant.atZone(ZoneId.of(r.getString("timezone"))).toString(), e.getString("status"), action != null,

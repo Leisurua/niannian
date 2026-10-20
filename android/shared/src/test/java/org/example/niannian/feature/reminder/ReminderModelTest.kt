@@ -21,9 +21,10 @@ class ReminderModelTest {
         var failure: Exception? = null
         var gate: CompletableDeferred<Unit>? = null
         val keys = mutableListOf<String>()
+        var executions = emptyList<JSONObject>()
         override suspend fun list(path: String): List<JSONObject> {
             gate?.await(); failure?.let { throw it }
-            return if (path.contains("/executions")) emptyList() else listOf(rule())
+            return if (path.contains("/executions")) executions else listOf(rule())
         }
         override suspend fun call(path: String, method: String, body: JSONObject?, key: String?, version: Long?): JSONObject {
             failure?.let { throw it }; keys += key!!
@@ -58,6 +59,21 @@ class ReminderModelTest {
         assertTrue(model.state.value.cards.isEmpty()); assertEquals(0, store.load().length())
         gateway.failure = IOException("offline"); model.refresh()!!.join()
         assertTrue(model.state.value.cards.isEmpty())
+    }
+    @Test fun serverExecutionWithUtcOffsetStillAllowsPendingFeedbackToSync() = runBlocking {
+        val gateway = Gateway()
+        val model = ReminderModel(gateway, EphemeralReminderStore(), true, this, { now })
+        model.bind("family", "elder")!!.join()
+        now = now.plusSeconds(120)
+        gateway.executions = listOf(JSONObject().put("scheduled_at", "2026-10-15T00:01:00+00:00")
+            .put("feedback_status", "PENDING").put("source", "ONLINE"))
+        model.tick()!!.join()
+        val key = model.state.value.cards.single().key
+        model.feedback(key, "DONE")!!.join()
+        assertEquals(1, gateway.keys.size)
+        assertEquals("DONE", model.state.value.cards.single { it.key == key }.status)
+        assertFalse(model.state.value.cards.single { it.key == key }.pending)
+        assertFalse(model.state.value.offline)
     }
     @Test fun familyOfflineNeverDisplaysCachedHealthContent() = runBlocking {
         val gateway = Gateway(); val model = ReminderModel(gateway, EphemeralReminderStore(), false, this, { now })
