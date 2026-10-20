@@ -41,6 +41,7 @@ class FamilyClientApp(tk.Tk):
         self.task_queue: queue.Queue[tuple[bool, Any, Callable[[Any], None] | None, str]] = queue.Queue()
         self.busy = False
         self.polling = False
+        self._poll_after_id: str | None = None
         self._configure_styles()
         self._build_ui()
         self._load_settings()
@@ -237,12 +238,11 @@ class FamilyClientApp(tk.Tk):
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
 
-    def _client_for_url(self) -> NianNianClient:
-        return NianNianClient(self.url_var.get())
-
     def test_connection(self) -> None:
+        base_url = self.url_var.get()
+
         def operation() -> dict[str, Any]:
-            client = self._client_for_url()
+            client = NianNianClient(base_url)
             endpoint, tcp_ms = client.tcp_check()
             health = client.health()
             return {"client": client, "endpoint": endpoint, "tcp_ms": tcp_ms, "health": health}
@@ -260,8 +260,10 @@ class FamilyClientApp(tk.Tk):
         self._run("连接检查", operation, success)
 
     def login(self) -> None:
+        base_url = self.url_var.get()
+
         def operation() -> tuple[NianNianClient, dict[str, Any]]:
-            client = self._client_for_url()
+            client = NianNianClient(base_url)
             return client, client.login("demo-child")
 
         def success(result: tuple[NianNianClient, dict[str, Any]]) -> None:
@@ -276,6 +278,7 @@ class FamilyClientApp(tk.Tk):
     def e2e_probe(self) -> None:
         if not messagebox.askokcancel("执行虚构双端验收", "该操作会在演示数据库中创建虚构家庭、设备和一条测试消息。继续吗？", parent=self):
             return
+        base_url = self.url_var.get()
 
         def success(report: Any) -> None:
             self.probe_output.configure(state="normal")
@@ -285,7 +288,7 @@ class FamilyClientApp(tk.Tk):
             self.status.configure(text="端到端通过" if report.ok else "端到端未通过",
                                   bg=LIGHT_GREEN if report.ok else "#F4DAD6", fg=GREEN if report.ok else RED)
 
-        self._run("端到端验收", lambda: run_e2e_probe(self.url_var.get()), success)
+        self._run("端到端验收", lambda: run_e2e_probe(base_url), success)
 
     def _require_client(self) -> NianNianClient:
         if not self.client or not self.client.access_token:
@@ -406,7 +409,8 @@ class FamilyClientApp(tk.Tk):
                 messagebox.showwarning("已接收但尚无投递目标", "服务器已接收消息，但当前家庭没有已注册的老人端设备。", parent=self)
             self.refresh_messages()
 
-        self._run("发送消息", lambda: client.send_text_to_role(text, "ELDER", self.priority_var.get()), success)
+        priority = self.priority_var.get()
+        self._run("发送消息", lambda: client.send_text_to_role(text, "ELDER", priority), success)
 
     def refresh_messages(self) -> None:
         try:
@@ -478,16 +482,20 @@ class FamilyClientApp(tk.Tk):
         self._run("确认已读", operation, lambda _: self.refresh_messages())
 
     def _toggle_polling(self) -> None:
+        if self._poll_after_id is not None:
+            self.after_cancel(self._poll_after_id)
+            self._poll_after_id = None
         self.polling = self.auto_poll_var.get()
         if self.polling:
             self._poll_tick()
 
     def _poll_tick(self) -> None:
+        self._poll_after_id = None
         if not self.polling:
             return
         if not self.busy:
             self.refresh_messages()
-        self.after(3000, self._poll_tick)
+        self._poll_after_id = self.after(3000, self._poll_tick)
 
     def _load_settings(self) -> None:
         try:
