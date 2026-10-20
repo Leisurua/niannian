@@ -43,6 +43,7 @@ class ElderDemoApp(tk.Tk):
         self.task_queue: queue.Queue[tuple[bool, Any, Callable[[Any], None] | None, str]] = queue.Queue()
         self.busy = False
         self.polling = False
+        self._poll_after_id: str | None = None
         self._configure_styles()
         self._build_ui()
         self._load_settings()
@@ -248,8 +249,10 @@ class ElderDemoApp(tk.Tk):
         return client
 
     def test_connection(self) -> None:
+        base_url = self.url_var.get()
+
         def operation() -> tuple[ElderClient, str]:
-            client = ElderClient(self.url_var.get())
+            client = ElderClient(base_url)
             endpoint, elapsed = client.tcp_check()
             health = client.health()
             if health.get("status") != "ok":
@@ -264,8 +267,10 @@ class ElderDemoApp(tk.Tk):
         self._run("测试连接", operation, success)
 
     def login(self) -> None:
+        base_url = self.url_var.get()
+
         def operation() -> tuple[ElderClient, dict[str, Any]]:
-            client = ElderClient(self.url_var.get())
+            client = ElderClient(base_url)
             return client, client.login()
 
         def success(result: tuple[ElderClient, dict[str, Any]]) -> None:
@@ -328,10 +333,9 @@ class ElderDemoApp(tk.Tk):
         def success(binding: dict[str, Any]) -> None:
             self.device_label.configure(text=f"老人端已启用\n设备编号：{binding['id']}")
             self.feedback_label.configure(text="现在可以接收家人的留言。")
-            self.polling = self.auto_var.get()
-            self.refresh_messages()
-            if self.polling:
-                self.after(3000, self._poll_tick)
+            self._toggle_polling()
+            if not self.polling:
+                self.refresh_messages()
 
         self._run("启用设备", lambda: client.register_device(family_id), success)
 
@@ -446,16 +450,20 @@ class ElderDemoApp(tk.Tk):
         self._run("发送回复", lambda: client.reply_to_children(text, important=important), success)
 
     def _toggle_polling(self) -> None:
+        if self._poll_after_id is not None:
+            self.after_cancel(self._poll_after_id)
+            self._poll_after_id = None
         self.polling = self.auto_var.get() and bool(self.client and self.client.binding)
         if self.polling:
             self._poll_tick()
 
     def _poll_tick(self) -> None:
+        self._poll_after_id = None
         if not self.polling:
             return
         if not self.busy:
             self.refresh_messages()
-        self.after(3000, self._poll_tick)
+        self._poll_after_id = self.after(3000, self._poll_tick)
 
     def _load_settings(self) -> None:
         try:

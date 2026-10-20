@@ -205,8 +205,22 @@ class ElderClient:
         return result
 
     def list_messages(self, box: str) -> list[dict[str, Any]]:
-        query = urlencode({"box": box, "after_sequence": 0, "limit": 100})
-        return list(self._request("GET", "/v1/messages?" + query).get("items", []))
+        items = []
+        after_sequence = 0
+        while True:
+            query = urlencode({"box": box, "after_sequence": after_sequence, "limit": 100})
+            result = self._request("GET", "/v1/messages?" + query)
+            items.extend(result.get("items", []))
+            page = result.get("page", {})
+            if not page.get("has_more"):
+                return items
+            try:
+                next_sequence = int(page["next_cursor"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise NetworkError("服务器返回了无效的消息分页信息。") from exc
+            if next_sequence <= after_sequence:
+                raise NetworkError("服务器返回的消息分页未向前推进。")
+            after_sequence = next_sequence
 
     def acknowledge(self, delivery_id: str, kind: str) -> dict[str, Any]:
         if kind not in ("received", "read"):

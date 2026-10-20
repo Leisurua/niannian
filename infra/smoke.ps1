@@ -33,6 +33,7 @@ mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >
 printf 'E0-T04 synthetic infrastructure probe\n' | mc pipe "local/nianian-private/$1" >/dev/null
 mc stat "local/nianian-private/$1" >/dev/null
 '@
+    $upload = $upload.Replace("`r`n", "`n")
     docker compose -f $compose run --rm --no-deps -T --entrypoint /bin/sh bucket-init -c $upload smoke $probeKey
     if ($LASTEXITCODE -ne 0) { throw 'Private probe upload or authenticated stat failed.' }
     Write-Output 'PASS: Authenticated stat confirms the synthetic probe exists.'
@@ -49,6 +50,7 @@ set -eu
 mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null
 mc rm "local/nianian-private/$1" >/dev/null
 '@
+    $cleanup = $cleanup.Replace("`r`n", "`n")
     docker compose -f $compose run --rm --no-deps -T --entrypoint /bin/sh bucket-init -c $cleanup smoke $probeKey
     if ($LASTEXITCODE -ne 0) { throw 'Synthetic probe cleanup failed; infrastructure smoke is not PASS.' }
     Write-Output 'PASS: Synthetic probe cleanup completed.'
