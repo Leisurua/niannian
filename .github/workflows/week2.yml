@@ -33,6 +33,7 @@ jobs:
       PROVIDER_MODE: mock
       DATABASE_URL: postgresql+psycopg://niannian:week2-test-only@127.0.0.1:5432/niannian_week2_test
       WEEK2_TEST_DATABASE_URL: postgresql+psycopg://niannian:week2-test-only@127.0.0.1:5432/niannian_week2_test
+      WEEK3_TEST_DATABASE_URL: postgresql+psycopg://niannian:week2-test-only@127.0.0.1:5432/niannian_week3_test
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -43,6 +44,22 @@ jobs:
           python-version: '3.12'
       - name: Install locked application and check tools
         run: python -m pip install -r backend/requirements.lock -r requirements-ci.txt
+      - name: Prepare separate database for current regression suites
+        run: |
+          python - <<'PY'
+          import os, psycopg
+          from sqlalchemy.engine import make_url
+          u = make_url(os.environ['WEEK2_TEST_DATABASE_URL'])
+          with psycopg.connect(host=u.host, port=u.port, user=u.username, password=u.password, dbname=u.database, autocommit=True) as db:
+              db.execute('CREATE DATABASE niannian_week3_test')
+          PY
+      - name: Upgrade and verify current regression schema
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ env.WEEK3_TEST_DATABASE_URL }}
+        run: |
+          python -m alembic upgrade head
+          python -m alembic check
       - name: Disposable schema upgrade, empty downgrade and re-upgrade
         working-directory: backend
         run: |

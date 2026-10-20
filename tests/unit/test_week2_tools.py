@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location('verify_week2', ROOT / 'scripts/verify_week2.py')
@@ -23,6 +24,24 @@ def test_disposable_database_guard(url):
 
 def test_explicit_disposable_database_is_allowed():
     assert verify.disposable_database('postgresql+psycopg://localhost/niannian_week2_test')
+
+
+def test_week2_ci_prepares_later_regression_database_before_running_all_tests():
+    workflow = yaml.safe_load((ROOT / '.github/workflows/week2.yml').read_text(encoding='utf-8'))
+    job = workflow['jobs']['postgres-contracts']
+    assert verify.disposable_database(job['env']['WEEK2_TEST_DATABASE_URL'])
+    assert job['env']['WEEK3_TEST_DATABASE_URL'].endswith('/niannian_week3_test')
+    steps = job['steps']
+    gate_index = next(i for i, step in enumerate(steps) if step.get('run') == 'python scripts/verify_week2.py')
+    preparation = steps[:gate_index]
+    assert any('CREATE DATABASE niannian_week3_test' in step.get('run', '') for step in preparation)
+    assert any(
+        step.get('working-directory') == 'backend'
+        and step.get('env', {}).get('DATABASE_URL') == '${{ env.WEEK3_TEST_DATABASE_URL }}'
+        and 'python -m alembic upgrade head' in step.get('run', '')
+        and 'python -m alembic check' in step.get('run', '')
+        for step in preparation
+    )
 
 
 @pytest.mark.parametrize('report', [None, '<bad', '<testsuites/>',

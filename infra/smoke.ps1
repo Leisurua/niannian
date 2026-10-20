@@ -23,8 +23,6 @@ if ($LASTEXITCODE -ne 0 -or ($extension | Out-String).Trim() -ne 'vector') {
 $response = Invoke-WebRequest -Uri 'http://127.0.0.1:9000/nianian-private?list-type=2' -SkipHttpErrorCheck -TimeoutSec 10
 if ($response.StatusCode -ne 403) { throw "Anonymous bucket listing returned $($response.StatusCode), expected 403." }
 
-# Use a unique synthetic object so a 403 proves that an existing object is private.
-# Remove only this run's probe, including when the HTTP check fails.
 $probeKey = 'e0-t04-smoke/' + [guid]::NewGuid().ToString('N') + '.txt'
 try {
     $upload = @'
@@ -33,6 +31,7 @@ mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >
 printf 'E0-T04 synthetic infrastructure probe\n' | mc pipe "local/nianian-private/$1" >/dev/null
 mc stat "local/nianian-private/$1" >/dev/null
 '@
+    $upload = $upload.Replace("`r`n", "`n")
     docker compose -f $compose run --rm --no-deps -T --entrypoint /bin/sh bucket-init -c $upload smoke $probeKey
     if ($LASTEXITCODE -ne 0) { throw 'Private probe upload or authenticated stat failed.' }
     Write-Output 'PASS: Authenticated stat confirms the synthetic probe exists.'
@@ -49,6 +48,7 @@ set -eu
 mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null
 mc rm "local/nianian-private/$1" >/dev/null
 '@
+    $cleanup = $cleanup.Replace("`r`n", "`n")
     docker compose -f $compose run --rm --no-deps -T --entrypoint /bin/sh bucket-init -c $cleanup smoke $probeKey
     if ($LASTEXITCODE -ne 0) { throw 'Synthetic probe cleanup failed; infrastructure smoke is not PASS.' }
     Write-Output 'PASS: Synthetic probe cleanup completed.'
