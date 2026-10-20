@@ -1,1 +1,1 @@
-"""Audit module placeholder."""
+"""Audit domain."""

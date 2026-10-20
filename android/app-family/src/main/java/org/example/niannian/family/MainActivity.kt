@@ -1,10 +1,8 @@
 package org.example.niannian.family
 
 import android.os.Bundle
+import org.example.niannian.data.*
 import org.example.niannian.feature.reminder.*
-import org.example.niannian.feature.memory.MemoryFailure
-import org.example.niannian.feature.auth.ApiFailure
-import org.example.niannian.feature.memory.MemoryGateway
 import org.example.niannian.feature.memory.MemoryModel
 import org.example.niannian.feature.memory.MemoryPanel
 import org.json.JSONObject
@@ -16,16 +14,12 @@ import java.util.UUID
 import org.example.niannian.core.common.RuntimeConfig
 import org.example.niannian.core.telemetry.AppExecutionBoundary
 import org.example.niannian.core.telemetry.TelemetryLogger
-import org.example.niannian.feature.auth.CompanionModel
-import org.example.niannian.feature.auth.CompanionScreen
-import org.example.niannian.feature.auth.FamilyRepository
-import org.example.niannian.feature.auth.SecureSession
-import org.example.niannian.feature.auth.ConversationToolsGateway
-import org.example.niannian.feature.auth.ConversationToolsModel
-import org.example.niannian.feature.auth.ConversationToolsPanel
-import org.example.niannian.feature.auth.NotificationGateway
-import org.example.niannian.feature.auth.NotificationModel
-import org.example.niannian.feature.auth.NotificationPanel
+import org.example.niannian.feature.family.CompanionModel
+import org.example.niannian.feature.family.CompanionScreen
+import org.example.niannian.feature.conversation.ConversationToolsModel
+import org.example.niannian.feature.conversation.ConversationToolsPanel
+import org.example.niannian.feature.notification.NotificationModel
+import org.example.niannian.feature.notification.NotificationPanel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,31 +32,10 @@ class MainActivity : ComponentActivity() {
             }
             val reminderStore = EphemeralReminderStore()
             val repository = FamilyRepository(SecureSession(applicationContext), BuildConfig.DEBUG)
-            val toolsGateway = object : ConversationToolsGateway {
-                override suspend fun call(path: String, method: String, body: JSONObject?, version: Long?, reason: String?) =
-                    repository.call(path, method, body, method == "POST" && (path.endsWith("/confirm") || path.endsWith("/pause-today")), version, reason)
-            }
-            val notificationGateway = object : NotificationGateway {
-                override suspend fun list() = repository.readAll("/v1/notifications?limit=100")
-                override suspend fun call(path: String, method: String, body: JSONObject?, version: Long?) =
-                    repository.call(path, method, body, false, version)
-                override suspend fun read(id: String, key: String) = repository.markNotificationRead(id, key)
-            }
-            val memoryGateway = object : MemoryGateway {
-                override suspend fun call(path: String, method: String, body: JSONObject?, idempotent: Boolean, version: Long?) = try { repository.call(path, method, body, idempotent, version) } catch (failure: ApiFailure) { throw MemoryFailure(failure.message ?: "请求未完成，请重试。") }
-                override suspend fun list(path: String) = try { repository.readAll(path) } catch (failure: ApiFailure) { throw MemoryFailure(failure.message ?: "请求未完成，请重试。") }
-                override suspend fun upload(url: String, headers: JSONObject, bytes: ByteArray) = try { repository.uploadPhoto(url, headers, bytes) } catch (failure: ApiFailure) { throw MemoryFailure(failure.message ?: "请求未完成，请重试。") }
-                override suspend fun download(url: String) = try { repository.downloadPhoto(url) } catch (failure: ApiFailure) { throw MemoryFailure(failure.message ?: "请求未完成，请重试。") }
-                override suspend fun retry() { repository.retryMemoryPending() }
-                override fun hasPending() = repository.hasPending()
-            }
-            val reminderGateway = object : ReminderGateway {
-                override suspend fun list(path: String) = try { repository.readAll(path) } catch (failure: ApiFailure) { throw ReminderFailure(failure.status) }
-                override suspend fun call(path: String, method: String, body: JSONObject?, key: String?, version: Long?) = try {
-                    if (key != null) repository.submitOfflineFeedback(path, body!!, key)
-                    else repository.call(path, method, body, method == "POST", version)
-                } catch (failure: ApiFailure) { throw ReminderFailure(failure.status) }
-            }
+            val toolsGateway = repository.toolsGateway()
+            val notificationGateway = repository.notificationGateway()
+            val memoryGateway = repository.memoryGateway()
+            val reminderGateway = repository.reminderGateway()
             val factory = object : ViewModelProvider.Factory {
                 override fun <T : ViewModel> create(modelClass: Class<T>): T = modelClass.cast(
                     when (modelClass) {

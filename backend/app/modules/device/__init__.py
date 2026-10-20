@@ -1,1 +1,1 @@
-"""Device module placeholder."""
+"""Device domain."""

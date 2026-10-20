@@ -1,1 +1,0 @@
-PASS: docker compose config --quiet; exit 0.

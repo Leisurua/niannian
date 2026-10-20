@@ -1,1 +1,1 @@
-"""Reminder module placeholder."""
+"""Reminder domain."""

@@ -3,7 +3,9 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.parse import urlparse
+
 from app.platform.storage import S3Storage
+
 
 def settings(public=None):
     return SimpleNamespace(s3_access_key="fictional", s3_secret_key="fictional",

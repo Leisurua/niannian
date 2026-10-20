@@ -10,7 +10,6 @@ from app.integrations.contracts import (
     ASRRequest, ASRResult, AvatarState, AvatarStateRequest, EmbeddingRequest,
     EmbeddingResult, LLMRequest, LLMResponse, ProviderCapabilities, ProviderError,
     ProviderStatus, PushRequest, PushResult, TTSRequest, TTSResult,
-    WakeWordDetected, WeatherRequest, WeatherResult,
 )
 
 MOCK_VERSION = "1.0.0"
@@ -165,30 +164,9 @@ class MockAvatar:
         self.state = request.state
 
 
-class MockWakeWord:
-    def __init__(self, detection: WakeWordDetected | None = None) -> None:
-        self._detection = detection
-
-    def capabilities(self) -> ProviderCapabilities:
-        return _capabilities("mock-wakeword-v1")
-
-    async def listen(self) -> WakeWordDetected | None:
-        # No synthetic wake event is emitted unless a test supplies one.
-        return self._detection
-
-
 class MockPush:
     def capabilities(self) -> ProviderCapabilities:
         return _capabilities("mock-push-v1")
 
     async def send(self, request: PushRequest) -> PushResult:
         return PushResult(provider="mock", simulated=True, delivery_observed=False)
-
-
-class MockWeather:
-    def capabilities(self) -> ProviderCapabilities:
-        return _capabilities("mock-weather-v1")
-
-    async def current(self, request: WeatherRequest) -> WeatherResult:
-        # No live observation exists. UI can show an explicit unavailable state.
-        return WeatherResult(provider="mock", available=False, simulated=True)

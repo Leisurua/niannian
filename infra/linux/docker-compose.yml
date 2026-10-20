@@ -54,7 +54,7 @@ services:
       context: ../minio
       target: server
     command: server /data --console-address ":9001"
-    environment:
+    environment: &storage-environment
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     ports:
@@ -83,9 +83,7 @@ services:
         mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"
         mc mb --ignore-existing local/nianian-private
         mc anonymous set none local/nianian-private
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    environment: *storage-environment
     depends_on:
       minio:
         condition: service_healthy

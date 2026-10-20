@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "niannian-windows"
+version = "0.1.0"
+description = "NianNian family and elder desktop demos"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+niannian-family-client = "niannian_family_client.app:main"
+niannian-elder-demo = "niannian_elder_demo.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

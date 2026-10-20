@@ -1,1 +1,1 @@
-"""Family module placeholder."""
+"""Family domain."""

@@ -2,7 +2,6 @@ from uuid import uuid4
 
 import anyio
 import pytest
-
 from app.modules.conversation.api import _connections, release_connection_lease
 
 

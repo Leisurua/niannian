@@ -1,10 +1,9 @@
-"""Provider-neutral adapter DTOs and protocols (AI Contracts v1.0)."""
+"""Provider-neutral request and result models used by the current adapters."""
 
 from __future__ import annotations
 
-from datetime import datetime
 from enum import StrEnum
-from typing import Any, Protocol
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -182,20 +181,6 @@ class AvatarStateRequest(AdapterDTO):
     duration_ms: int | None = Field(default=None, ge=0)
 
 
-class WakeWordDetected(AdapterDTO):
-    request_id: str
-    timestamp: datetime
-    confidence: float = Field(ge=0, le=1)
-    source: str
-
-    @field_validator("source")
-    @classmethod
-    def validate_source(cls, value: str) -> str:
-        if value not in {"LOCAL_SDK", "BUTTON", "SYSTEM"}:
-            raise ValueError("invalid wake-word source")
-        return value
-
-
 class PushRequest(AdapterDTO):
     request_id: str = Field(min_length=1)
     event_id: str = Field(min_length=1)
@@ -206,57 +191,3 @@ class PushResult(AdapterDTO):
     provider: str
     simulated: bool
     delivery_observed: bool
-
-
-class WeatherRequest(AdapterDTO):
-    request_id: str = Field(min_length=1)
-    location_key: str = Field(min_length=1, max_length=120)
-
-
-class WeatherResult(AdapterDTO):
-    provider: str
-    available: bool
-    observed_at: datetime | None = None
-    condition: str | None = None
-    temperature_c: float | None = None
-    simulated: bool
-
-
-class ASRAdapter(Protocol):
-    def capabilities(self) -> ProviderCapabilities: ...
-    async def transcribe(self, request: ASRRequest) -> ASRResult: ...
-
-
-class LLMAdapter(Protocol):
-    def capabilities(self) -> ProviderCapabilities: ...
-    async def generate(self, request: LLMRequest) -> LLMResponse: ...
-
-
-class EmbeddingAdapter(Protocol):
-    def capabilities(self) -> ProviderCapabilities: ...
-    async def embed(self, request: EmbeddingRequest) -> EmbeddingResult: ...
-
-
-class TTSAdapter(Protocol):
-    def capabilities(self) -> ProviderCapabilities: ...
-    async def synthesize(self, request: TTSRequest) -> TTSResult: ...
-
-
-class AvatarAdapter(Protocol):
-    def capabilities(self) -> ProviderCapabilities: ...
-    async def set_state(self, request: AvatarStateRequest) -> None: ...
-
-
-class WakeWordAdapter(Protocol):
-    def capabilities(self) -> ProviderCapabilities: ...
-    async def listen(self) -> WakeWordDetected | None: ...
-
-
-class PushProvider(Protocol):
-    def capabilities(self) -> ProviderCapabilities: ...
-    async def send(self, request: PushRequest) -> PushResult: ...
-
-
-class WeatherAdapter(Protocol):
-    def capabilities(self) -> ProviderCapabilities: ...
-    async def current(self, request: WeatherRequest) -> WeatherResult: ...

@@ -3,8 +3,14 @@ from datetime import timedelta
 from uuid import uuid4
 
 import pytest
-
-from app.modules.auth.tokens import TokenCodec, decode, digest, encode, new_refresh, refresh_device_name
+from app.modules.auth.tokens import (
+    TokenCodec,
+    decode,
+    digest,
+    encode,
+    new_refresh,
+    refresh_device_name,
+)
 from app.platform.errors import AppError
 from app.platform.identifiers import utcnow, uuid7
 

@@ -1,1 +1,1 @@
-"""Auth module placeholder."""
+"""Auth domain."""

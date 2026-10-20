@@ -1,1 +1,1 @@
-"""Conversation module placeholder."""
+"""Conversation domain."""

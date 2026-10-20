@@ -1,1 +1,0 @@
-"""Emergency module placeholder."""

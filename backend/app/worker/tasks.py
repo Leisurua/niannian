@@ -2,6 +2,8 @@ import asyncio
 
 from app.modules.memory import rag, files
 from app.modules.conversation import summary
+from app.modules.signal import service as signals
+from app.modules.notification import service as notifications
 from app.platform import tasks
 from app.platform.identifiers import utcnow
 
@@ -24,13 +26,18 @@ async def run_one(factory, storage=None, *, push=None):
             if task.kind == 'NOTIFICATION_DISPATCH':
                 from app.modules.notification.service import dispatch
                 await dispatch(factory, task_id, token, task.resource_id, push)
-            elif task.kind in ('SIGNAL_CLEANUP', 'NOTIFICATION_CLEANUP'):
-                from app.modules.signal import service as signals
-                from app.modules.notification import service as notifications
+            elif task.kind in ('SIGNAL_CLEANUP', 'NOTIFICATION_CLEANUP', 'MEMORY_CLEANUP', 'CONVERSATION_SUMMARY_CLEANUP'):
                 async with factory() as db:
                     if await tasks.leased(db, task_id, token):
-                        cleanup = signals.cleanup if task.kind == 'SIGNAL_CLEANUP' else notifications.cleanup
-                        await cleanup(db, task.resource_id)
+                        if task.kind == 'CONVERSATION_SUMMARY_CLEANUP':
+                            await summary.cleanup(db, task.resource_id, task.resource_version)
+                        else:
+                            cleanup = {
+                                'SIGNAL_CLEANUP': signals.cleanup,
+                                'NOTIFICATION_CLEANUP': notifications.cleanup,
+                                'MEMORY_CLEANUP': rag.cleanup,
+                            }[task.kind]
+                            await cleanup(db, task.resource_id)
                         await tasks.finish(db, task_id, token)
                         await db.commit()
             elif task.kind == 'MEMORY_INDEX':
@@ -54,18 +61,6 @@ async def run_one(factory, storage=None, *, push=None):
                     if await tasks.leased(db, task_id, token):
                         if prepared and current == prepared:
                             await summary.complete(db, task.resource_id, task.resource_version, prepared)
-                        await tasks.finish(db, task_id, token)
-                        await db.commit()
-            elif task.kind == 'CONVERSATION_SUMMARY_CLEANUP':
-                async with factory() as db:
-                    if await tasks.leased(db, task_id, token):
-                        await summary.cleanup(db, task.resource_id, task.resource_version)
-                        await tasks.finish(db, task_id, token)
-                        await db.commit()
-            elif task.kind == 'MEMORY_CLEANUP':
-                async with factory() as db:
-                    if await tasks.leased(db, task_id, token):
-                        await rag.cleanup(db, task.resource_id)
                         await tasks.finish(db, task_id, token)
                         await db.commit()
             else:

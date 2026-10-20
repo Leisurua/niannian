@@ -1,1 +1,1 @@
-"""Memory module placeholder."""
+"""Memory domain."""

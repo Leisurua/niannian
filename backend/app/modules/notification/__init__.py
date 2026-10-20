@@ -1,1 +1,1 @@
-"""Notification module placeholder."""
+"""Notification domain."""

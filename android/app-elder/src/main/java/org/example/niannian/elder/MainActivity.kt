@@ -1,10 +1,8 @@
 package org.example.niannian.elder
 
 import android.os.Bundle
+import org.example.niannian.data.*
 import org.example.niannian.feature.reminder.*
-import org.example.niannian.feature.memory.MemoryFailure
-import org.example.niannian.feature.auth.ApiFailure
-import org.example.niannian.feature.memory.MemoryGateway
 import org.example.niannian.feature.memory.MemoryModel
 import org.example.niannian.feature.memory.MemoryPanel
 import org.json.JSONObject
@@ -18,13 +16,10 @@ import java.util.UUID
 import org.example.niannian.core.common.RuntimeConfig
 import org.example.niannian.core.telemetry.AppExecutionBoundary
 import org.example.niannian.core.telemetry.TelemetryLogger
-import org.example.niannian.feature.auth.CompanionModel
-import org.example.niannian.feature.auth.CompanionScreen
-import org.example.niannian.feature.auth.FamilyRepository
-import org.example.niannian.feature.auth.SecureSession
-import org.example.niannian.feature.auth.ConversationToolsGateway
-import org.example.niannian.feature.auth.ConversationToolsModel
-import org.example.niannian.feature.auth.ConversationToolsPanel
+import org.example.niannian.feature.family.CompanionModel
+import org.example.niannian.feature.family.CompanionScreen
+import org.example.niannian.feature.conversation.ConversationToolsModel
+import org.example.niannian.feature.conversation.ConversationToolsPanel
 import org.example.niannian.feature.conversation.ConversationGateway
 import org.example.niannian.feature.conversation.ConversationModel
 import org.example.niannian.feature.conversation.ConversationPanel
@@ -43,10 +38,7 @@ class MainActivity : ComponentActivity() {
             val repository = FamilyRepository(SecureSession(applicationContext) { reminderStore.revokeEncryptionKey(); ReminderScheduler.cancel(applicationContext) }, BuildConfig.DEBUG,
                 onCacheInvalidated = { reminderStore.revokeEncryptionKey(); ReminderScheduler.cancel(applicationContext) })
             val transport = ConversationTransport()
-            val toolsGateway = object : ConversationToolsGateway {
-                override suspend fun call(path: String, method: String, body: JSONObject?, version: Long?, reason: String?) =
-                    repository.call(path, method, body, method == "POST" && (path.endsWith("/confirm") || path.endsWith("/pause-today")), version, reason)
-            }
+            val toolsGateway = repository.toolsGateway()
             val conversationGateway = object : ConversationGateway {
                 override suspend fun create(family: String) = repository.call("/v1/conversations", "POST",
                     JSONObject().put("family_id", family).put("input_mode", "TEXT")).getString("id")
@@ -55,21 +47,8 @@ class MainActivity : ComponentActivity() {
                 override suspend fun connect(id: String, message: (String) -> Unit, closed: (Int) -> Unit) =
                     repository.withConversationConnection(id) { url, token -> transport.connect(url, token, message, closed) }
             }
-            val memoryGateway = object : MemoryGateway {
-                override suspend fun call(path: String, method: String, body: JSONObject?, idempotent: Boolean, version: Long?) = try { repository.call(path, method, body, idempotent, version) } catch (failure: ApiFailure) { throw MemoryFailure(failure.message ?: "请求未完成，请重试。") }
-                override suspend fun list(path: String) = try { repository.readAll(path) } catch (failure: ApiFailure) { throw MemoryFailure(failure.message ?: "请求未完成，请重试。") }
-                override suspend fun upload(url: String, headers: JSONObject, bytes: ByteArray) = try { repository.uploadPhoto(url, headers, bytes) } catch (failure: ApiFailure) { throw MemoryFailure(failure.message ?: "请求未完成，请重试。") }
-                override suspend fun download(url: String) = try { repository.downloadPhoto(url) } catch (failure: ApiFailure) { throw MemoryFailure(failure.message ?: "请求未完成，请重试。") }
-                override suspend fun retry() { repository.retryMemoryPending() }
-                override fun hasPending() = repository.hasPending()
-            }
-            val reminderGateway = object : ReminderGateway {
-                override suspend fun list(path: String) = try { repository.readAll(path) } catch (failure: ApiFailure) { throw ReminderFailure(failure.status) }
-                override suspend fun call(path: String, method: String, body: JSONObject?, key: String?, version: Long?) = try {
-                    if (key != null) repository.submitOfflineFeedback(path, body!!, key)
-                    else repository.call(path, method, body, method == "POST", version)
-                } catch (failure: ApiFailure) { throw ReminderFailure(failure.status) }
-            }
+            val memoryGateway = repository.memoryGateway()
+            val reminderGateway = repository.reminderGateway()
             val factory = object : ViewModelProvider.Factory {
                 override fun <T : ViewModel> create(modelClass: Class<T>): T = modelClass.cast(
                     when (modelClass) {

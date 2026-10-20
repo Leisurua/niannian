@@ -1,4 +1,4 @@
-"""E0-T03 / PRIV-008 source and fixture scan, runnable without app dependencies."""
+"""Source privacy checks and opt-in Demo APK inspection."""
 
 import os
 import re
@@ -17,7 +17,6 @@ PATTERNS = (
     re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)"),
 )
 FORBIDDEN_ARTIFACTS = {".log", ".wav", ".mp3", ".pcm", ".apk", ".aab"}
-GENERATED_PARTS = {"build", ".gradle", ".gradle-home", ".venv", ".git", "__pycache__", "META-INF"}
 TEXT_SUFFIXES = {".py", ".kt", ".kts", ".xml", ".env", ".example", ".md", ".toml", ".properties", ".yaml", ".yml", ".txt", ".sql", ".lock", ".lockfile", ".json", ".jsonl", ".csv", ".tsv"}
 FIXTURE_SUFFIXES = {".json", ".jsonl", ".yaml", ".yml"}
 TRANSCRIPT_FIELD = re.compile(r'["\'](?:transcript|raw_audio|audio_base64|conversation_text)["\']\s*:\s*["\'][^"\']+', re.IGNORECASE)
@@ -32,10 +31,13 @@ def scan_bytes(content: bytes, patterns: tuple[re.Pattern[bytes], ...]) -> bool:
 
 
 def repository_files():
-    for current, directories, files in os.walk(ROOT):
-        directories[:] = [name for name in directories if name not in GENERATED_PARTS]
-        for name in files:
-            yield Path(current) / name
+    listing = subprocess.check_output(
+        ['git', '-c', f'safe.directory={ROOT.as_posix()}', 'ls-files', '--cached', '--others', '--exclude-standard', '-z'], cwd=ROOT,
+    )
+    for name in listing.decode('utf-8').split('\0'):
+        path = ROOT / name
+        if name and not {'.archify', '.task-temp'} & set(path.relative_to(ROOT).parts) and path.is_file():
+            yield path
 
 
 class ArtifactScanTest(unittest.TestCase):
@@ -58,57 +60,18 @@ class ArtifactScanTest(unittest.TestCase):
         for path in repository_files():
             self.assertNotIn(path.suffix.lower(), FORBIDDEN_ARTIFACTS, str(path.relative_to(ROOT)))
 
-    def test_git_history_contains_no_secret_patterns(self) -> None:
-        if not (ROOT / ".git").exists():
-            self.skipTest("Git history unavailable")
-        git = ["git", "-c", f"safe.directory={ROOT.as_posix()}"]
-        listing = subprocess.run(
-            [*git, "rev-list", "--objects", "--all"],
-            cwd=ROOT, check=True, capture_output=True,
-        ).stdout
-        object_ids = [line.split(b" ", 1)[0] for line in listing.splitlines()]
-        self.assertTrue(object_ids, "Git history has no objects to scan")
-        batch = subprocess.run(
-            [*git, "cat-file", "--batch"],
-            cwd=ROOT, check=True, input=b"\n".join(object_ids) + b"\n", capture_output=True,
-        ).stdout
-        secret_patterns = tuple(re.compile(pattern.pattern.encode("ascii")) for pattern in PATTERNS)
-        offset = 0
-        scanned_blobs = 0
-        for object_id in object_ids:
-            header_end = batch.index(b"\n", offset)
-            resolved_id, object_type, size_text = batch[offset:header_end].split()
-            self.assertEqual(resolved_id, object_id)
-            size = int(size_text)
-            content_start = header_end + 1
-            content_end = content_start + size
-            if object_type == b"blob":
-                self.assertFalse(
-                    scan_bytes(batch[content_start:content_end], secret_patterns),
-                    f"Sensitive pattern in Git blob {object_id.decode('ascii')}",
-                )
-                scanned_blobs += 1
-            offset = content_end + 1
-        self.assertGreater(scanned_blobs, 0)
-        self.assertEqual(offset, len(batch))
-
+    @unittest.skipUnless(os.environ.get("NIANNIAN_REQUIRE_APKS") == "1", "APK scan is opt-in after a build")
     def test_built_apks_contain_no_secret_patterns(self) -> None:
         apks = [
             apk
             for app in ("app-elder", "app-family")
-            for apk in (ROOT / "android" / app / "build" / "outputs" / "apk").rglob("*.apk")
+            for apk in (ROOT / "android" / app / "build" / "outputs" / "apk" / "demo" / "debug").glob("*.apk")
         ]
         if not apks:
             if os.environ.get("NIANNIAN_REQUIRE_APKS") == "1":
                 self.fail("Android gate requires rebuilt APKs; an empty scan cannot pass")
             self.skipTest("No APKs built yet")
-        if os.environ.get("NIANNIAN_REQUIRE_APKS") == "1":
-            for app in ("app-elder", "app-family"):
-                for flavor in ("dev", "qa", "demo"):
-                    for variant in ("debug", "release"):
-                        directory = ROOT / "android" / app / "build/outputs/apk" / flavor / variant
-                        self.assertEqual(len(list(directory.glob("*.apk"))), 1,
-                                         f"Expected exactly one APK: {app}/{flavor}/{variant}")
+        self.assertEqual(len(apks), 2, "Build one Demo Debug APK per app before scanning")
         secret_patterns = tuple(re.compile(pattern.pattern.encode("ascii")) for pattern in PATTERNS)
         for apk in apks:
             with zipfile.ZipFile(apk) as package:

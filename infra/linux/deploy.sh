@@ -42,7 +42,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-command -v docker >/dev/null 2>&1 || die "Docker is not installed. See infra/linux/README.md."
+command -v docker >/dev/null 2>&1 || die "Docker is not installed. See docs/deployment.md."
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required."
 
 if [[ ! -f "${env_file}" ]]; then

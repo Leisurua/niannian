@@ -1,95 +1,176 @@
-# NianNian Coding Agent Rules
+# NianNian 统一开发准则（AGENTS.md）
 
-These rules apply to every Coding Agent task in this repository. Keep the 12-week course project small, testable, and honest.
+适用范围：念念项目所有开发成员及 Coding Agent。
 
-## Source of Truth
+## 一、核心原则
 
-When sources conflict, use this order:
+1. **以实现功能为中心。** 优先完成可运行、可交互、可联机的产品，减少无实际收益的工程活动。
 
-1. The current Task Prompt and its acceptance criteria define scope, but do not silently override a frozen contract.
-2. `nian-nian-requirements-design.md` defines product requirements.
-3. Accepted ADRs define architecture: ADR-001 through ADR-007 only. ADR-008 through ADR-014 are Proposed, not facts.
-4. `docs/design-freeze-review.md` and `docs/system-design.md` define the frozen architecture and change policy.
-5. The contract for the touched surface is authoritative: `docs/api-spec.md`/OpenAPI and permission matrix; `docs/database-design.md`/data dictionary; UI, AI, Device, Privacy/Security contracts and their test matrices.
-6. `docs/open-decisions.md` supplies only the recorded recommended default for an unresolved decision; it does not authorize a contract change.
-7. `docs/development-plan.md` and `docs/development-checklist.md` describe execution and verification, not new requirements.
+2. **鼓励自主开发。** 阅读相关代码后自行判断并实施修改，不要反复讨论是否需要重构，也不要对普通技术选择逐项请求确认。
 
-If a conflict remains, stop the affected implementation and report it. Do not choose the most convenient interpretation.
+3. **保持工程简洁。** 优先使用已有技术和依赖，删除重复实现、过度抽象、无用配置与历史遗留内容。
 
-## Repository Shape
+4. **允许合理的大范围重构。** 不必刻意限制修改文件数量，但不得无故破坏现有功能。
 
-- `backend/app/modules/`: `auth`, `family`, `consent`, `memory`, `conversation`, `reminder`, `safety`, `signal`, `notification`, `report`, `emergency`, `device`, and `audit` domains. Each module owns its API/service/repository/model/schemas; cross-module calls use public services, commands, or events.
-- `backend/app/integrations/`: provider adapters and deterministic mocks. `backend/app/platform/`: settings, database, logging, storage, task/outbox. `backend/app/worker/`: scheduler, lease, retry, and dead-letter handling.
-- `android/app-elder/` and `android/app-family/`: separate Kotlin + Jetpack Compose apps. `android/core-*` and `android/feature-*` are shared modules; `android/device/{ble,kiosk,camera,wakeword,telecom}` is Elder-only capability code.
-- `infra/`: local PostgreSQL/pgvector and MinIO/Compose support. `tests/`: `unit`, `integration`, `contract`, `ai`, `security`, `device`, and `demo` suites.
+5. **不为假设中的需求提前建设复杂系统。** 当前需求能够满足即可，有明确需要时再扩展。
 
-## Non-Negotiable Task Rules
+6. **代码优先于形式化文档。** 必要的技术文档随实现更新，避免文档维护占据过多开发时间。
 
-- Execute only the specified Task, once. Do not expand Scope, start `Next`, or perform another development task automatically.
-- Do not change Requirements, OpenAPI/WSS, public enums/states, DB schema/constraints/migrations, Consent scope, family boundary, or Security Boundary without an approved Proposal/ADR and the required review.
-- A Contract, enum, state-machine, or Security Boundary conflict stops the affected work and must be reported.
-- Enforce family scope, Consent, ownership, role, and resource state in service/query layers. Never bypass Family or Consent permission because the UI hides a control.
-- LLMs may propose language, candidates, or signals only. They never decide permission, facts, notifications, scam verdicts, emergency state, or other sensitive actions.
-- `Memory=PENDING` is not a family fact and is never RAG context. RAG requires confirmed, authorized, same-family, not-deleted data.
-- Raw Audio is not persisted by default. Any exception needs an approved privacy decision, minimization, automatic expiry, and tests.
-- Never commit secrets, tokens, full phone numbers, real family data, raw audio, camera frames, or sensitive transcripts. Redact logs and fixtures.
-- Mocks must be deterministic and visibly labelled (`provider=mock`, Demo/Mock status). Never present mock delivery, connection, or provider output as real.
-- Do not opportunistically refactor unrelated modules or fix bugs outside the current Task.
+## 二、开发行为
 
-## Engineering Constraints
+- 收到任务后，阅读相关代码并完成实际修改。
 
-### Backend
+- 可以自主修复开发过程中发现的关联问题。
 
-- Use the accepted Python/FastAPI/Pydantic/SQLAlchemy/Alembic modular-monolith design. Keep routes thin; enforce policy in services and repositories.
-- Do not import another module's private repository/model. API and worker share domain code but are separate process boundaries.
-- PostgreSQL is the system of record; pgvector stays within the same permission boundary. Use private S3-compatible storage with authorized, expiring Signed URLs.
-- Background work uses the accepted APScheduler worker plus PostgreSQL task/outbox semantics: idempotency keys, leases, bounded retries, timeout, backoff, and observable dead-letter failure.
-- Keep async DB access, type validation, migrations, redacted structured logging, and audit behavior consistent with existing contracts.
+- 优先修改现有实现，避免产生多个功能相近的版本。
 
-### Android
+- 不为简单功能引入复杂抽象、设计模式或额外依赖。
 
-- Use Kotlin + Compose, ViewModel/StateFlow/Repository, and small UseCases where useful. `app-elder` owns hardware permissions; `app-family` does not carry them unnecessarily.
-- Device adapters expose capability state/events only. They do not create business SignalEvents, send notifications, call the LLM, or decide Emergency policy.
-- Keep tokens in Keystore-backed storage, sensitive local data scoped by family/owner/version/expiry, and pending actions idempotent. Show explicit offline, permission-denied, degraded, and mock states.
+- 不因历史设计文档限制合理的代码改进。
 
-### AI
+- 修改接口、数据库或公共数据结构时，同步更新受影响的调用方和必要文档。
 
-- Business code depends on adapter DTOs/capabilities, never vendor SDK types. Every provider call has timeout, bounded retry, fallback, redaction, schema validation, provider/version, and prompt-version evidence.
-- Apply deterministic authorization, Consent, safety rules, and post-LLM validation before side effects. Unknown or conflicting facts stay unknown/candidate.
+- 仅在产品需求明显冲突、涉及重大隐私决策或可能造成不可逆数据损失时请求人工决策。
 
-### Device and Security
+- 不擅自覆盖其他成员尚未提交的修改。
 
-- Treat kiosk, BLE, CameraX, wake word, audio ownership, telephony, OEM behavior, and exact permissions as observed capabilities with honest fallbacks until the named-device gate passes.
-- Camera presence emits only presence state; discard frames and do not identify people or create biometric templates. One audio owner at a time; wake word is not identity authentication.
-- Emergency is idempotent and reports only observed outcomes; launching an intent is not `CONNECTED`. Revoke/delete is invisible-first and propagates to cache, vector, file, export, and notification paths.
-- Use deny-by-default authorization, minimal notification payloads, private buckets, short-lived URLs, append-only audit records, and stable redacted error/log fields.
+## 三、代码组织
 
-## Tests and Verification
+**后端**
 
-- Run the tests corresponding to every changed surface: unit for domain/policy, integration for DB/worker/storage, contract for OpenAPI/WSS/adapters, AI/security/device/demo tests when applicable.
-- A test result is `PASS` only when it actually ran and passed. If it cannot run, write `NOT VERIFIED` and the concrete reason. Never call “code looks correct” a pass.
-- Do not claim real provider, hardware, delivery, call connection, or performance acceptance without the required evidence.
+保持 Python + FastAPI 模块化单体。按业务职责组织代码，API 负责 HTTP 通信，Service 负责业务规则，数据库负责持久化。
 
-## Design Change Policy
+允许合并过小的模块，不额外引入微服务或无必要的通用组件。
 
-Ordinary implementation details (class names, helper placement, fixture IDs, conservative retry/backoff values, Compose internals, prompt wording that preserves the contract) may be chosen locally and tested.
+**AI 与语音**
 
-Anything affecting an API/WSS field or operation, DB entity/constraint/enum/migration, Requirement, Consent/family boundary, cross-module contract, security boundary, data retention, identity/biometric behavior, or public state is a Proposal/ADR only. Stop and report; do not implement it as an incidental fix.
+优先完成 LLM、ASR、TTS 的实际接入及会话交互。使用必要的 Provider 接口，避免建立大量尚未使用的适配器。
 
-## Task Completion Format
+业务权限、授权和敏感行为由确定性代码处理，不能交给模型自行决定。
 
-Every completed Task must end with exactly these sections:
+**Android**
 
-```text
-## Task
-## Changed
-## Tests
-## Decisions
-## Contract Changes
-## Not Verified
-## Issues
-## Next
-```
+保留老人端和家属端两个应用，共享必要的网络、认证及业务代码。减少不必要的 Gradle 模块。
 
-`Contract Changes` is `None` in the normal case. `Next` records follow-up work only; it is never executed automatically.
+优先保证核心界面、语音交互、提醒及家庭通信可用。
 
+**Windows / Linux**
+
+Windows 客户端共享网络通信与错误处理代码。Linux 部署使用现有后端，避免维护另一套业务实现。
+
+保持多端接口一致，优先解决实际联机问题。
+
+## 四、测试与验证
+
+采用按改动范围验证的原则。
+
+- 普通功能修改：运行关联测试。
+
+- 公共模块修改：检查受影响的调用方。
+
+- 数据库修改：检查迁移和关键读写行为。
+
+- 权限、安全与隐私修改：保留必要的安全测试。
+
+- 发布前：运行一次完整回归。
+
+不要求每次开发都执行全部测试、全部平台构建或完整环境验收。
+
+删除重复测试、历史验收脚本和没有实际价值的检查。不得为了增加测试数量而添加用例。
+
+不增加与本次修改无关的校验、报告、备份或恢复机制。
+
+测试无法运行时如实说明，不虚构通过结果。
+
+## 五、必须保留的安全要求
+
+以下要求不得因精简而取消：
+
+- 登录鉴权、家庭隔离与角色权限。
+
+- 老人授权、撤回及数据删除。
+
+- 私有照片、敏感信息与凭证保护。
+
+- RAG 对记忆状态和访问权限的检查。
+
+- 提醒和通知的幂等与必要持久化。
+
+- AI 身份透明，不冒充真实家属。
+
+- 区分 Mock 能力与实际可用能力。
+
+- 不在日志、代码或提交中暴露密钥和真实个人信息。
+
+安全实现应尽可能简洁，不额外建立没有实际必要的机制。
+
+## 六、四人协作约定
+
+| 负责人 | 主要职责                       |
+| --- | -------------------------- |
+| A   | 后端业务、数据库、鉴权、家庭、提醒及通知       |
+| B   | AI、LLM、ASR、TTS、RAG 和语音服务   |
+| C   | Android 老人端与家属端            |
+| D   | Windows 客户端、Linux 部署、跨设备通信 |
+
+各成员负责所属代码的实现与必要测试。
+
+可以修改其他模块以完成联调，但需要告知相关负责人，避免重复开发和接口冲突。
+
+跨模块通信优先采用明确、简洁的接口约定，不额外增加复杂的协作制度。
+
+## 七、文档要求
+
+根目录 README 只做入口；产品目标保留在 `nian-nian-requirements-design.md`。当前 `docs/` 的日常入口如下，确有需要时可以调整，不为凑数拆分文档：
+
+- `architecture.md`：当前结构、模块与已采用决定。
+- `openapi.yaml`：当前已实现接口；运行时 `/openapi.json` 可核对路由。
+- `database.md`：当前表、字段、约束及迁移。
+- `ai.md`：AI/RAG、语音状态与编排入口。
+- `security.md`：权限、隐私、撤回/删除和留存。
+- `deployment.md`：各端运行、部署和联调。
+- `roadmap.md`：未实现但有效的需求与已知限制。
+
+相同规则只在一处完整维护，其他文档引用；修改接口、数据或实现时同步受影响文档和调用方。区分当前能力与规划，不把 Mock、DTO 或讨论方案写成已完成。
+
+可以自主合并或删除历史、重复文档；必要历史查 Git。不要新增分周报告、独立审批记录、归档目录或每次提交的附加文档。删除/重命名后同步修复代码、测试和 CI 引用；隐私、权限和部署必要说明不能丢失。
+
+## 八、任务完成后的回复
+
+每次任务完成后，使用简短格式：
+
+**完成内容**
+
+- 主要修改内容。
+
+**验证结果**
+
+- 实际运行的检查及结果。
+
+**遗留问题**
+
+- 尚未解决且会影响使用的问题，没有则省略。
+
+不输出冗长的风险清单、验收矩阵、逐项检查记录或多份总结文档。
+
+不重复描述大量形式化工程检查，也不将其设置为普通开发任务的前置条件。
+
+## 九、Coding Agent 工作方式
+
+- 以完成用户任务为目标，减少无意义的解释和确认。
+
+- 阅读代码后自主选择合适实现。
+
+- 能修改代码就完成修改，避免停留在建议阶段。
+
+- 可以删除不必要的代码、测试和文档。
+
+- 不在每次任务完成后提出新的大规模重构计划。
+
+- 不擅自扩大产品功能范围。
+
+- 发现问题优先解决，无法解决时说明原因。
+
+- 最终交付以实际代码、运行结果和必要说明为主。
+
+**本准则的目标：减少维护负担，提高四人协作效率，让项目持续产生可运行的功能。**

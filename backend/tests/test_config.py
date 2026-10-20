@@ -1,10 +1,9 @@
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
-
 from app.platform import config
 from app.platform.config import Environment, Settings, load_settings
+from pydantic import ValidationError
 
 
 @pytest.mark.parametrize("environment", ["dev", "test", "demo"])

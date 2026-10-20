@@ -16,7 +16,6 @@ async def run_cycle():
     from app.modules.reminder.service import tick
     from app.modules.memory.files import schedule_cleanup
     from app.platform.storage import S3Storage
-    from app.platform.models import DOMAIN_MODELS
     from app.modules.memory.rag import maintenance
     from app.worker.tasks import run_one
     from app.modules.conversation import summary, proactive
@@ -35,8 +34,9 @@ async def run_cycle():
             await notifications.maintenance(db)
             await db.commit()
             _memory_scan_after = next_memory_scan
+        storage = S3Storage(settings) if settings.s3_access_key and settings.s3_secret_key else None
         for _ in range(20):
-            if not await run_one(session_factory, S3Storage(settings) if settings.s3_access_key and settings.s3_secret_key else None):
+            if not await run_one(session_factory, storage):
                 break
     except Exception:
         log_event(logger, logging.ERROR, 'WORKER_CYCLE_FAILED', error_code='DEPENDENCY_UNAVAILABLE')

@@ -15,8 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "nian-nian-android"
-include(":app-elder", ":app-family", ":core-common", ":core-telemetry")
-include(":feature-auth")
-include(":feature-memory")
-include(":feature-conversation")
-include(":feature-reminder")
+include(":app-elder", ":app-family", ":shared")

@@ -1,1 +1,1 @@
-"""Safety module placeholder."""
+"""Safety domain."""

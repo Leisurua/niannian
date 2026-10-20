@@ -45,8 +45,9 @@ async def visible_subjects(db, actor, family_id, permission, scope=None):
     return subjects
 
 
-def expected_version(header):
-    match = re.fullmatch(r'(?:"([1-9][0-9]*)"|([1-9][0-9]*))', header) if len(header) <= 64 else None
+def expected_version(header, *, allow_zero=False):
+    number = r'(?:0|[1-9][0-9]*)' if allow_zero else r'[1-9][0-9]*'
+    match = re.fullmatch(fr'(?:"({number})"|({number}))', header) if len(header) <= 64 else None
     if not match:
         raise AppError('ETAG_MISMATCH', '请刷新后重试。', 409)
     return int(match[1] or match[2])

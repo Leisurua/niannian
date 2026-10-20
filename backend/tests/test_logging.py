@@ -1,12 +1,11 @@
 import json
 import logging
 
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
 from app.main import app, handle_unexpected_error
 from app.platform.logging import StructuredFormatter, configure_logging, log_event
 from app.platform.request_id import RequestIdMiddleware
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 
 def _format(message: str, *, args: tuple[object, ...] = (), structured: bool = True, **extra: object) -> dict[str, object]:

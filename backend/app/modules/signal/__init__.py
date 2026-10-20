@@ -1,1 +1,1 @@
-"""Signal module placeholder."""
+"""Signal domain."""

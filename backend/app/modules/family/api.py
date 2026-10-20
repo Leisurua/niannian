@@ -1,4 +1,3 @@
-import re
 from typing import Literal
 from uuid import UUID
 
@@ -10,6 +9,7 @@ from app.modules.family.schemas import FamilyCreate, InvitationAccept, Invitatio
 from app.platform.authentication import current_identity
 from app.platform.config import get_settings
 from app.platform.errors import AppError
+from app.platform.resource_access import expected_version
 from app.platform.uow import transaction
 
 router = APIRouter(prefix='/v1', tags=['Families'])
@@ -63,10 +63,7 @@ async def member(family_id: UUID, member_id: UUID, request: Request, actor=Depen
 @router.patch('/families/{family_id}/members/{member_id}', operation_id='updateFamilyMember')
 async def update(family_id: UUID, member_id: UUID, body: MemberUpdate, request: Request, if_match: str = Header(),
                  actor=Depends(current_identity), db: AsyncSession = Depends(transaction)):
-    match = re.fullmatch(r'(?:"([1-9][0-9]*)"|([1-9][0-9]*))', if_match) if len(if_match) <= 64 else None
-    if not match:
-        raise AppError('ETAG_MISMATCH', '请刷新成员信息后重试。', 409)
-    result = await service.update_member(db, actor, family_id, member_id, body, int(match[1] or match[2]), request.state.request_id)
+    result = await service.update_member(db, actor, family_id, member_id, body, expected_version(if_match), request.state.request_id)
     return {**result, 'request_id': request.state.request_id}
 
 

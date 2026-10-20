@@ -1,11 +1,10 @@
-import re
 from typing import Literal
 from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from app.modules.notification import service, preferences
 from app.platform.authentication import current_identity
 from app.platform.config import get_settings
-from app.platform.errors import AppError
+from app.platform.resource_access import expected_version
 from app.platform.uow import transaction
 
 router = APIRouter(prefix='/v1', tags=['Notifications'])
@@ -47,8 +46,6 @@ async def read_preference(family_id: UUID, owner_user_id: UUID, request: Request
 @router.put(PreferencePath, operation_id='putNotificationPreference')
 async def update_preference(family_id: UUID, owner_user_id: UUID, body: preferences.PreferenceInput,
     request: Request, response: Response, if_match: str = Header(), actor=Depends(current_identity), db=Depends(transaction)):
-    match = re.fullmatch(r'(?:"(0|[1-9][0-9]*)"|(0|[1-9][0-9]*))', if_match) if len(if_match) <= 64 else None
-    if not match:
-        raise AppError('ETAG_MISMATCH', '请重新读取设置后保存。', 409)
     response.headers['Cache-Control'] = 'no-store'
-    return await preferences.update(db, actor, family_id, owner_user_id, body, int(match[1] or match[2]), request.state.request_id)
+    return await preferences.update(db, actor, family_id, owner_user_id, body,
+        expected_version(if_match, allow_zero=True), request.state.request_id)

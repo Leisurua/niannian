@@ -1,1 +1,1 @@
-"""Consent module placeholder."""
+"""Consent domain."""
