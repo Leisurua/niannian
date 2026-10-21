@@ -1,4 +1,5 @@
 import asyncio
+import json
 from dataclasses import dataclass
 from importlib.resources import files
 import time
@@ -15,8 +16,9 @@ from app.integrations.mock import MockAvatar, MockLLM, MockTTS
 from app.ai.signal_candidates import extract_mock
 from app.modules.safety.rules import evaluate, WARNING, EMERGENCY_COPY, RULE_VERSION
 
-PROMPT_VERSION = '1.1.0'
+PROMPT_VERSION = '1.2.0'
 IDENTITY = '你好，我是念念 AI。今天想聊点什么？这是 Mock 演示，仅显示文字。'
+REAL_IDENTITY = '你好，我是念念 AI，不是真实家人。您发送的文字将交给 AI 服务生成回复。今天想聊点什么？当前只支持文字。'
 UNKNOWN = '我不确定，可以问问家人。当前没有可用且获准引用的家庭记忆。'
 UNAVAILABLE = '我现在没法回答，稍后再试或问问家人。'
 CHAT = '这是 Mock 演示回复。我在这里陪您，可以聊聊今天想做的事。'
@@ -85,8 +87,8 @@ def grounded_reply(text, memories):
 class AIOrchestrator:
     """The caller authenticates before input and again before publishing output.
 
-    Only curated Mock replies or exact quotations from the authorized retrieval
-    set pass the post-provider check. No candidate or action authority.
+    Mock replies remain deterministic; real output has a strict schema and
+    references only the authorized retrieval set. No candidate or action authority.
     """
 
     def __init__(self, *, llm=None, tts=None, avatar=None, timeout=8.0):
@@ -97,7 +99,7 @@ class AIOrchestrator:
         self.avatar = avatar or MockAvatar()
         self.timeout = timeout
 
-    async def handle(self, *, request_id: str, conversation_id: UUID, text: str, memory_records=()) -> TurnResult:
+    async def handle(self, *, request_id: str, conversation_id: UUID, text: str, memory_records=(), recent_turns=()) -> TurnResult:
         started = time.monotonic()
         reply, code = UNAVAILABLE, None
         state = AvatarState.IDLE
@@ -105,6 +107,7 @@ class AIOrchestrator:
         used = ()
         candidates = ()
         safety = None
+        capabilities = None
         if isinstance(text, str) and text.strip() and len(text) <= 2000:
             safety = evaluate(text)
         if safety and safety.kind in ('SCAM_RISK', 'EMERGENCY'):
@@ -120,8 +123,9 @@ class AIOrchestrator:
                 if not isinstance(text, str) or not text.strip() or len(text) > 2000:
                     raise ValueError('Invalid input')
                 capabilities = self.llm.capabilities()
-                if any(adapter.capabilities().provider != 'mock' for adapter in (self.llm, self.tts, self.avatar)):
-                    raise ValueError('Real providers are not enabled')
+                real = capabilities.provider == 'openai_compatible'
+                if capabilities.provider not in ('mock', 'openai_compatible'):
+                    raise ValueError('Unsupported provider')
                 if not capabilities.structured_output or 'zh-CN' not in capabilities.languages:
                     raise ValueError('Unsupported capability')
                 memories = [dict(id=str(r.id), content=r.content, type=r.type, family_id=str(r.family_id),
@@ -129,22 +133,28 @@ class AIOrchestrator:
                 expected_reply, expected_refs = grounded_reply(text, memories)
                 request = LLMRequest(request_id=request_id, task='conversation',
                     system_policy=files('app.ai').joinpath('prompts/conversation.md').read_text(encoding='utf-8'),
-                    conversation_context={'conversation_id': str(conversation_id), 'input_mode': 'TEXT'},
+                    conversation_context={'conversation_id': str(conversation_id), 'input_mode': 'TEXT',
+                                          'recent_turns': list(recent_turns)[-6:]},
                     authorized_memory=memories, user_input=text, safety_context={},
                     output_schema=ConversationOutput.model_json_schema(),
                     prompt_id='conversation', prompt_version=PROMPT_VERSION)
                 response = await self.llm.generate(request)
-                if (response.status != ProviderStatus.SUCCEEDED or response.provider != 'mock'
+                if (response.status != ProviderStatus.SUCCEEDED or response.provider != capabilities.provider
                         or response.prompt_id != 'conversation' or response.prompt_version != PROMPT_VERSION):
                     raise ValueError('Invalid provider response')
-                output = ConversationOutput.model_validate(response.structured_output)
-                if (output.memory_refs != expected_refs or output.memory_candidates or output.signal_candidates
-                        or output.blocked_action is not None or output.reply != expected_reply):
+                # JSON validation accepts UUID strings while retaining strict booleans/types.
+                output = (ConversationOutput.model_validate_json(json.dumps(response.structured_output)) if real
+                          else ConversationOutput.model_validate(response.structured_output))
+                allowed_refs = {r.id for r in memory_records}
+                if (not output.reply.strip() or not set(output.memory_refs) <= allowed_refs
+                        or output.memory_candidates or output.signal_candidates or output.blocked_action is not None
+                        or (not real and (output.reply != expected_reply or output.memory_refs != expected_refs))):
                     raise ValueError('Untrusted response')
                 reply = output.reply
                 candidates = extract_mock(text, conversation_id=conversation_id, message_id=uuid5(conversation_id, request_id))
                 optional_fallback = 'TTS_UNAVAILABLE'
-                used = tuple(r for r in memory_records if r.id in output.memory_refs)
+                # Even unquoted context can influence free-form output; revalidate all of it.
+                used = tuple(memory_records) if real else tuple(r for r in memory_records if r.id in output.memory_refs)
                 try:
                     async with asyncio.timeout(min(2.0, self.timeout)):
                         speech = await self.tts.synthesize(TTSRequest(request_id=request_id, text=reply))
@@ -168,11 +178,23 @@ class AIOrchestrator:
                 reply, code, state = UNAVAILABLE, 'PROVIDER_TIMEOUT', AvatarState.ERROR
         except Exception:
             reply, code, state = UNAVAILABLE, 'INVALID_OR_UNAVAILABLE_OUTPUT', AvatarState.ERROR
-        trace = dict(request_id=request_id, conversation_id=str(conversation_id), provider='mock',
-            model='mock-conversation-v1', provider_version='1.0.0', prompt_id='conversation',
+        trace = dict(request_id=request_id, conversation_id=str(conversation_id),
+            provider=capabilities.provider if capabilities else 'unknown',
+            model=capabilities.model if capabilities else 'unknown',
+            provider_version=capabilities.version if capabilities else 'unknown', prompt_id='conversation',
             prompt_version=PROMPT_VERSION, policy_version='1.0.0',
             latency_ms=int((time.monotonic() - started) * 1000),
             result_status='FAILED' if state == AvatarState.ERROR else 'PARTIAL' if code else 'SUCCEEDED',
             fallback_code=code, memory_candidate_count=0, signal_candidate_count=len(candidates) if state != AvatarState.ERROR else 0)
         return TurnResult(reply, state, code, trace, used if state != AvatarState.ERROR else (),
             candidates if state != AvatarState.ERROR else ())
+
+
+def configured_orchestrator(settings):
+    if settings.llm_provider == 'mock':
+        return AIOrchestrator()
+    from app.integrations.openai_compatible import OpenAICompatibleLLM
+    return AIOrchestrator(llm=OpenAICompatibleLLM(base_url=settings.llm_base_url,
+        api_key=settings.llm_api_key, model=settings.llm_model, timeout=settings.llm_timeout_seconds,
+        thinking=settings.llm_thinking),
+        timeout=settings.llm_timeout_seconds)

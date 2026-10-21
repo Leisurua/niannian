@@ -117,7 +117,7 @@ fun CompanionScreen(model: CompanionModel, environmentLabel: String,
                 if (selected?.status == "ACTIVE") {
                     Text(selected.name, fontSize = 24.sp)
                     Text(if (model.elder) "今日 · 家庭已连接" else "家庭动态 · 已连接", fontSize = 20.sp)
-                    Text(if (model.elder) "家庭记忆、Mock 文字聊天和提醒已开放。" else "家庭记忆与提醒已开放。")
+                    Text(if (model.elder) "家庭记忆、文字聊天和提醒已开放。" else "家庭记忆与提醒已开放。")
                     businessContent(state, mutationUnavailable)
                     if (!model.elder) {
                         if (state.canManageMembers) Action("生成长辈邀请码", mutationUnavailable) { model.invite("ELDER") }

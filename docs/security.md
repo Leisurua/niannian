@@ -37,6 +37,8 @@ scope 词表保持：VOICE、PORTRAIT、FAMILY_MEMORY、HEALTH_MEDICATION、CONV
 
 Android API 默认 HTTPS，Debug HTTP 仅限回环/模拟器主机；局域网明文 Linux 部署不能直接作为 Android 的通用可连地址。Windows 的 HTTP 仅用于可信内网演示，公网必须 HTTPS。具体连接方法见 [deployment](deployment.md)。
 
+真实文字 LLM 由后端单独配置，只向指定 HTTPS 基址发送 Bearer 密钥，禁止重定向；客户端不持有供应商凭证。发送前检查身份、家庭与会话，授权记忆及其历史依赖在发送前、回复发布前复验。供应商会收到用户发送的文字、短期上下文及已授权记忆；当前已接入 DeepSeek 官方 API，外部数据留存/训练政策尚未验证，联调只使用虚构数据。连接内历史与客户端消息只放内存，具体上限见 [AI 说明](ai.md)。
+
 ## 保留期、撤回与删除
 
 | 数据 | 当前规则 |

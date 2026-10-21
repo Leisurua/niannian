@@ -2,12 +2,13 @@
 
 ## 当前可用范围
 
-当前是明确标记的文字 Mock，不是已接入真实大模型或语音的产品。仅设置 API key 或 `PROVIDER_MODE=real` 不会启用真实供应商；会话编排仍拒绝非 Mock 适配器。
+文字会话支持可配置的 OpenAI 兼容 Chat Completions 服务（JSON 模式），默认仍为明确标记的 Mock。开发环境通过 `LLM_PROVIDER=openai_compatible`、URL、模型及密钥显式启用。已接入 DeepSeek V4.1 Flash（`deepseek-flash`），通过虚构输入的真实供应商调用及隔离库 WebSocket 两轮对话验证；Android 真机联调尚未验证。语音仍未接入。配置见 [部署说明](deployment.md#真实-llm-文字联调)。
 
 | 能力 | 实现入口 | 当前行为 |
 | --- | --- | --- |
-| 文字编排 | `backend/app/ai/conversation.py` | 透明 AI 身份、固定话术、未知事实/失败兜底、已授权记忆引用 |
-| LLM / Embedding | `backend/app/integrations/mock/adapters.py` | 可复现 Mock；向量为 8 维，不能作为通用语义准确率证据 |
+| 文字编排 | `backend/app/ai/conversation.py` | 透明 AI 身份、结构化回复校验、规则警告优先、失败兜底、授权记忆复验 |
+| LLM | `backend/app/integrations/openai_compatible.py` | DeepSeek 官方 HTTPS 服务、关闭深度思考、非流式 JSON 回复；未配置时使用 Mock |
+| Embedding | `backend/app/integrations/mock/adapters.py` | 仍为 8 维 Mock，不能作为通用语义准确率证据 |
 | ASR | 同上，MockASR | 占位模拟结果，不解码音频，未接入会话语音链路 |
 | TTS / Avatar | 同上，MockTTS / MockAvatar | 不返回音频，仅文字/状态降级 |
 | Push | 同上，MockPush | 仅模拟派发，不声明设备送达 |
@@ -18,7 +19,9 @@
 
 DTO 的唯一字段定义是 [integrations/contracts.py](../backend/app/integrations/contracts.py)，不在 Markdown 复制完整类。请求使用 request_id；LLM 另带 task、system_policy、conversation_context、authorized_memory、user_input、safety_context、output_schema、prompt_id/version。返回包含状态、结构化结果和 provider/model/prompt 元数据。
 
-编排默认总超时 8 秒，可配置但不超过 20 秒；TTS/Avatar 降级调用各最多 2 秒。当前没有为会话请求实现通用自动重试。LLM 输出通过严格 Pydantic 校验，限制话术、引用和候选；异常、超时或非法输出使用固定兜底，不把原始模型文本直接发布。
+Mock 编排超时 8 秒，真实 LLM 默认 20 秒（`LLM_TIMEOUT_SECONDS`，上限 20 秒）；TTS/Avatar 降级调用各最多 2 秒。没有自动重试，避免重复生成；用户可编辑后重新发送。LLM 输出通过严格 Pydantic 校验：文本长度、引用集合、空候选数组及无操作权限；Mock 另校验固定话术。异常、超时、非 JSON、截断或非法输出使用固定兜底，原始响应体及异常不发布、不记录。
+
+每个 WebSocket 连接仅在内存保存最近最多 6 轮、共 12000 字的上下文，不写数据库。断线后上下文清空；Android 最多显示 20 条临时消息，后台、断线、换家庭或结束后清空。历史涉及的记忆在下一次外发前及回复发布前重新校验，撤权后丢弃受影响上下文。为限制依赖集合，超过 30 条记忆依赖时清空历史。真实 LLM 接口接收当前输入、短期历史及已授权记忆；不能据结构校验宣称自由回复完全无幻觉。
 
 安全规则先于模型。LLM 不决定家庭权限、事实、通知收件人、诈骗裁决、医疗诊断、紧急状态、转账或电话。接真实 Provider 时仍需超时、适当的有限重试/降级、schema 校验和脱敏；先确认供应商的数据使用/留存，再发送真实敏感数据。
 

@@ -25,9 +25,12 @@ interface ConversationGateway {
     suspend fun connect(id: String, message: (String) -> Unit, closed: (Int) -> Unit): ConversationSocket
 }
 
+data class ChatMessage(val fromUser: Boolean, val text: String)
+
 data class ConversationState(val family: String = "", val user: String = "", val id: String = "",
     val state: String = "IDLE", val connected: Boolean = false, val busy: Boolean = false,
-    val reply: String = "", val message: String = "", val slow: Boolean = false, val recapId: String = "")
+    val reply: String = "", val message: String = "", val slow: Boolean = false, val recapId: String = "",
+    val llmMode: String = "", val messages: List<ChatMessage> = emptyList(), val retryText: String = "")
 
 class ConversationModel(private val gateway: ConversationGateway, private val scope: CoroutineScope? = null) : ViewModel() {
     private val current = MutableStateFlow(ConversationState())
@@ -104,7 +107,8 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
         earlyFrames.clear()
         socket?.close()
         socket = null
-        current.value = current.value.copy(connected = false, busy = false, reply = "",
+        current.value = current.value.copy(connected = false, busy = false, reply = "", messages = emptyList(),
+            retryText = "", llmMode = "",
             state = if (code in listOf(4401, 4403)) "ERROR" else "OFFLINE",
             message = if (code in listOf(4401, 4403)) "无法访问此会话，请检查登录和家庭资格。"
                 else "连接已断开。本次输入不会自动重发，请重新连接。")
@@ -123,9 +127,13 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
             val payload = event.getJSONObject("payload")
             when (type) {
                 "session.ready" -> {
+                    val mode = payload.optString("llm_mode", "mock")
+                    require(mode in listOf("mock", "real"))
+                    current.value = current.value.copy(llmMode = mode)
                     if (awaitingHandshake) {
                         deadline?.cancel()
-                        current.value = current.value.copy(connected = true, busy = false, state = "LISTENING", message = "")
+                        current.value = current.value.copy(connected = true, busy = false, state = "LISTENING",
+                            messages = emptyList(), message = "连接内的聊天记录仅临时显示；重新连接后请重新说明话题。")
                         awaitingHandshake = false
                         send("session.start", JSONObject().put("client_session_id", UUID.randomUUID().toString()).put("input_mode", "TEXT"))
                     }
@@ -139,7 +147,8 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
                 "assistant.text" -> {
                     val text = payload.getString("text")
                     require(text.length <= 2000)
-                    current.value = current.value.copy(reply = text)
+                    current.value = current.value.copy(reply = text,
+                        messages = (current.value.messages + ChatMessage(false, text)).takeLast(20))
                 }
                 "warning" -> {
                     val category = payload.getString("reason_category")
@@ -154,7 +163,11 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
                         "IMPORTANT_MEMORY", "MISS_FAMILY", "SCAM_RISK", "EMERGENCY"))
                     require(payload.getString("severity") in listOf("L0", "L1", "L2", "L3", "L4"))
                 }
-                "error" -> current.value = current.value.copy(busy = false, message = "暂时无法完成，请稍后再试。当前仅显示文字。")
+                "error" -> {
+                    deadline?.cancel()
+                    current.value = current.value.copy(busy = false,
+                        message = "暂时无法完成，请稍后重新发送。")
+                }
                 "pong" -> Unit
                 else -> error("Unsupported event")
             }
@@ -163,28 +176,30 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
         }
     }
 
-    private fun send(type: String, payload: JSONObject = JSONObject()) {
-        if (!current.value.connected) return
+    private fun send(type: String, payload: JSONObject = JSONObject()): Boolean {
+        if (!current.value.connected) return false
         val frame = JSONObject().put("type", type).put("conversation_id", current.value.id)
             .put("sequence", ++clientSequence).put("occurred_at", Instant.now().toString()).put("payload", payload)
-        if (socket?.send(frame.toString()) != true) disconnected(0)
+        if (socket?.send(frame.toString()) != true) { disconnected(0); return false }
+        return true
     }
 
-    fun input(text: String) {
-        if (!current.value.connected || current.value.busy || text.isBlank() || text.length > 2000) return
-        current.value = current.value.copy(busy = true, state = "THINKING", reply = "", message = "")
-        send("text.input", JSONObject().put("text", text))
+    fun input(text: String): Boolean {
+        if (!current.value.connected || current.value.busy || text.isBlank() || text.length > 2000) return false
+        if (!send("text.input", JSONObject().put("text", text))) return false
+        current.value = current.value.copy(busy = true, state = "THINKING", reply = "", message = "",
+            retryText = text, messages = (current.value.messages + ChatMessage(true, text)).takeLast(20))
         val stamp = generation
         deadline?.cancel()
         deadline = tasks.launch { delay(25000); if (stamp == generation && current.value.busy) disconnected(0) }
+        return true
     }
 
     fun interrupt() { deadline?.cancel(); send("interrupt"); current.value = current.value.copy(reply = "", busy = false) }
     fun repeat() { if (!current.value.busy) send("repeat") }
     fun slowDown() {
         if (!current.value.busy) {
-            current.value = current.value.copy(slow = true, message = "当前为文字演示，已放大文字；没有正在播放的语音。")
-            send("slow_down")
+            current.value = current.value.copy(slow = !current.value.slow)
         }
     }
     fun voiceEntry() {

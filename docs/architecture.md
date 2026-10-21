@@ -17,7 +17,7 @@ Android / Windows → FastAPI REST / WebSocket → PostgreSQL + pgvector / 私�
 | `backend/app/modules/safety`、`signal`、`notification` | 确定性规则、关注事件、授权通知与偏好 |
 | `backend/app/modules/device`、`audit` | 登录设备绑定的内部服务；安全与幂等元数据审计 |
 | `backend/app/platform` | 配置、数据库、公共授权、分页、S3 与 task/outbox |
-| `backend/app/ai`、`integrations` | 编排和供应商无关 DTO；当前只有确定性 Mock |
+| `backend/app/ai`、`integrations` | 编排和供应商无关 DTO；默认 Mock，文字 LLM 可配置 OpenAI 兼容服务 |
 | `backend/app/worker` | 调度、租约、重试、索引/摘要/通知/清理任务 |
 
 路由只处理通信和输入；服务/查询检查家庭、成员、主体、角色、授权和资源状态。跨领域调用公开服务，不能依赖其他领域的私有模型或仓储。没有实现的业务不设空模块。
@@ -28,12 +28,12 @@ Android 采用 Kotlin、Compose、ViewModel/StateFlow。只保留 `app-elder`、
 
 | 客户端 | 当前界面/交互 |
 | --- | --- |
-| Android 老人端 | Demo 登录、确认入家、授权/撤回、家庭记忆与照片、提醒反馈、文字 Mock 对话及回顾、主动邀请设置确认 |
+| Android 老人端 | Demo 登录、确认入家、授权/撤回、家庭记忆与照片、提醒反馈、文字对话及回顾、主动邀请设置确认 |
 | Android 家属端 | 家庭/邀请/成员权限、记忆录入和确认、提醒管理、获准摘要、主动邀请设置提议、应用内通知及已读/偏好 |
 | Windows 家属端 | 登录、建家/列表和邀请；保留设备和留言界面，但服务器尚无对应 API |
 | Windows 老人端 | 登录、接受邀请/选择家庭；保留大字留言与快捷回复界面，消息后端尚未实现 |
 
-老人端以大字、明显按钮、模拟话题和可选文字输入组织对话。打断、重复、结束和重连不代表真实音频能力；“慢速”目前只影响文字显示。状态须明确区分 Mock、离线、权限不足和不可用。
+老人端以大字、明显按钮和直接文字输入组织对话，显示临时消息列表、等待、停止、重新编辑和重连状态。LLM 模式由服务器握手返回；录音和播音尚未启用，放大文字仅改变字号。
 
 Windows 用 Tk 和标准库 HTTP；`windows/src/niannian_desktop` 共用登录状态、错误解析、分页、服务器地址设置和工作线程队列。工作线程不读取 Tk 变量，结果在 UI 线程消费。可选 API 以运行服务器 `/openapi.json` 检测，不能用测试服务器的接口宣称主后端已支持。
 

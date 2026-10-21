@@ -3,7 +3,7 @@ info:
   title: NianNian API
   version: 1.0.0
   description: Current REST operations implemented by NianNian. Public DTOs are not ORM entities. Authentication
-    is Demo-only; conversation input is currently TEXT with labelled Mock providers. Planned device, messaging,
+    is Demo-only; conversation input is TEXT with explicit Mock or configured real LLM mode. Planned device, messaging,
     report, emergency, export and account-deletion APIs are not available; see roadmap.md. GET /health, /docs and
     /openapi.json are unversioned runtime endpoints. Provider metadata, vectors, raw audio and transcripts are not
     exposed as public resource content.
@@ -36,6 +36,10 @@ x-websocket-channels:
       $ref: '#/components/schemas/WebSocketServerMessage'
     description: Implemented authenticated owner-only TEXT/state channel. Audio/ASR/TTS names in message enums are
       reserved or rejected as unavailable; they do not indicate a working voice pipeline.
+      session.ready payload includes llm_mode (mock or real). assistant.text source_labels
+      contains Mock for simulated responses or AI for real-mode responses. Real mode
+      uses non-streaming JSON Chat Completions; errors use fixed fallback text and an error event.
+      Recent context is connection-local and cleared on disconnect; clients must not automatically replay input.
 paths:
   /auth/login:
     post:

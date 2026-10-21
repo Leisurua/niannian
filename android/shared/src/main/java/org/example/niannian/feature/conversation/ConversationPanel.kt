@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
@@ -33,6 +35,8 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
     val state by model.state.collectAsState()
     val owner = LocalLifecycleOwner.current
     var draft by remember(familyId, userId) { mutableStateOf("") }
+    val chatScroll = rememberScrollState()
+    LaunchedEffect(state.messages) { chatScroll.animateScrollTo(chatScroll.maxValue) }
     LaunchedEffect(familyId, userId) { model.bind(familyId, userId) }
     DisposableEffect(owner, familyId, userId) {
         val observer = LifecycleEventObserver { _, event ->
@@ -46,11 +50,15 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("和念念聊聊", fontSize = 26.sp)
-            Text("Mock 演示 · 未启用录音和播音 · 简化形象", color = MaterialTheme.colorScheme.primary)
+            Text(when (state.llmMode) {
+                "real" -> "AI 文字对话 · 未启用录音和播音"
+                "mock" -> "Mock 演示 · 固定模拟回复"
+                else -> "文字对话 · 连接后显示服务状态"
+            }, color = MaterialTheme.colorScheme.primary)
             Text("我是 AI，不是真实家人。语音和自动联系尚未开放；会话回顾需要本人明确授权。", fontSize = 18.sp)
-            if (state.id.isNotEmpty()) Text("本次会话编号：${state.id}")
+            Text("发送文字后，由服务器配置的 AI 服务处理。请勿发送密码或验证码。", fontSize = 18.sp)
             val label = when (state.state) {
-                "LISTENING" -> "我在听（模拟状态，未采集声音）"
+                "LISTENING" -> "可以输入想聊的话"
                 "THINKING" -> "念念正在想…"
                 "SPEAKING" -> "我在说（模拟状态）"
                 "WARNING" -> "请先核实"
@@ -59,26 +67,28 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
                 else -> "念念准备好了"
             }
             Text("◉  $label", fontSize = 24.sp, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-            if (state.reply.isNotEmpty()) Text(state.reply, fontSize = if (state.slow) 28.sp else 22.sp,
-                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-            if (state.message.isNotEmpty()) Text(state.message, fontSize = 18.sp)
-            Control("说话", !unavailable && !state.busy) { model.voiceEntry() }
-            Text("语音未开放时，可先点选模拟话题，无需打字。", fontSize = 18.sp)
-            if (!state.connected && state.id.isNotEmpty()) Control("重新连接", !unavailable && !state.busy) { model.start() }
-            Control("模拟说话：你好，念念", state.connected && !state.busy && !unavailable) { model.input("你好，念念") }
-            Control("模拟说话：我女儿叫什么", state.connected && !state.busy && !unavailable) { model.input("我女儿叫什么") }
-            Control("模拟说话：今天天气怎么样", state.connected && !state.busy && !unavailable) { model.input("今天天气怎么样") }
-            Control("今天少打扰我", state.connected && !state.busy && !unavailable) { model.input("今天少打扰我") }
-            OutlinedTextField(draft, { draft = it.take(2000) }, label = { Text("文字备用入口") },
-                modifier = Modifier.fillMaxWidth(), enabled = state.connected && !state.busy && !unavailable)
-            Control("发送", state.connected && !state.busy && !unavailable && draft.isNotBlank()) {
-                model.input(draft); draft = ""
+            Column(Modifier.fillMaxWidth().heightIn(max = 360.dp).verticalScroll(chatScroll),
+                verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                state.messages.forEach { item ->
+                    Text("${if (item.fromUser) "您" else "念念 AI"}：${item.text}",
+                        fontSize = if (state.slow) 28.sp else 22.sp,
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                }
             }
-            Control("停一下", state.connected) { model.interrupt() }
-            Control("再说一遍", state.connected && !state.busy && state.reply.isNotEmpty()) { model.repeat() }
-            Control("慢一点", state.connected && !state.busy && state.reply.isNotEmpty()) { model.slowDown() }
-            Control("大声一点", state.connected) { model.volume() }
-            Control("结束聊天", state.id.isNotEmpty()) { draft = ""; model.end() }
+            if (state.message.isNotEmpty()) Text(state.message, fontSize = 18.sp)
+            if (!state.connected) Control(if (state.id.isEmpty()) "开始聊天" else "重新连接",
+                !unavailable && !state.busy) { model.start() }
+            OutlinedTextField(draft, { draft = it.take(2000) }, label = { Text("想和念念聊些什么？") },
+                textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 22.sp),
+                modifier = Modifier.fillMaxWidth(), enabled = !state.busy && !unavailable)
+            Control("发送", state.connected && !state.busy && !unavailable && draft.isNotBlank()) {
+                if (model.input(draft)) draft = ""
+            }
+            if (state.connected && !state.busy && state.message.isNotEmpty() && state.retryText.isNotEmpty())
+                Control("重新编辑上一条", !unavailable) { draft = state.retryText }
+            if (state.busy && state.connected) Control("停止回复", true) { model.interrupt() }
+            Control(if (state.slow) "恢复字号" else "放大文字", !state.busy) { model.slowDown() }
+            Control("结束聊天", state.id.isNotEmpty() && !unavailable) { draft = ""; model.end() }
         }
     }
 }

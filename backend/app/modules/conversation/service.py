@@ -3,7 +3,8 @@ from uuid import UUID
 
 from pydantic import Field
 
-from app.ai.conversation import IDENTITY
+from app.ai.conversation import IDENTITY, REAL_IDENTITY
+from app.platform.config import get_settings
 
 from app.modules.auth.schemas import Input
 from app.modules.audit import service as audit
@@ -69,7 +70,8 @@ async def create(db, actor, body, request_id):
     now = utcnow()
     row = Conversation(id=uuid7(), owner_user_id=actor.user_id, family_id=fid, device_binding_id=body.device_id,
         started_at=now, status='ACTIVE', summary_status='NOT_REQUESTED', backend_state='IDLE', input_mode='TEXT',
-        client_sequence=0, server_sequence=0, provider_metadata={'provider': 'mock', 'identity_disclosed': False})
+        client_sequence=0, server_sequence=0,
+        provider_metadata={'provider': get_settings().llm_provider, 'identity_disclosed': False})
     db.add(row)
     await audit.record(db, actor.user_id, 'CONVERSATION_STARTED', 'CONVERSATION', row.id, fid, request_id)
     return view(row)
@@ -134,10 +136,13 @@ def handle(row, message):
         return [event(row, 'assistant.state', {'state': 'IDLE'})]
     if message.type == 'session.start':
         row.backend_state = 'LISTENING'
-        result = [event(row, 'session.ready', {'backend_state': row.backend_state})]
+        real = row.provider_metadata.get('provider') == 'openai_compatible'
+        result = [event(row, 'session.ready', {'backend_state': row.backend_state,
+                                             'llm_mode': 'real' if real else 'mock'})]
         if not row.provider_metadata.get('identity_disclosed'):
             row.provider_metadata = {**row.provider_metadata, 'identity_disclosed': True}
-            result.append(event(row, 'assistant.text', {'text': IDENTITY, 'source_labels': ['Mock']}))
+            result.append(event(row, 'assistant.text', {'text': REAL_IDENTITY if real else IDENTITY,
+                'source_labels': ['AI' if real else 'Mock']}))
         return result
     if message.type == 'interrupt':
         row.backend_state = 'LISTENING'

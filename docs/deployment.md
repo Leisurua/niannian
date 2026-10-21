@@ -37,6 +37,28 @@ API 根地址 `http://127.0.0.1:8000`；`/docs`、`/openapi.json` 查看当前�
 
 APP_ENV 从进程环境选择 dev/test/demo，应用读取 `backend/config/<环境>.env`，再加载忽略提交的根 `.env`；环境变量优先。demo 要求 demo_data=true 且 provider_mode=mock，test 也只允许 Mock。填入供应商密钥不会自动启用真实 AI。
 
+## 真实 LLM 文字联调
+
+先沿用上述数据库、迁移、签名密钥配置。在 API 和 worker 进程设置 `$env:APP_ENV = "dev"`，根目录 `.env` 增加：
+
+```dotenv
+PROVIDER_MODE=mock
+LLM_PROVIDER=openai_compatible
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL=deepseek-flash
+LLM_THINKING=disabled
+LLM_API_KEY=替换为本机密钥
+LLM_TIMEOUT_SECONDS=20
+```
+
+当前接入 DeepSeek 官方 V4.1 Flash；截至 2026-10-20，官方 API 模型名为 `deepseek-flash`（指向 V4.1-Flash-1017），不是 `deepseek-v4.1-flash`。URL 是 API 基址，程序自动追加 `/chat/completions`。`LLM_THINKING=disabled` 会发送 `thinking: {"type":"disabled"}`，关闭默认深度思考以减少日常聊天等待；回复保持 JSON 模式。[官方模型说明](https://api-docs.deepseek.com/quick_start/pricing/)、[请求参数](https://api-docs.deepseek.com/api/create-chat-completion/)。
+
+密钥仅放在后端忽略提交的 `.env` 或环境变量，不能放进 Android。保存后重启 API/worker，使缓存的配置重新加载；配置缺项时拒绝启动，不静默回退到 Mock。切换其他兼容供应商时修改 URL/模型，并移除不受其支持的 `LLM_THINKING`；保持 HTTPS、Bearer 鉴权及 `response_format={"type":"json_object"}` 支持。
+
+`LLM_PROVIDER` 只控制聊天；`PROVIDER_MODE=mock` 继续允许虚构 Demo 登录，Embedding、语音和推送不会随 LLM 升级。demo/test 环境禁止真实 LLM。当前已用隔离 PostgreSQL 库的虚构账户验证登录、家庭关系、WebSocket 两轮真实回复、上下文衔接和结束会话，不持久化逐字稿；这不代表 Android 真机或正式部署验收。真实敏感数据使用前仍需确认供应商留存与训练策略。
+
+Android 以 demo-elder 登录并加入家庭，点击“开始聊天”，输入文字后发送。连接后的聊天卡片显示“AI 文字对话”或“Mock 演示”；成功回复后可继续第二轮，停止回复会取消等待，失败可重新编辑上一条。断线不会自动重发，重连后需重新说明话题；回顾仍需单独授权。语音未开放。
+
 ## Android
 
 `android/local.properties` 配置本机 `sdk.dir`，不要提交。两个应用共享 `shared`；日常只构建所改应用或一个 Demo 变体：

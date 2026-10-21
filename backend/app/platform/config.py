@@ -4,6 +4,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -20,6 +21,12 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     database_url: str = Field(default="postgresql+psycopg://localhost:5432/nianian", repr=False)
     llm_api_key: str | None = Field(default=None, repr=False)
+    llm_provider: Literal["mock", "openai_compatible"] = "mock"
+    llm_base_url: str | None = None
+    llm_model: str | None = None
+    # DeepSeek Chat Completions extension; omit for other compatible providers.
+    llm_thinking: Literal["enabled", "disabled"] | None = None
+    llm_timeout_seconds: float = Field(default=20, gt=0, le=20)
     asr_api_key: str | None = Field(default=None, repr=False)
     tts_api_key: str | None = Field(default=None, repr=False)
     embedding_api_key: str | None = Field(default=None, repr=False)
@@ -44,7 +51,7 @@ class Settings(BaseSettings):
     ws_max_text_chars: int = Field(default=2000, ge=1, le=10000)
     ws_messages_per_second: int = Field(default=20, ge=1, le=100)
 
-    model_config = SettingsConfigDict(extra="ignore", case_sensitive=False)
+    model_config = SettingsConfigDict(extra="ignore", case_sensitive=False, hide_input_in_errors=True)
 
     @model_validator(mode="after")
     def keep_demo_fictional(self) -> "Settings":
@@ -52,6 +59,15 @@ class Settings(BaseSettings):
             raise ValueError("demo requires fictional data and mock providers")
         if self.app_env == "test" and self.provider_mode != "mock":
             raise ValueError("test requires mock providers")
+        if self.llm_provider != "mock":
+            if self.app_env != "dev":
+                raise ValueError("real LLM requires APP_ENV=dev")
+            if not all(value and value.strip() for value in (self.llm_api_key, self.llm_base_url, self.llm_model)):
+                raise ValueError("real LLM requires LLM_API_KEY, LLM_BASE_URL and LLM_MODEL")
+            url = urlsplit(self.llm_base_url)
+            if (url.scheme != "https" or not url.hostname or url.username or url.password
+                    or url.query or url.fragment):
+                raise ValueError("LLM_BASE_URL must be an HTTPS API base without credentials or query")
         return self
 
     @property
