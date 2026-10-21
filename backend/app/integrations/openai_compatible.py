@@ -9,6 +9,8 @@ from app.integrations.contracts import LLMResponse, ProviderCapabilities, Provid
 
 
 class OpenAICompatibleLLM:
+    provider = "openai_compatible"
+
     def __init__(self, *, base_url, api_key, model, timeout=20, thinking=None, transport=None):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -18,7 +20,7 @@ class OpenAICompatibleLLM:
         self.transport = transport
 
     def capabilities(self):
-        return ProviderCapabilities(provider="openai_compatible", model=self.model, version="1.0.0",
+        return ProviderCapabilities(provider=self.provider, model=self.model, version="1.0.0",
                                     structured_output=True, languages=("zh-CN",))
 
     async def generate(self, request):

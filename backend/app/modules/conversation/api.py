@@ -133,7 +133,10 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
     last_interaction = utcnow()
     history = []
     orchestrator = getattr(websocket.app.state, 'conversation_orchestrator', None) or configured_orchestrator(settings)
-    llm_mode = 'mock' if orchestrator.llm.capabilities().provider == 'mock' else 'real'
+    # The handshake must not consult a provider: local safety replies remain
+    # available even when provider capability discovery is broken.
+    provider = getattr(orchestrator.llm, 'provider', settings.llm_provider)
+    llm_mode = 'mock' if provider == 'mock' else 'real'
     source_labels = ['Mock'] if llm_mode == 'mock' else ['AI']
     try:
         async with factory() as db:
@@ -150,7 +153,7 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
             actor_id = actor.user_id
             _connections[actor_id] = _connections.get(actor_id, 0) + 1
             row.backend_state = 'IDLE'
-            row.provider_metadata = {**row.provider_metadata, 'provider': orchestrator.llm.capabilities().provider}
+            row.provider_metadata = {**row.provider_metadata, 'provider': provider}
             ready = service.event(row, 'session.ready', {'backend_state': row.backend_state, 'llm_mode': llm_mode})
             await audit.record(db, actor_id, 'CONVERSATION_WS_CONNECTED', 'CONVERSATION', row.id, row.family_id)
             await db.commit()
