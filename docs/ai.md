@@ -2,15 +2,15 @@
 
 ## 当前可用范围
 
-文字会话支持可配置的 OpenAI 兼容 Chat Completions 服务（JSON 模式），默认仍为明确标记的 Mock。开发环境通过 `LLM_PROVIDER=openai_compatible`、URL、模型及密钥显式启用。已接入 DeepSeek V4.1 Flash（`deepseek-flash`），通过虚构输入的真实供应商调用及隔离库 WebSocket 两轮对话验证；Android 真机联调尚未验证。语音仍未接入。配置见 [部署说明](deployment.md#真实-llm-文字联调)。
+文字会话支持可配置的 OpenAI 兼容 Chat Completions 服务（JSON 模式），默认仍为明确标记的 Mock。开发环境通过 `LLM_PROVIDER=openai_compatible`、URL、模型及密钥显式启用。已接入 DeepSeek V4.1 Flash（`deepseek-flash`），通过虚构输入的真实供应商调用及隔离库 WebSocket 两轮对话验证。Android 老人端已接入设备语音识别 → 现有 LLM → 系统中文朗读，真机语音联调尚未验证。配置见 [部署说明](deployment.md#真实-llm-文字联调)。
 
 | 能力 | 实现入口 | 当前行为 |
 | --- | --- | --- |
 | 文字编排 | `backend/app/ai/conversation.py` | 透明 AI 身份、结构化回复校验、规则警告优先、失败兜底、授权记忆复验 |
 | LLM | `backend/app/integrations/openai_compatible.py` | DeepSeek 官方 HTTPS 服务、关闭深度思考、非流式 JSON 回复；未配置时使用 Mock |
 | Embedding | `backend/app/integrations/mock/adapters.py` | 仍为 8 维 Mock，不能作为通用语义准确率证据 |
-| ASR | 同上，MockASR | 占位模拟结果，不解码音频，未接入会话语音链路 |
-| TTS / Avatar | 同上，MockTTS / MockAvatar | 不返回音频，仅文字/状态降级 |
+| Android ASR / TTS | `android/shared/.../conversation/AndroidConversationVoice.kt` | 系统 SpeechRecognizer 收音识别，TextToSpeech 中文朗读；依赖已安装的服务，可能联网 |
+| 后端 ASR / TTS / Avatar | `backend/app/integrations/mock/adapters.py` | 仍为 Mock 占位，不解码/返回音频；Android 语音不调用它们 |
 | Push | 同上，MockPush | 仅模拟派发，不声明设备送达 |
 | 摘要 | `backend/app/modules/conversation/summary.py` | 从受控主题生成最多四条回顾，不存逐字稿 |
 | 关注候选 / 主动邀请 | `backend/app/ai/signal_candidates.py`、`proactive.py` | 有限演示短语提取、确定性邀请资格判断 |
@@ -39,7 +39,11 @@ Mock 编排超时 8 秒，真实 LLM 默认 20 秒（`LLM_TIMEOUT_SECONDS`，上
 
 ## 会话、回顾与主动邀请
 
-已实现的 WSS 是本人文字/状态通道。`audio.chunk`、`audio.end` 等消息名虽保留在协议枚举里，当前返回不可用；没有录音→ASR→TTS 播放链路。具体消息格式与限制在 [openapi.yaml](openapi.yaml)，连接权限见 [security](security.md)。
+WSS 保持本人文字/状态通道。Android 点击说话后由系统 ASR 收音，最终识别结果以 `text.input` 提交；最终 `assistant.text` 交给系统 TTS。后端不接收原始音频，`audio.chunk`、`audio.end` 等消息名仍返回不可用。语音能力与 `llm_mode` 独立，Mock 回复也可以朗读，不能据此声称用了真实 LLM。
+
+`ConversationModel` 管理录音、识别、等待和播放状态。语音由本人对自己的显式 VOICE 授权控制，握手返回 `voice_allowed`，撤回或到期通过 `voice.permission` 停止音频；规则见安全说明。单次收音最多 30 秒，点击“说完了”停止收音并等待最终结果最多 10 秒；空白、超长、超时或服务失败不自动重发。点击“停止”或“打断并说话”立即取消本地识别/朗读并发送 `interrupt` 取消后端任务。后端用 `in_reply_to` 标记请求序号，客户端校验服务器连续序号后丢弃旧轮次；设备回调使用递增代次丢弃迟到结果。断线、后台、结束和切换家庭同样停止音频。当前支持按钮打断，不做持续监听或自动人声打断。
+
+重播重新请求服务器复验记忆权限，不直接朗读缓存回答；主动邀请不自动播音。语音实现遵循 Android [SpeechRecognizer](https://developer.android.com/reference/android/speech/SpeechRecognizer) 和 [TextToSpeech](https://developer.android.com/reference/android/speech/tts/TextToSpeech) 生命周期。具体协议在 [openapi.yaml](openapi.yaml)，传输与留存边界见 [security](security.md)。
 
 回顾采用固定主题，生成需要本人的 CONVERSATION_SUMMARY 显式授权。家属读取还需指定家属的该 scope、SUMMARY_READ 和访问理由。主题最多四条，失败不回退为全文；保留期和撤权处理只在安全文档维护。
 

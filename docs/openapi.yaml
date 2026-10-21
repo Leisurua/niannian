@@ -34,12 +34,19 @@ x-websocket-channels:
       $ref: '#/components/schemas/WebSocketClientMessage'
     serverMessages:
       $ref: '#/components/schemas/WebSocketServerMessage'
-    description: Implemented authenticated owner-only TEXT/state channel. Audio/ASR/TTS names in message enums are
-      reserved or rejected as unavailable; they do not indicate a working voice pipeline.
-      session.ready payload includes llm_mode (mock or real). assistant.text source_labels
+    description: Implemented authenticated owner-only TEXT/state channel. Android device ASR sends its final
+      transcript as text.input and device TTS reads assistant.text. Raw audio is not uploaded;
+      Audio/ASR/TTS names in message enums remain reserved or rejected as unavailable.
+      Initial session.ready payload includes llm_mode (mock or real) and voice_allowed (boolean, owner's explicit
+      self VOICE consent). voice.permission carries allowed (boolean) when this consent changes or expires;
+      the server rechecks it each loop (at most one second idle wait). Clients stop device speech on denial.
+      Permission events are unsolicited and are delivered before same-loop turn output. assistant.text source_labels
       contains Mock for simulated responses or AI for real-mode responses. Real mode
       uses non-streaming JSON Chat Completions; errors use fixed fallback text and an error event.
       Recent context is connection-local and cleared on disconnect; clients must not automatically replay input.
+      Solicited events carry in_reply_to with the originating client sequence, including asynchronous turn results
+      and interrupt acknowledgements. The initial ready, unsolicited invitations and protocol rejection errors may omit it.
+      Clients validate server sequence continuity before discarding events older than the latest input or interrupt.
 paths:
   /auth/login:
     post:
@@ -2818,10 +2825,15 @@ components:
       - $ref: '#/components/schemas/WebSocketEnvelope'
       - type: object
         properties:
+          in_reply_to:
+            type: integer
+            minimum: 1
+            description: Originating client sequence; absent for unsolicited events and protocol rejection errors.
           type:
             type: string
             enum:
             - session.ready
+            - voice.permission
             - asr.partial
             - asr.final
             - assistant.state

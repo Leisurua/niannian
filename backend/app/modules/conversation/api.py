@@ -127,6 +127,7 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
     last_records = ()
     pending_topic = None
     pending_signal_input = None
+    pending_sequence = None
     listener = None
     listen_task = None
     notices = asyncio.Queue(maxsize=1)
@@ -154,7 +155,9 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
             _connections[actor_id] = _connections.get(actor_id, 0) + 1
             row.backend_state = 'IDLE'
             row.provider_metadata = {**row.provider_metadata, 'provider': provider}
-            ready = service.event(row, 'session.ready', {'backend_state': row.backend_state, 'llm_mode': llm_mode})
+            voice_allowed = await service.voice_allowed(db, row)
+            ready = service.event(row, 'session.ready', {'backend_state': row.backend_state,
+                'llm_mode': llm_mode, 'voice_allowed': voice_allowed})
             await audit.record(db, actor_id, 'CONVERSATION_WS_CONNECTED', 'CONVERSATION', row.id, row.family_id)
             await db.commit()
         async with asyncio.timeout(5):
@@ -182,14 +185,20 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
             async with factory() as db:
                 actor = await authenticate(db, bearer[7:], settings)
                 row = await service.access(db, actor, conversation_id, owner_only=True, active=True)
+                current_voice_allowed = await service.voice_allowed(db, row)
+                voice_changed = current_voice_allowed != voice_allowed
                 if last_records and not await rag.revalidate(db, actor, last_records):
                     last_reply, last_records = UNKNOWN, ()
                     history.clear()
-                if raw is None and notice is None and (turn_task is None or turn_task not in done):
+                if raw is None and notice is None and not voice_changed and (turn_task is None or turn_task not in done):
                     await db.commit()
                     continue
                 try:
                     outgoing = []
+                    permission_event = None
+                    if voice_changed:
+                        voice_allowed = current_voice_allowed
+                        permission_event = service.event(row, 'voice.permission', {'allowed': voice_allowed})
                     if raw is not None:
                         budget.take(time.monotonic())
                         message = parse_client_frame(raw.get('text'), conversation_id=conversation_id, last_sequence=row.client_sequence, limits=limits)
@@ -205,6 +214,7 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                             last_records = ()
                             pending_topic = None
                             pending_signal_input = None
+                            pending_sequence = None
                             outgoing = service.handle(row, message)
                         elif message.type == 'text.input':
                             if turn_task or not row.provider_metadata.get('identity_disclosed'):
@@ -228,6 +238,7 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                                 row.backend_state = 'THINKING'
                                 pending_topic = recap.topic_for(message.payload['text'])
                                 pending_signal_input = (message.payload['text'], f'turn-{message.sequence}')
+                                pending_sequence = message.sequence
                                 outgoing = [service.event(row, 'assistant.state', {'state': 'THINKING'})]
                                 outgoing += service.scam_warning(row, message.payload['text'])
                                 turn_task = asyncio.create_task(generate_turn(factory, bearer, settings, orchestrator,
@@ -242,7 +253,9 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                                     service.event(row, 'assistant.state', {'state': 'IDLE'})]
                         else:
                             outgoing = service.handle(row, message)
+                        outgoing = [{**item, 'in_reply_to': message.sequence} for item in outgoing]
                     if turn_task and turn_task in done:
+                        result_start = len(outgoing)
                         result = turn_task.result()
                         turn_task = None
                         if not await rag.revalidate(db, actor, result.memory_records):
@@ -270,9 +283,15 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                         if result.fallback_code:
                             outgoing += [service.event(row, 'error', {'code': 'PROVIDER_TEMPORARILY_UNAVAILABLE', 'retryable': False})]
                         outgoing += [service.event(row, 'assistant.state', {'state': row.backend_state})]
+                        outgoing[result_start:] = [
+                            {**item, 'in_reply_to': pending_sequence} for item in outgoing[result_start:]
+                        ]
+                        pending_sequence = None
                     if notice and raw is None and turn_task is None and not outgoing and await proactive.accept(db, row, notice, last_interaction):
                         outgoing = [service.event(row, 'assistant.text', {'text': proactive.INVITATION, 'source_labels': ['Mock']})]
                         last_interaction = utcnow()
+                    if permission_event:
+                        outgoing.insert(0, permission_event)
                 except ProtocolError as error:
                     outgoing = [service.event(row, 'error', {'code': str(error), 'retryable': False})]
                     await audit.record(db, actor_id, 'CONVERSATION_WS_REJECTED', 'CONVERSATION', row.id, row.family_id,
