@@ -4,18 +4,17 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.LifecycleOwner
 
 @Composable
 fun ConversationToolsPanel(model: ConversationToolsModel, family: String, subjects: List<Pair<String, String>>, elder: Boolean, unavailable: Boolean, conversationId: String = "") {
     var selected by remember(family, subjects) { mutableStateOf(subjects.firstOrNull()?.first.orEmpty()) }
     val state by model.state.collectAsState()
-    val lifecycle = (LocalContext.current as? LifecycleOwner)?.lifecycle
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
     var cid by remember(family, selected, conversationId) { mutableStateOf(conversationId) }
     var reason by remember(family, selected) { mutableStateOf<String?>(null) }
     LaunchedEffect(family, selected, unavailable) {

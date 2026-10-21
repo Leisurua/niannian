@@ -4,19 +4,18 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.LifecycleOwner
 
 @Composable
 fun NotificationPanel(model: NotificationModel, family: String, user: String, subjects: List<Pair<String, String>>,
     unavailable: Boolean, authorizationKey: String) {
     var selected by remember(family, subjects) { mutableStateOf(subjects.firstOrNull()?.first.orEmpty()) }
     val state by model.state.collectAsState()
-    val lifecycle = (LocalContext.current as? LifecycleOwner)?.lifecycle
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, family, selected, user, unavailable, authorizationKey) {
         fun activate() {
             model.clear()

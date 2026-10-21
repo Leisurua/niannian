@@ -140,7 +140,7 @@ class ConversationModelTest {
         val gateway = Gateway(); val model = ConversationModel(gateway, this)
         model.bind("family", "elder"); model.start(); yield()
         val id = model.state.value.id
-        model.end(); yield()
+        model.end(); model.awaitIdle()
         assertEquals(id, model.state.value.recapId)
         assertEquals("", model.state.value.reply)
         model.clear(); assertEquals("", model.state.value.recapId)

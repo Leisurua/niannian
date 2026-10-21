@@ -4,12 +4,9 @@ import android.os.Bundle
 import org.example.niannian.data.*
 import org.example.niannian.feature.reminder.*
 import org.example.niannian.feature.memory.MemoryModel
-import org.example.niannian.feature.memory.MemoryPanel
 import org.json.JSONObject
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import java.util.UUID
@@ -19,10 +16,8 @@ import org.example.niannian.core.telemetry.TelemetryLogger
 import org.example.niannian.feature.family.CompanionModel
 import org.example.niannian.feature.family.CompanionScreen
 import org.example.niannian.feature.conversation.ConversationToolsModel
-import org.example.niannian.feature.conversation.ConversationToolsPanel
 import org.example.niannian.feature.conversation.ConversationGateway
 import org.example.niannian.feature.conversation.ConversationModel
-import org.example.niannian.feature.conversation.ConversationPanel
 import org.example.niannian.feature.conversation.ConversationTransport
 
 class MainActivity : ComponentActivity() {
@@ -66,16 +61,12 @@ class MainActivity : ComponentActivity() {
             val conversationModel = ViewModelProvider(this, factory)[ConversationModel::class.java]
             val toolsModel = ViewModelProvider(this, factory)[ConversationToolsModel::class.java]
             val runtime = RuntimeConfig.fromBuildValues(BuildConfig.ENVIRONMENT, BuildConfig.PROVIDER_MODE)
-            setContent { CompanionScreen(model, runtime.statusLabel, offlineContent = { CachedReminderEntry(reminderModel, reminderStore, repository.savedUserId()) { ReminderScheduler.arm(applicationContext) } }) { state, unavailable ->
-                val subjects = if (model.elder) listOf(state.userId to state.userName)
-                    else state.members.filter { it.role == "ELDER" && it.status == "ACTIVE" }.map { it.userId to it.name }
-                if (!state.busy) ReminderPanel(reminderModel, state.selected!!.id, state.userId, subjects, unavailable) { ReminderScheduler.arm(applicationContext) }
-                MemoryPanel(memoryModel, state.selected!!.id, state.userId, subjects, unavailable)
-                ConversationPanel(conversationModel, state.selected!!.id, state.userId, unavailable)
-                val conversationState by conversationModel.state.collectAsState()
-                ConversationToolsPanel(toolsModel, state.selected!!.id, subjects, true, unavailable,
-                    conversationState.recapId.ifEmpty { conversationState.id })
-            } }
+            setContent {
+                CompanionScreen(model, runtime.statusLabel, reminderModel, memoryModel, toolsModel,
+                    conversation = conversationModel,
+                    onNotifications = { ReminderScheduler.arm(applicationContext) },
+                    offlineContent = { CachedReminderEntry(reminderModel, reminderStore, repository.savedUserId()) { ReminderScheduler.arm(applicationContext) } })
+            }
         }
     }
 }

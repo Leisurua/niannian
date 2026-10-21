@@ -74,12 +74,60 @@ class ReminderModelTest {
         assertEquals("DONE", model.state.value.cards.single { it.key == key }.status)
         assertFalse(model.state.value.cards.single { it.key == key }.pending)
         assertFalse(model.state.value.offline)
+        assertEquals("反馈已同步至服务端。", model.state.value.message)
     }
     @Test fun familyOfflineNeverDisplaysCachedHealthContent() = runBlocking {
         val gateway = Gateway(); val model = ReminderModel(gateway, EphemeralReminderStore(), false, this, { now })
         model.bind("family", "child")!!.join(); assertFalse(model.state.value.rules.isEmpty())
         gateway.failure = IOException("offline"); model.refresh()!!.join()
         assertTrue(model.state.value.rules.isEmpty()); assertTrue(model.state.value.cards.isEmpty())
+    }
+    @Test fun familyRefreshReadsExecutionFeedbackAndReplacesOldResults() = runBlocking {
+        val gateway = Gateway(); val model = ReminderModel(gateway, EphemeralReminderStore(), false, this, { now })
+        model.bind("family", "child")!!.join()
+        assertEquals(0, model.state.value.rules.single().getJSONArray("executions").length())
+        gateway.executions = listOf(JSONObject().put("scheduled_at", "2026-10-15T00:01:00Z").put("feedback_status", "DONE"))
+        model.refresh()!!.join()
+        assertEquals("DONE", model.state.value.rules.single().getJSONArray("executions").getJSONObject(0).getString("feedback_status"))
+        gateway.executions = emptyList()
+        model.refresh()!!.join()
+        assertEquals(0, model.state.value.rules.single().getJSONArray("executions").length())
+    }
+    @Test fun quickSaveReportsSuccessOnlyAfterTheServerAcceptsIt() = runBlocking {
+        var failWrite = true
+        var failRead = false
+        var saved = false
+        var submitted: JSONObject? = null
+        val gateway = object : ReminderGateway {
+            override suspend fun list(path: String): List<JSONObject> {
+                if (failRead) throw ApiFailure(403, "PERMISSION_DENIED", "授权已撤回")
+                return emptyList()
+            }
+            override suspend fun call(path: String, method: String, body: JSONObject?, key: String?, version: Long?): JSONObject {
+                assertEquals("/v1/reminders", path); assertEquals("POST", method)
+                if (failWrite) throw IOException("offline")
+                submitted = body
+                return JSONObject().put("id", "saved-rule")
+            }
+        }
+        val model = ReminderModel(gateway, EphemeralReminderStore(), false, this, { now })
+        model.bind("family", "child")!!.join()
+        fun save() = model.save("elder", "虚构快捷提醒", "仅用于测试", "2026-10-15", "17:12", "Asia/Shanghai",
+            "CALENDAR", true, false, onSaved = { saved = true })!!
+        save().join()
+        assertFalse(saved); assertTrue(model.state.value.error.isNotBlank())
+        failWrite = false
+        save().join()
+        assertTrue(saved)
+        assertEquals("family", submitted!!.getString("family_id"))
+        assertEquals("elder", submitted!!.getString("owner_user_id"))
+        assertEquals("17:12", submitted!!.getString("schedule_time_local"))
+        assertEquals("DAILY", submitted!!.getString("recurrence_kind"))
+        saved = false
+        failRead = true
+        save().join()
+        assertTrue(saved)
+        assertTrue(model.state.value.error.isNotBlank())
     }
     @Test fun oldResponseCannotRepopulateAfterBackgroundClear() = runBlocking {
         val gateway = Gateway(); val model = ReminderModel(gateway, EphemeralReminderStore(), true, this, { now })

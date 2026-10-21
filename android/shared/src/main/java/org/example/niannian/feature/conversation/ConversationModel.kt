@@ -209,6 +209,8 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
     fun volume() {
         current.value = current.value.copy(message = "当前没有播放语音，音量未改变。实际播放接入后可使用设备音量键。")
     }
+    suspend fun awaitIdle() { job?.join() }
+
     fun end() {
         val id = current.value.id
         val family = current.value.family

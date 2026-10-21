@@ -4,8 +4,6 @@ import android.os.Bundle
 import org.example.niannian.data.*
 import org.example.niannian.feature.reminder.*
 import org.example.niannian.feature.memory.MemoryModel
-import org.example.niannian.feature.memory.MemoryPanel
-import org.json.JSONObject
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.lifecycle.ViewModel
@@ -17,9 +15,7 @@ import org.example.niannian.core.telemetry.TelemetryLogger
 import org.example.niannian.feature.family.CompanionModel
 import org.example.niannian.feature.family.CompanionScreen
 import org.example.niannian.feature.conversation.ConversationToolsModel
-import org.example.niannian.feature.conversation.ConversationToolsPanel
 import org.example.niannian.feature.notification.NotificationModel
-import org.example.niannian.feature.notification.NotificationPanel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -53,15 +49,10 @@ class MainActivity : ComponentActivity() {
             val toolsModel = ViewModelProvider(this, factory)[ConversationToolsModel::class.java]
             val notificationModel = ViewModelProvider(this, factory)[NotificationModel::class.java]
             val runtime = RuntimeConfig.fromBuildValues(BuildConfig.ENVIRONMENT, BuildConfig.PROVIDER_MODE)
-            setContent { CompanionScreen(model, runtime.statusLabel) { state, unavailable ->
-                val subjects = if (model.elder) listOf(state.userId to state.userName)
-                    else state.members.filter { it.role == "ELDER" && it.status == "ACTIVE" }.map { it.userId to it.name }
-                if (!state.busy) ReminderPanel(reminderModel, state.selected!!.id, state.userId, subjects, unavailable)
-                MemoryPanel(memoryModel, state.selected!!.id, state.userId, subjects, unavailable)
-                ConversationToolsPanel(toolsModel, state.selected!!.id, subjects, false, unavailable)
-                NotificationPanel(notificationModel, state.selected!!.id, state.userId, subjects, unavailable,
-                    state.permissions.toString() + state.members.toString())
-            } }
+            setContent {
+                CompanionScreen(model, runtime.statusLabel, reminderModel, memoryModel, toolsModel,
+                    notifications = notificationModel)
+            }
         }
     }
 }

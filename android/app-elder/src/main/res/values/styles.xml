@@ -1,3 +1,8 @@
 <resources>
-    <style name="Theme.NianNian" parent="android:style/Theme.Material.Light.NoActionBar" />
+    <style name="Theme.NianNian" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">#F6F1EA</item>
+        <item name="android:navigationBarColor">#FFFDF9</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowBackground">#F6F1EA</item>
+    </style>
 </resources>

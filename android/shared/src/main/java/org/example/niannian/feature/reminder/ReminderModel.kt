@@ -50,7 +50,7 @@ class ReminderModel(private val gateway: ReminderGateway, store: ReminderStore, 
     private fun action(work: suspend (Int) -> Unit): Job? {
         if (current.value.busy || current.value.family.isBlank()) return null
         val stamp = generation
-        current.value = current.value.copy(busy = true, error = "")
+        current.value = current.value.copy(busy = true, error = "", message = "")
         job = (taskScope ?: viewModelScope).launch {
             try { work(stamp) }
             catch (cancelled: CancellationException) { throw cancelled }
@@ -88,12 +88,12 @@ class ReminderModel(private val gateway: ReminderGateway, store: ReminderStore, 
         try {
             val rows = gateway.list("/v1/reminders?family_id=${bound.family}&limit=100" + if (elder) "&owner_user_id=${bound.user}" else "")
             if (stamp != generation) return
+            rows.forEach { r -> r.put("executions", JSONArray(gateway.list("/v1/reminders/${r.getString("id")}/executions?limit=100"))) }
+            if (stamp != generation) return
             if (!elder) {
                 current.value = current.value.copy(rules = rows, cards = emptyList(), offline = false)
                 return
             }
-            rows.forEach { r -> r.put("executions", JSONArray(gateway.list("/v1/reminders/${r.getString("id")}/executions?limit=100"))) }
-            if (stamp != generation) return
             ledger.bind(bound.family, bound.user)
             ledger.refresh(bound.family, bound.user, rows)
             onCacheChanged()
@@ -135,9 +135,12 @@ class ReminderModel(private val gateway: ReminderGateway, store: ReminderStore, 
         show(stamp)
         current.value = current.value.copy(message = "反馈已安全保存在本机，等待服务端确认。")
         sync(stamp)
+        if (stamp == generation && !current.value.offline && current.value.cards.any { it.key == key && !it.pending })
+            current.value = current.value.copy(message = "反馈已同步至服务端。")
     }
     fun save(owner: String, title: String, content: String, date: String, time: String, zone: String,
-        type: String, daily: Boolean, confirmed: Boolean, editing: JSONObject? = null) = action { stamp ->
+        type: String, daily: Boolean, confirmed: Boolean, editing: JSONObject? = null,
+        onSaved: (() -> Unit)? = null) = action { stamp ->
         require(title.isNotBlank() && title.length <= 240 && content.length <= 2000)
         require(type != "MEDICATION" || !elder && confirmed)
         LocalDate.parse(date); LocalTime.parse(time); ZoneId.of(zone)
@@ -146,7 +149,13 @@ class ReminderModel(private val gateway: ReminderGateway, store: ReminderStore, 
             .put("timezone", zone).put("recurrence_kind", if (daily) "DAILY" else "ONCE").put("recurrence_interval", 1)
         if (editing == null) gateway.call("/v1/reminders", "POST", body)
         else gateway.call("/v1/reminders/${editing.getString("id")}", "PATCH", body, version = editing.getLong("version"))
-        if (stamp == generation) sync(stamp)
+        if (stamp == generation) {
+            onSaved?.invoke()
+            sync(stamp)
+            if (stamp == generation) {
+                current.value = current.value.copy(message = if (current.value.offline) "提醒已保存，列表待重新读取。" else "提醒已保存并同步。")
+            }
+        }
     }
     fun delete(id: String) = action { stamp ->
         gateway.call("/v1/reminders/$id", "DELETE")

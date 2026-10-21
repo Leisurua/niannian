@@ -2,10 +2,10 @@ package org.example.niannian.feature.family
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -27,8 +27,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import java.time.Instant
-import org.example.niannian.core.common.parseApiInstant
+import androidx.activity.compose.BackHandler
+import org.example.niannian.feature.reminder.ReminderModel
+import org.example.niannian.feature.memory.MemoryModel
+import org.example.niannian.feature.conversation.ConversationModel
+import org.example.niannian.feature.conversation.ConversationToolsModel
+import org.example.niannian.feature.notification.NotificationModel
 
 private val scopeLabels = linkedMapOf("VOICE" to "语音处理", "PORTRAIT" to "数字人形象", "FAMILY_MEMORY" to "家庭记忆",
     "HEALTH_MEDICATION" to "健康与用药信息", "CONVERSATION_SUMMARY" to "交流摘要", "CAMERA_PROXIMITY" to "摄像头存在检测",
@@ -38,8 +42,9 @@ private data class ConsentChange(val familyId: String, val scope: String, val re
 
 @Composable
 fun CompanionScreen(model: CompanionModel, environmentLabel: String,
-    offlineContent: @Composable () -> Unit = {},
-    businessContent: @Composable (CompanionState, Boolean) -> Unit = { _, _ -> }) {
+    reminders: ReminderModel, memories: MemoryModel, tools: ConversationToolsModel,
+    conversation: ConversationModel? = null, notifications: NotificationModel? = null,
+    onNotifications: () -> Unit = {}, offlineContent: @Composable () -> Unit = {}) {
     val state by model.state.collectAsState()
     val mutationUnavailable = state.busy || state.offline || state.pendingWrite
     var address by remember(state.address) { mutableStateOf(state.address) }
@@ -47,7 +52,33 @@ fun CompanionScreen(model: CompanionModel, environmentLabel: String,
     var invitation by remember { mutableStateOf("") }
     var revokeMember by remember { mutableStateOf<Member?>(null) }
     var consentChange by remember { mutableStateOf<ConsentChange?>(null) }
-    MaterialTheme {
+    var showFamilySettings by remember { mutableStateOf(false) }
+    val homeModels = remember(reminders, memories, tools, conversation, notifications) {
+        HomeModels(reminders, memories, tools, conversation, notifications, onNotifications)
+    }
+    BackHandler(enabled = showFamilySettings) { showFamilySettings = false }
+    if (!showFamilySettings) {
+        HomeTheme {
+            if (model.elder) {
+                ElderDesignHome(
+                    state = state,
+                    model = model,
+                    models = homeModels,
+                    offlineContent = offlineContent,
+                    onOpenFamilySettings = { showFamilySettings = true }
+                )
+            } else {
+                FamilyDesignHome(
+                    state = state,
+                    model = model,
+                    models = homeModels,
+                    onOpenFamilySettings = { showFamilySettings = true }
+                )
+            }
+        }
+        return
+    }
+    HomeTheme {
         consentChange?.let { target ->
             val label = scopeLabels[target.scope] ?: target.scope
             val revoking = target.revokeId != null
@@ -73,8 +104,11 @@ fun CompanionScreen(model: CompanionModel, environmentLabel: String,
                 confirmButton = { Button(onClick = { model.revokeMember(target); revokeMember = null }) { Text("确认撤销") } },
                 dismissButton = { OutlinedButton(onClick = { revokeMember = null }) { Text("取消") } })
         }
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text(if (model.elder) "念念 · 长辈端" else "念念 · 家人端", fontSize = 28.sp)
+        Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            OutlinedButton(onClick = { showFamilySettings = false }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+                Text(if (model.elder) "← 返回「念念 · 今日」首页" else "← 返回「念念 · 子女端」首页", fontSize = 18.sp)
+            }
+            Text("家庭与授权设置", fontSize = 28.sp)
             Text(environmentLabel, color = MaterialTheme.colorScheme.primary)
             Text("念念是 AI 陪伴助手，不是真实家人。此版本使用虚构 DEMO 账户，不提供诊断、真实通话或已经送达的承诺。", fontSize = 18.sp)
             if (state.busy) CircularProgressIndicator()
@@ -90,6 +124,10 @@ fun CompanionScreen(model: CompanionModel, environmentLabel: String,
             if (state.message.isNotEmpty()) Text(state.message, fontSize = 18.sp)
             if (!state.loggedIn) {
                 OutlinedTextField(address, { address = it }, label = { Text("服务地址") }, modifier = Modifier.fillMaxWidth(), singleLine = true, enabled = !state.busy)
+                Action(if (model.elder) "⚡ 一键真机 USB 登录 (127.0.0.1:8000)" else "⚡ 一键真机 USB 登录 (127.0.0.1:8000)", state.busy) {
+                    address = "http://127.0.0.1:8000"
+                    model.login("http://127.0.0.1:8000")
+                }
                 Action(if (model.elder) "以演示长辈登录" else "以演示家人登录", state.busy) { model.login(address) }
             } else {
                 if (model.elder && state.offline && state.selected == null) offlineContent()
@@ -118,7 +156,6 @@ fun CompanionScreen(model: CompanionModel, environmentLabel: String,
                     Text(selected.name, fontSize = 24.sp)
                     Text(if (model.elder) "今日 · 家庭已连接" else "家庭动态 · 已连接", fontSize = 20.sp)
                     Text(if (model.elder) "家庭记忆、文字聊天和提醒已开放。" else "家庭记忆与提醒已开放。")
-                    businessContent(state, mutationUnavailable)
                     if (!model.elder) {
                         if (state.canManageMembers) Action("生成长辈邀请码", mutationUnavailable) { model.invite("ELDER") }
                         if (state.invite.isNotEmpty()) SelectionContainer { Text(state.invite, fontSize = 18.sp) }
@@ -178,6 +215,6 @@ private fun roleLabel(role: String) = when (role) { "ELDER" -> "长辈"; "CHILD"
 private fun statusLabel(status: String) = when (status) { "ACTIVE" -> "已加入"; "PENDING" -> "待确认"; "LEFT" -> "已离开"; "REVOKED" -> "已撤销"; else -> "未知状态" }
 private fun permissionLabel(permission: Permission): String {
     if (permission.status == "REVOKED") return "已撤回"
-    if (permission.status == "EXPIRED" || permission.expiry.isNotEmpty() && runCatching { parseApiInstant(permission.expiry).isBefore(Instant.now()) }.getOrDefault(true)) return "已过期"
-    return if (permission.status == "GRANTED") "已授权" else "未授权"
+    if (permission.status == "EXPIRED" || permission.status == "GRANTED" && !homeConsentGranted(permission)) return "已过期"
+    return if (homeConsentGranted(permission)) "已授权" else "未授权"
 }
