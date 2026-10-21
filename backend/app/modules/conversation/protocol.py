@@ -13,7 +13,7 @@ ClientType = Literal['session.start', 'audio.chunk', 'audio.end', 'text.input',
                      'interrupt', 'repeat', 'slow_down', 'session.end', 'ping']
 ServerType = Literal['session.ready', 'asr.partial', 'asr.final', 'assistant.state',
                      'assistant.text', 'tts.start', 'tts.end', 'signal.created',
-                     'warning', 'error', 'pong']
+                     'warning', 'error', 'pong', 'voice.permission']
 BackendState = Literal['IDLE', 'LISTENING', 'THINKING', 'SPEAKING', 'WARNING', 'OFFLINE', 'ERROR']
 
 
