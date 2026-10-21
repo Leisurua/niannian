@@ -177,7 +177,7 @@ internal fun HomeConnectionCard(state: CompanionState, model: CompanionModel, on
                 if (state.pendingWrite) model.retry() else model.reload()
             }, enabled = !state.busy) { Text(if (state.pendingWrite) "重试操作" else "刷新连接") }
         }
-        Text("AI 文字陪伴 · Mock 演示 · 语音与视频尚未开放", fontSize = 14.sp)
+        Text("AI 陪伴 · 支持语音与文字 · 连接后显示服务状态", fontSize = 14.sp)
         if (state.error.isNotBlank()) Text(state.error, color = MaterialTheme.colorScheme.error)
         if (state.message.isNotBlank()) Text(state.message)
         if (state.pendingWrite) Text("上次操作的结果尚未确认，请先重试。")

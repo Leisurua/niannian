@@ -10,6 +10,7 @@ from app.modules.auth.schemas import Input
 from app.modules.audit import service as audit
 from app.modules.conversation.models import Conversation
 from app.modules.conversation import summary
+from app.modules.consent import service as consent
 from app.modules.device.service import require_active_binding
 from app.modules.family import service as family
 from app.modules.safety.rules import evaluate
@@ -26,6 +27,13 @@ class ConversationCreate(Input):
 
 class ConversationEnd(Input):
     reason: Literal['USER', 'TIMEOUT', 'ERROR'] = 'USER'
+
+
+async def voice_allowed(db, row):
+    """Only the owner's explicit VOICE grant enables device speech in this session."""
+    grant = await consent.latest(db, row.family_id, row.owner_user_id, row.owner_user_id, 'VOICE')
+    return bool(grant and grant.status == 'GRANTED' and (
+        grant.expires_at is None or grant.expires_at > utcnow()))
 
 
 async def access(db, actor, conversation_id, *, owner_only=False, active=False):
@@ -64,7 +72,7 @@ async def create(db, actor, body, request_id):
     if member.role != 'ELDER':
         raise AppError('PERMISSION_DENIED', '本阶段会话需由长辈本人主动开始。', 403)
     if body.input_mode != 'TEXT':
-        raise AppError('PROVIDER_TEMPORARILY_UNAVAILABLE', '本阶段仅开放文字会话状态，语音尚未启用。', 503)
+        raise AppError('PROVIDER_TEMPORARILY_UNAVAILABLE', '服务端仅接收文字（可由设备语音识别生成），不接收音频。', 503)
     if body.device_id:
         await require_active_binding(db, body.device_id, actor.user_id)
     now = utcnow()
