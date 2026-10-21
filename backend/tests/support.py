@@ -70,6 +70,7 @@ def system(monkeypatch):
     monkeypatch.setenv('AUTH_LOGIN_LIMIT', '1000')
     monkeypatch.setenv('APP_ENV', 'test')
     monkeypatch.setenv('PROVIDER_MODE', 'mock')
+    monkeypatch.setenv('LLM_PROVIDER', 'mock')
     get_settings.cache_clear()
     _attempts.clear()
     engine = create_engine(URL)

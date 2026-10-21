@@ -20,6 +20,7 @@ class ConversationModelTest {
         var failEnd = false
         var waitStatus: CompletableDeferred<Unit>? = null
         var immediateReady = false
+        var failSend = false
         override suspend fun create(family: String) = id
         override suspend fun status(id: String): String { waitStatus?.await(); return "ACTIVE" }
         override suspend fun end(id: String) { if (failEnd) error("offline") }
@@ -27,7 +28,7 @@ class ConversationModelTest {
             listener = message; onClose = closed
             if (immediateReady) message(frame(1))
             return object : ConversationSocket {
-                override fun send(text: String): Boolean { sent.add(JSONObject(text)); return true }
+                override fun send(text: String): Boolean { if (failSend) return false; sent.add(JSONObject(text)); return true }
                 override fun close() { this@Gateway.closed++ }
             }
         }
@@ -189,6 +190,40 @@ class ConversationModelTest {
         assertTrue(model.state.value.connected); assertTrue(model.state.value.busy)
         assertFalse(model.state.value.message.contains("已送达"))
         assertFalse(model.state.value.message.contains("已通知"))
+        model.clear()
+    }
+
+    @Test fun realTextConversationShowsBothSidesAndSupportsAnotherTurn() = runBlocking {
+        val gateway = Gateway(); val model = ConversationModel(gateway, this)
+        model.bind("family", "elder"); model.start(); yield()
+        gateway.listener(frame(1, payload = JSONObject().put("llm_mode", "real"))); yield()
+        assertEquals("real", model.state.value.llmMode)
+        assertTrue(model.input("我喜欢种花"))
+        assertFalse(model.input("重复发送"))
+        gateway.listener(frame(2, "assistant.text", JSONObject().put("text", "喜欢种什么花呢？"))); yield()
+        gateway.listener(frame(3, "assistant.state", JSONObject().put("state", "IDLE"))); yield()
+        assertEquals(listOf(ChatMessage(true, "我喜欢种花"), ChatMessage(false, "喜欢种什么花呢？")),
+            model.state.value.messages)
+        assertTrue(model.input("月季"))
+        model.bind("another-family", "elder")
+        assertTrue(model.state.value.messages.isEmpty())
+        assertEquals("", model.state.value.retryText)
+        model.clear()
+    }
+
+    @Test fun providerFailureAllowsManualRetryAndFailedSendDoesNotConsumeDraft() = runBlocking {
+        val gateway = Gateway(); val model = ConversationModel(gateway, this)
+        model.bind("family", "elder"); model.start(); yield()
+        gateway.listener(frame(1)); yield()
+        assertTrue(model.input("你好"))
+        gateway.listener(frame(2, "error")); yield()
+        assertFalse(model.state.value.busy)
+        assertEquals("你好", model.state.value.retryText)
+        assertEquals(1, gateway.sent.count { it.getString("type") == "text.input" })
+        gateway.failSend = true
+        assertFalse(model.input("保留草稿"))
+        assertFalse(model.state.value.connected)
+        assertTrue(model.state.value.messages.isEmpty())
         model.clear()
     }
 }

@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import time
+from dataclasses import replace
 from uuid import UUID
 import psycopg
 
@@ -8,7 +9,7 @@ from anyio import CancelScope
 from fastapi import APIRouter, Depends, Header, Request, Response, WebSocket, WebSocketDisconnect
 from sqlalchemy import text
 
-from app.ai.conversation import AIOrchestrator, REPLIES, UNKNOWN, UNAVAILABLE
+from app.ai.conversation import configured_orchestrator, UNKNOWN, UNAVAILABLE
 from app.modules.memory import rag
 from app.modules.audit import service as audit
 from app.modules.auth.service import authenticate
@@ -25,19 +26,23 @@ router = APIRouter(prefix='/v1', tags=['Conversations'])
 _connections = {}
 
 
-async def generate_turn(factory, bearer, settings, orchestrator, conversation_id, text_input, request_id):
-    try:
-        async with factory() as db:
-            actor = await authenticate(db, bearer[7:], settings)
-            row = await service.access(db, actor, conversation_id, owner_only=True, active=True)
+async def generate_turn(factory, bearer, settings, orchestrator, conversation_id, text_input, request_id, history=()):
+    async with factory() as db:
+        # Authentication failures must never fall through into an external LLM call.
+        actor = await authenticate(db, bearer[7:], settings)
+        row = await service.access(db, actor, conversation_id, owner_only=True, active=True)
+        history_records = tuple(record for _, records in history for record in records)
+        if not await rag.revalidate(db, actor, history_records):
+            history, history_records = (), ()
+        try:
             records = await rag.retrieve(db, actor, row.family_id, row.owner_user_id, text_input, request_id)
-            await db.commit()
-    except asyncio.CancelledError:
-        raise
-    except Exception:
-        records = ()
-    return await orchestrator.handle(request_id=request_id, conversation_id=conversation_id, text=text_input,
-        memory_records=records)
+        except Exception:
+            records = ()
+        await db.commit()
+    result = await orchestrator.handle(request_id=request_id, conversation_id=conversation_id, text=text_input,
+        memory_records=records, recent_turns=[turn for turn, _ in history])
+    dependencies = {(r.id, r.version): r for r in (*result.memory_records, *history_records)}
+    return replace(result, memory_records=tuple(dependencies.values()))
 
 
 async def release_connection_lease(lease, actor_id):
@@ -126,7 +131,10 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
     listen_task = None
     notices = asyncio.Queue(maxsize=1)
     last_interaction = utcnow()
-    orchestrator = getattr(websocket.app.state, 'conversation_orchestrator', None) or AIOrchestrator()
+    history = []
+    orchestrator = getattr(websocket.app.state, 'conversation_orchestrator', None) or configured_orchestrator(settings)
+    llm_mode = 'mock' if orchestrator.llm.capabilities().provider == 'mock' else 'real'
+    source_labels = ['Mock'] if llm_mode == 'mock' else ['AI']
     try:
         async with factory() as db:
             actor = await authenticate(db, bearer[7:], settings)
@@ -142,7 +150,8 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
             actor_id = actor.user_id
             _connections[actor_id] = _connections.get(actor_id, 0) + 1
             row.backend_state = 'IDLE'
-            ready = service.event(row, 'session.ready', {'backend_state': row.backend_state})
+            row.provider_metadata = {**row.provider_metadata, 'provider': orchestrator.llm.capabilities().provider}
+            ready = service.event(row, 'session.ready', {'backend_state': row.backend_state, 'llm_mode': llm_mode})
             await audit.record(db, actor_id, 'CONVERSATION_WS_CONNECTED', 'CONVERSATION', row.id, row.family_id)
             await db.commit()
         async with asyncio.timeout(5):
@@ -172,6 +181,7 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                 row = await service.access(db, actor, conversation_id, owner_only=True, active=True)
                 if last_records and not await rag.revalidate(db, actor, last_records):
                     last_reply, last_records = UNKNOWN, ()
+                    history.clear()
                 if raw is None and notice is None and (turn_task is None or turn_task not in done):
                     await db.commit()
                     continue
@@ -194,7 +204,7 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                             pending_signal_input = None
                             outgoing = service.handle(row, message)
                         elif message.type == 'text.input':
-                            if turn_task or not row.provider_metadata.get('identity_disclosed') or settings.provider_mode != 'mock':
+                            if turn_task or not row.provider_metadata.get('identity_disclosed'):
                                 outgoing = [service.event(row, 'error', {'code': 'PROVIDER_TEMPORARILY_UNAVAILABLE', 'retryable': False})]
                             elif message.payload['text'].strip('。！! ') in ('今天少打扰我', '今天别打扰我', '今天别主动提醒我', '不要打扰', '我在忙', '我在休息'):
                                 try:
@@ -203,25 +213,29 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                                     reply = '今天已减少主动互动，必要提醒和紧急联系仍可使用。'
                                 except AppError:
                                     reply = '当前没有已启用的主动陪伴设置；必要提醒和紧急联系仍可使用。'
-                                outgoing = [service.event(row, 'assistant.text', {'text': reply, 'source_labels': ['Mock']}),
+                                outgoing = [service.event(row, 'assistant.text', {'text': reply, 'source_labels': source_labels}),
                                     service.event(row, 'assistant.state', {'state': 'IDLE'})]
                             else:
                                 last_reply = None
                                 last_records = ()
+                                context_records = tuple(r for _, records in history for r in records)
+                                if (len({r.id for r in context_records}) > 30
+                                        or not await rag.revalidate(db, actor, context_records)):
+                                    history.clear()
                                 row.backend_state = 'THINKING'
                                 pending_topic = recap.topic_for(message.payload['text'])
                                 pending_signal_input = (message.payload['text'], f'turn-{message.sequence}')
                                 outgoing = [service.event(row, 'assistant.state', {'state': 'THINKING'})]
                                 outgoing += service.scam_warning(row, message.payload['text'])
                                 turn_task = asyncio.create_task(generate_turn(factory, bearer, settings, orchestrator,
-                                    conversation_id, message.payload['text'], f'turn-{message.sequence}'))
+                                    conversation_id, message.payload['text'], f'turn-{message.sequence}', tuple(history)))
                         elif message.type in ('repeat', 'slow_down'):
                             if turn_task or last_reply is None:
                                 outgoing = [service.event(row, 'error', {'code': 'PROVIDER_TEMPORARILY_UNAVAILABLE', 'retryable': False})]
                             else:
                                 if not await rag.revalidate(db, actor, last_records):
                                     last_reply, last_records = UNKNOWN, ()
-                                outgoing = [service.event(row, 'assistant.text', {'text': last_reply, 'source_labels': ['Mock']}),
+                                outgoing = [service.event(row, 'assistant.text', {'text': last_reply, 'source_labels': source_labels}),
                                     service.event(row, 'assistant.state', {'state': 'IDLE'})]
                         else:
                             outgoing = service.handle(row, message)
@@ -230,15 +244,14 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                         turn_task = None
                         if not await rag.revalidate(db, actor, result.memory_records):
                             last_reply, last_records = UNKNOWN, ()
-                        elif result.memory_records:
-                            from app.ai.conversation import grounded_reply
-                            expected, _ = grounded_reply('记得', [dict(id=str(r.id), content=r.content) for r in result.memory_records])
-                            last_reply = result.assistant_text if result.assistant_text == expected else UNAVAILABLE
-                            last_records = result.memory_records
-                        elif result.assistant_text in REPLIES:
-                            last_reply, last_records = result.assistant_text, ()
+                            history.clear()
                         else:
-                            raise RuntimeError('Invalid orchestrator output')
+                            last_reply, last_records = result.assistant_text, result.memory_records
+                            if pending_signal_input and result.trace.get('result_status') != 'FAILED':
+                                history.append((dict(user=pending_signal_input[0], assistant=last_reply), last_records))
+                                history = history[-6:]
+                                while sum(len(t['user']) + len(t['assistant']) for t, _ in history) > 12000:
+                                    history.pop(0)
                         row.backend_state = result.avatar_state.value
                         row.provider_metadata = {**row.provider_metadata, 'trace': result.trace}
                         if pending_topic and result.trace.get('result_status') != 'FAILED' and last_reply != UNAVAILABLE:
@@ -250,7 +263,7 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                                 pending_signal_input[0], result.signal_candidates)
                             outgoing += [service.event(row, 'signal.created', item) for item in signal_events]
                         pending_signal_input = None
-                        outgoing += [service.event(row, 'assistant.text', {'text': last_reply, 'source_labels': ['Mock']})]
+                        outgoing += [service.event(row, 'assistant.text', {'text': last_reply, 'source_labels': source_labels})]
                         if result.fallback_code:
                             outgoing += [service.event(row, 'error', {'code': 'PROVIDER_TEMPORARILY_UNAVAILABLE', 'retryable': False})]
                         outgoing += [service.event(row, 'assistant.state', {'state': row.backend_state})]

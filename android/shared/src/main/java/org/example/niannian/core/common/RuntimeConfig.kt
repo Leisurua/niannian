@@ -22,7 +22,7 @@ data class RuntimeConfig(
                 AppEnvironment.DEMO -> "DEMO · 演示数据"
             }
             val providerLabel = when (providerMode) {
-                ProviderMode.MOCK -> "演示能力（Mock）"
+                ProviderMode.MOCK -> "登录与基础服务（Mock）"
                 ProviderMode.REAL -> "真实能力（Real）"
             }
             return "$environmentLabel · $providerLabel"

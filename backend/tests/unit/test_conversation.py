@@ -11,10 +11,11 @@ from app.ai.conversation import (
     UNKNOWN,
     AIOrchestrator,
     MockConversationLLM,
+    PROMPT_VERSION,
 )
 from app.integrations.contracts import AvatarState, ProviderError
 from app.integrations.mock import MockAvatar, MockTTS
-from app.modules.safety.rules import EMERGENCY_COPY
+from app.modules.safety.rules import EMERGENCY_COPY, RULE_VERSION
 
 CID = UUID('0192f1e4-6ed8-7c21-a4c1-5d58db7c3001')
 
@@ -36,7 +37,7 @@ def test_mock_conversation_golden_subset(text, expected):
     assert result.assistant_text == expected
     assert result.avatar_state == (AvatarState.WARNING if expected == EMERGENCY_COPY else AvatarState.IDLE)
     assert result.trace['provider'] == 'mock'
-    assert result.trace['prompt_version'] == '1.1.0'
+    assert result.trace['prompt_version'] == (RULE_VERSION if expected == EMERGENCY_COPY else PROMPT_VERSION)
     assert result.trace['memory_candidate_count'] == 0
     assert result.trace['signal_candidate_count'] == (1 if text in ('救命', '帮我叫人', '我胸口不舒服') else 0)
     assert result.fallback_code is None
