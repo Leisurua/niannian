@@ -1,4 +1,3 @@
-"""Device registration and durable family text messages."""
 from alembic import op
 import sqlalchemy as sa
 

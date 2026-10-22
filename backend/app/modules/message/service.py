@@ -10,6 +10,11 @@ from app.platform.errors import AppError
 from app.platform.identifiers import utcnow
 
 
+def validate_receipt_key(key):
+    if not 1 <= len(key) <= 128 or any(not 32 <= ord(char) <= 126 for char in key):
+        raise AppError("VALIDATION_ERROR", "请提供有效的幂等请求标识。", 422)
+
+
 def delivery_view(row, recipient_user_id):
     return dict(id=str(row.id), recipient_user_id=str(recipient_user_id),
                 status='READ' if row.read_at else 'RECEIVED' if row.received_at else 'QUEUED',
@@ -84,7 +89,7 @@ async def acknowledge(db, actor, delivery_id, read, key, request_id):
         FamilyMessage.family_id == binding.family_id).with_for_update(of=MessageDelivery))
     if not row:
         raise AppError('MESSAGE_DELIVERY_NOT_FOUND', '回执不存在或无权确认。', 404)
-    audit.Idempotency(key, 'message-receipt', {})  # Validate the supplied request identifier.
+    validate_receipt_key(key)
     changed = row.received_at is None or read and row.read_at is None
     row.received_at = row.received_at or utcnow()
     if read:

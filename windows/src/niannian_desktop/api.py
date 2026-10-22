@@ -96,7 +96,6 @@ class ApiClient:
         auth: bool = True,
         idempotency_key: str | None = None,
     ) -> dict[str, Any]:
-        # Refresh tokens rotate once; serialize requests, refresh and logout.
         with self._request_lock:
             try:
                 return self._exchange(method, path, body=body, auth=auth, idempotency_key=idempotency_key)
@@ -111,7 +110,6 @@ class ApiClient:
                                           body={'refresh_token': self.refresh_token})
                     self.access_token, self.refresh_token = pair['access_token'], pair['refresh_token']
                 except Exception as refresh_error:
-                    # A lost refresh response must not replay the consumed refresh token.
                     self.clear_session()
                     raise ClientError('登录续期未能确认，请重新登录。') from refresh_error
                 try:

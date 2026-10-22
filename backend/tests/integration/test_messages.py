@@ -37,6 +37,10 @@ def test_offline_member_receives_after_registering_and_receipts_survive_new_devi
     assert [row['id'] for row in inbox] == [message['id']]
     delivery = inbox[0]['deliveries'][0]['id']
     assert post(client, f'/v1/message-deliveries/{delivery}/read', ch).status_code == 404
+    for invalid_key in ('', 'x' * 129):
+        invalid = client.post(f'/v1/message-deliveries/{delivery}/received',
+                              headers={**eh, 'Idempotency-Key': invalid_key}, json={})
+        assert invalid.status_code == 422
     received = post(client, f'/v1/message-deliveries/{delivery}/received', eh).json()
     read = post(client, f'/v1/message-deliveries/{delivery}/read', eh).json()
     assert read['status'] == 'READ' and read['received_at'] == received['received_at']
@@ -131,7 +135,6 @@ def test_windows_clients_use_main_backend_with_android_receipts_refresh_and_logo
     elder.login(); elder.accept_invitation(token)
     family.register_family_device(fid)
     elder.register_device(fid)
-    # The Android contract is the same JSON API, including cursor paging and role routing.
     family.send_text_to_role('Windows 发给 Android 的虚构留言')
     android_headers = {'Authorization': 'Bearer ' + elder.access_token}
     row = client.get(f'/v1/messages?family_id={fid}&box=INBOX&limit=100', headers=android_headers).json()['items'][0]
@@ -158,7 +161,6 @@ def test_simultaneous_opposite_sends_and_duplicate_submission(system, monkeypatc
     barrier = threading.Barrier(2)
 
     async def synchronized_context(*args, **kwargs):
-        # Both requests have authenticated and locked their own user row.
         await asyncio.to_thread(barrier.wait, 5)
         return await original(*args, **kwargs)
 

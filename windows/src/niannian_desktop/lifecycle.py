@@ -1,6 +1,3 @@
-"""Shared Tk session exit: wait for HTTP work, revoke the session, then clear UI."""
-
-
 class DesktopLifecycle:
     def _init_lifecycle(self):
         self._exit_requested = None
@@ -69,7 +66,6 @@ class DesktopLifecycle:
 
     def _discard_for_exit(self, ok, value, label):
         if self._exit_requested and not self._exiting:
-            # A login may finish after Close was clicked; revoke that new session too.
             if ok and label == '登录':
                 self.client = value[0]
             return True

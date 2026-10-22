@@ -356,7 +356,6 @@ def test_live_api_login_family_consent_slice_uses_portable_entrypoint(system):
             delivery_id = inbox[0]['deliveries'][0]['id']
             elder_app.acknowledge(delivery_id, 'read')
             assert family_app.message(sent['id'])['deliveries'][0]['status'] == 'READ'
-            # Android shares these HTTP request bodies and the cursor contract.
             reply = post(client, '/v1/messages', eh, {'family_id': fam['id'], 'message_type': 'TEXT',
                 'destination': {'type': 'FAMILY_ROLE', 'role': 'CHILD'}, 'payload': {'text': '虚构 Android 回复'}})
             assert reply.status_code == 201
