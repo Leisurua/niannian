@@ -1,6 +1,6 @@
 # 当前数据库设计
 
-PostgreSQL/pgvector 是唯一事实库，异步 SQLAlchemy 模型注册于 [platform/models.py](../backend/app/platform/models.py)。当前只有以下 22 张业务/平台表；Alembic 自带的 alembic_version 不计入。没有 conversation_message、weekly_report、emergency_contact、interaction_metric 等规划表。
+PostgreSQL/pgvector 是唯一事实库，异步 SQLAlchemy 模型注册于 [platform/models.py](../backend/app/platform/models.py)。当前有以下 24 张业务/平台表；Alembic 自带的 alembic_version 不计入。没有 conversation_message、weekly_report、emergency_contact、interaction_metric 等规划表。
 
 ## 关系和约定
 
@@ -169,13 +169,15 @@ PostgreSQL/pgvector 是唯一事实库，异步 SQLAlchemy 模型注册于 [plat
 
 ### device_binding
 
-登录设备绑定；不是公开设备注册/心跳功能。 模型：[DeviceBinding](../backend/app/modules/device/models.py)。
+登录设备绑定及公开注册/列表；注册将当前会话关联到设备和选定家庭，留言访问更新最后活动时间。ACTIVE 表示绑定有效，不代表在线。 模型：[DeviceBinding](../backend/app/modules/device/models.py)。
 
 | 字段 | PostgreSQL 类型 | NULL / 键 | 默认或关联 |
 | --- | --- | --- | --- |
 | `id` | `UUID` | PK | 应用: uuid7() |
 | `device_id_hash` | `CHAR(64)` | NOT NULL | — |
 | `owner_user_id` | `UUID` | NOT NULL | → user.id，ON DELETE RESTRICT |
+| `family_id` | `UUID` | NULL（兼容旧绑定） | → family.id，ON DELETE RESTRICT；公开注册必填 |
+| `client_kind` | `VARCHAR(24)` | NULL（兼容旧绑定） | ELDER_MOBILE / FAMILY_MOBILE |
 | `device_type` | `VARCHAR(32)` | NOT NULL | — |
 | `app_version` | `VARCHAR(64)` | NOT NULL | — |
 | `os_version` | `VARCHAR(64)` | NOT NULL | — |
@@ -196,6 +198,7 @@ PostgreSQL/pgvector 是唯一事实库，异步 SQLAlchemy 模型注册于 [plat
 - CHECK `ble_status IN ('DISCONNECTED','CONNECTING','CONNECTED','LOW_BATTERY','ERROR')`
 - CHECK `camera_permission IN ('UNKNOWN','GRANTED','DENIED')`
 - CHECK `device_type IN ('ANDROID_TABLET','ANDROID_PHONE','OTHER')`
+- CHECK `client_kind IN ('ELDER_MOBILE','FAMILY_MOBILE')`
 - CHECK `jsonb_typeof(capabilities) = 'object'`
 - CHECK `kiosk_status IN ('UNKNOWN','ACTIVE','CONFIG_ERROR','DISABLED')`
 - CHECK `phone_permission IN ('UNKNOWN','GRANTED','DENIED')`
@@ -226,6 +229,37 @@ PostgreSQL/pgvector 是唯一事实库，异步 SQLAlchemy 模型注册于 [plat
 
 - CHECK `expires_at > issued_at`
 - UNIQUE `refresh_token_hash`
+
+### family_message
+
+人工家庭文字留言，独立于 AI 会话，不保存 AI 逐字稿。模型：[FamilyMessage](../backend/app/modules/message/models.py)。
+
+| 字段 | PostgreSQL 类型 | NULL / 键 | 默认或关联 |
+| --- | --- | --- | --- |
+| `id` | `UUID` | PK | 应用: uuid7() |
+| `sequence` | `BIGINT` | NOT NULL，UNIQUE | 数据库 IDENTITY；升序分页 |
+| `family_id` | `UUID` | NOT NULL | → family.id，ON DELETE RESTRICT |
+| `sender_user_id` | `UUID` | NOT NULL | → user.id，ON DELETE RESTRICT |
+| `destination_role` | `VARCHAR(16)` | NOT NULL | ELDER / CHILD / CAREGIVER |
+| `priority` | `VARCHAR(16)` | NOT NULL | NORMAL / IMPORTANT |
+| `text` | `TEXT` | NOT NULL | 1～2000 字符 |
+| `created_at` | `TIMESTAMP WITH TIME ZONE` | NOT NULL | SQL: now() |
+
+CHECK 限制角色、优先级和正文长度；`ix_message_family_sequence` 索引 `(family_id, sequence)`。发送与收件成员快照同事务写入，复用现有审计哈希实现默认 24 小时的发送幂等；家庭行锁保证同家庭提交顺序与序号一致。
+
+### message_delivery
+
+发送时每位接收成员一行，不依赖其设备是否在线或已注册。模型：[MessageDelivery](../backend/app/modules/message/models.py)。
+
+| 字段 | PostgreSQL 类型 | NULL / 键 | 默认或关联 |
+| --- | --- | --- | --- |
+| `id` | `UUID` | PK | 应用: uuid7() |
+| `message_id` | `UUID` | NOT NULL | → family_message.id，ON DELETE CASCADE |
+| `recipient_member_id` | `UUID` | NOT NULL | → family_member.id，ON DELETE RESTRICT；公开 DTO 返回该成员的 user_id |
+| `received_at` | `TIMESTAMP WITH TIME ZONE` | NULL | 首次客户端接收回执时间 |
+| `read_at` | `TIMESTAMP WITH TIME ZONE` | NULL | 首次本人已读确认时间 |
+
+UNIQUE `(message_id, recipient_member_id)`，索引 `(recipient_member_id, message_id)`；CHECK 已读时必须已有接收时间。公开状态由时间字段派生为 QUEUED / RECEIVED / READ，重复回执不覆盖首次时间、不降级状态。收件资格绑定发送时的成员关系，撤销后不能继续拉取或写回执，重新入家也不恢复旧收件资格；留存与删除限制见 [security](security.md)。
 
 ### memory
 
@@ -663,7 +697,7 @@ PostgreSQL/pgvector 是唯一事实库，异步 SQLAlchemy 模型注册于 [plat
 
 ## 迁移和生命周期
 
-保留现有全部 Alembic 历史，当前迁移头为 `20261019_week7_notifications`。从 backend/ 运行 `python -m alembic upgrade head`；修改数据库时新增兼容迁移，不因为文档整理重写旧迁移或删除已有数据。普通功能修改不要求空库回退演练。
+保留现有全部 Alembic 历史，当前迁移头为 `20261021_family_messages`。从 backend/ 运行 `python -m alembic upgrade head`；修改数据库时新增兼容迁移，不因为文档整理重写旧迁移或删除已有数据。普通功能修改不要求空库回退演练。
 
 撤权/删除先隐藏，后台清理向量、对象和通知；已删除行、外部字节和副本的清理是不同步骤。保留期和隐私规则只在 [security](security.md) 维护。真实账户删除/导出和备份期限尚未完成，见 [roadmap](roadmap.md)。
 

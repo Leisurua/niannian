@@ -32,12 +32,12 @@ class ElderClient(ApiClient):
             "POST",
             "/v1/devices/register",
             body={
-                "device_id": f"windows-elder-{uuid4()}",
+                "device_id": self.login_device_id,
                 "device_type": "OTHER",
                 "client_kind": "ELDER_MOBILE",
                 "family_id": family_id,
                 "app_version": APP_VERSION,
-                "os_version": platform.platform(),
+                "os_version": platform.platform()[:64],
                 "capabilities": {
                     "desktop_demo": True,
                     "large_text": True,
@@ -53,14 +53,4 @@ class ElderClient(ApiClient):
         clean = text.strip()
         if not clean:
             raise ClientError("回复内容不能为空。")
-        return self._request(
-            "POST",
-            "/v1/messages",
-            body={
-                "destination": {"type": "FAMILY_ROLE", "role": "CHILD"},
-                "message_type": "TEXT",
-                "priority": "IMPORTANT" if important else "NORMAL",
-                "payload": {"text": clean},
-            },
-            idempotency_key=str(uuid4()),
-        )
+        return self.send_text(clean, 'CHILD', 'IMPORTANT' if important else 'NORMAL')

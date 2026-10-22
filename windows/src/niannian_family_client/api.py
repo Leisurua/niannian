@@ -41,7 +41,7 @@ class NianNianClient(ApiClient):
         return self._request("POST", f"/v1/family-invitations/{quote(token, safe='')}/accept", body=body)
 
     def register_family_device(self, family_id: str) -> dict[str, Any]:
-        device_id = f"windows-family-{uuid4()}"
+        device_id = self.login_device_id
         result = self._request(
             "POST",
             "/v1/devices/register",
@@ -51,7 +51,7 @@ class NianNianClient(ApiClient):
                 "client_kind": "FAMILY_MOBILE",
                 "family_id": family_id,
                 "app_version": APP_VERSION,
-                "os_version": platform.platform(),
+                "os_version": platform.platform()[:64],
                 "capabilities": {"desktop": True, "rest_polling": True},
             },
             idempotency_key=str(uuid4()),
@@ -60,20 +60,20 @@ class NianNianClient(ApiClient):
         return result
 
     def list_devices(self) -> list[dict[str, Any]]:
-        return list(self._request("GET", "/v1/devices?limit=100").get("items", []))
+        items, cursor = [], None
+        while True:
+            result = self._request('GET', '/v1/devices?limit=100' + ('&cursor=' + quote(cursor) if cursor else ''))
+            items.extend(result.get('items', []))
+            page = result.get('page', {})
+            if not page.get('has_more'):
+                return items
+            next_cursor = page.get('next_cursor')
+            if not next_cursor or next_cursor == cursor:
+                raise NetworkError('服务器返回了无效的设备分页。')
+            cursor = next_cursor
 
     def send_text_to_role(self, text: str, role: str = "ELDER", priority: str = "NORMAL") -> dict[str, Any]:
-        return self._request(
-            "POST",
-            "/v1/messages",
-            body={
-                "destination": {"type": "FAMILY_ROLE", "role": role},
-                "message_type": "TEXT",
-                "priority": priority,
-                "payload": {"text": text.strip()},
-            },
-            idempotency_key=str(uuid4()),
-        )
+        return self.send_text(text, role, priority)
 
     def message(self, message_id: str) -> dict[str, Any]:
         return self._request("GET", f"/v1/messages/{quote(message_id)}")

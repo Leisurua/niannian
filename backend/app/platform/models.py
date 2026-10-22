@@ -3,6 +3,7 @@ from app.modules.audit.models import AuditLog
 from app.modules.auth.models import DeviceSession, User
 from app.modules.consent.models import Consent
 from app.modules.device.models import DeviceBinding
+from app.modules.message.models import FamilyMessage, MessageDelivery
 from app.modules.family.models import Family, FamilyInvitation, FamilyMember
 from app.modules.memory.models import Memory, FileAsset
 from app.modules.memory.index_models import MemoryChunk, MemoryEmbedding
@@ -18,4 +19,5 @@ DOMAIN_MODELS = (
     DeviceSession, Memory, FileAsset, Reminder, ReminderExecution, Conversation,
     MemoryChunk, MemoryEmbedding, Task, ProactivePreference, ProactiveDailyCounter,
     SignalEvent, Notification, NotificationAttempt, NotificationPreference,
+    FamilyMessage, MessageDelivery,
 )

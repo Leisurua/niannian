@@ -35,8 +35,12 @@ app.include_router(conversation_router)
 app.include_router(proactive_router)
 from app.modules.signal.api import router as signal_router
 from app.modules.notification.api import router as notification_router
+from app.modules.device.api import router as device_router
+from app.modules.message.api import router as message_router
 app.include_router(signal_router)
 app.include_router(notification_router)
+app.include_router(device_router)
+app.include_router(message_router)
 
 
 @app.exception_handler(AppError)

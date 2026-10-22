@@ -10,6 +10,7 @@
 python scripts/verify.py integration backend/tests/integration/test_auth_family_consent.py
 python scripts/verify.py integration backend/tests/integration/test_photos.py
 python scripts/verify.py integration backend/tests/integration/test_notifications.py
+python scripts/verify.py integration backend/tests/integration/test_messages.py
 ```
 
 照片测试默认使用明确标记的 Mock 对象存储。真实 MinIO 检查 `test_photo_storage.py` 另需 `TEST_STORAGE_CONFIG` 指向本地 JSON：`endpoint` 为 `http://127.0.0.1:59003`，`bucket` 为独立的 `niannian-test`，以及测试专用 `access_key`、`secret_key`。凭据文件不得提交；没有这些依赖时真实存储检查会跳过，不能视为通过。

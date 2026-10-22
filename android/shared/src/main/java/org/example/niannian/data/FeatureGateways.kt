@@ -5,6 +5,25 @@ import org.example.niannian.feature.reminder.*
 import org.example.niannian.feature.conversation.ConversationToolsGateway
 import org.example.niannian.feature.notification.NotificationGateway
 import org.json.JSONObject
+import org.example.niannian.feature.message.MessageGateway
+
+fun FamilyRepository.messageGateway(deviceId: String, elder: Boolean): MessageGateway {
+    val repository = this
+    return object : MessageGateway {
+        override suspend fun register(family: String) {
+            repository.registerMessageDevice(JSONObject().put("device_id", deviceId).put("family_id", family)
+                .put("device_type", if (elder) "ANDROID_TABLET" else "ANDROID_PHONE")
+                .put("client_kind", if (elder) "ELDER_MOBILE" else "FAMILY_MOBILE")
+                .put("app_version", "0.1.0").put("os_version", "Android ${android.os.Build.VERSION.RELEASE}".take(64))
+                .put("capabilities", JSONObject().put("rest_polling", true)))
+        }
+        override suspend fun list(family: String, box: String) = repository.readAll("/v1/messages?family_id=$family&box=$box&limit=100")
+        override suspend fun acknowledge(id: String, read: Boolean) = repository.acknowledgeMessage(id, read)
+        override suspend fun send(family: String, role: String, text: String) = repository.call("/v1/messages", "POST",
+            JSONObject().put("family_id", family).put("destination", JSONObject().put("type", "FAMILY_ROLE").put("role", role))
+                .put("message_type", "TEXT").put("priority", "NORMAL").put("payload", JSONObject().put("text", text)), true)
+    }
+}
 
 fun FamilyRepository.memoryGateway(): MemoryGateway {
     val repository = this

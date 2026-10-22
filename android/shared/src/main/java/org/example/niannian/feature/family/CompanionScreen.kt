@@ -33,6 +33,7 @@ import org.example.niannian.feature.memory.MemoryModel
 import org.example.niannian.feature.conversation.ConversationModel
 import org.example.niannian.feature.conversation.ConversationToolsModel
 import org.example.niannian.feature.notification.NotificationModel
+import org.example.niannian.feature.message.MessageModel
 
 private val scopeLabels = linkedMapOf("VOICE" to "语音处理", "PORTRAIT" to "数字人形象", "FAMILY_MEMORY" to "家庭记忆",
     "HEALTH_MEDICATION" to "健康与用药信息", "CONVERSATION_SUMMARY" to "交流摘要", "CAMERA_PROXIMITY" to "摄像头存在检测",
@@ -44,7 +45,7 @@ private data class ConsentChange(val familyId: String, val scope: String, val re
 fun CompanionScreen(model: CompanionModel, environmentLabel: String,
     reminders: ReminderModel, memories: MemoryModel, tools: ConversationToolsModel,
     conversation: ConversationModel? = null, notifications: NotificationModel? = null,
-    onNotifications: () -> Unit = {}, offlineContent: @Composable () -> Unit = {}) {
+    messages: MessageModel? = null, onNotifications: () -> Unit = {}, offlineContent: @Composable () -> Unit = {}) {
     val state by model.state.collectAsState()
     val mutationUnavailable = state.busy || state.offline || state.pendingWrite
     var address by remember(state.address) { mutableStateOf(state.address) }
@@ -53,8 +54,8 @@ fun CompanionScreen(model: CompanionModel, environmentLabel: String,
     var revokeMember by remember { mutableStateOf<Member?>(null) }
     var consentChange by remember { mutableStateOf<ConsentChange?>(null) }
     var showFamilySettings by remember { mutableStateOf(false) }
-    val homeModels = remember(reminders, memories, tools, conversation, notifications) {
-        HomeModels(reminders, memories, tools, conversation, notifications, onNotifications)
+    val homeModels = remember(reminders, memories, tools, conversation, notifications, messages) {
+        HomeModels(reminders, memories, tools, conversation, notifications, onNotifications, messages)
     }
     BackHandler(enabled = showFamilySettings) { showFamilySettings = false }
     if (!showFamilySettings) {

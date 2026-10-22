@@ -187,6 +187,16 @@ class FamilyRepository(
         executeCall(path = "/v1/notifications/$id/read", method = "POST", body = JSONObject(), idempotent = false, expectedVersion = null, explicitKey = key)
     }
 
+    suspend fun registerMessageDevice(body: JSONObject): JSONObject = requestMutex.withLock {
+        executeCall("/v1/devices/register", "POST", body, false, null, UUID.randomUUID().toString())
+    }
+
+    suspend fun acknowledgeMessage(id: String, read: Boolean): JSONObject = requestMutex.withLock {
+        require(UUID.fromString(id).toString() == id)
+        executeCall("/v1/message-deliveries/$id/${if (read) "read" else "received"}", "POST",
+            JSONObject(), false, null, UUID.randomUUID().toString())
+    }
+
     private suspend fun executeCall(path: String, method: String, body: JSONObject?, idempotent: Boolean, expectedVersion: Long?, explicitKey: String? = null, reason: String? = null): JSONObject = withContext(Dispatchers.IO) {
         var session = store.load()
         val origin = ConnectionPolicy.origin(session.getString("origin"), debug)

@@ -123,8 +123,6 @@ internal fun FamilyDesignHome(
     var activeTab by remember { mutableStateOf(FamilyNavTab.CARE) }
     var toast by remember { mutableStateOf<String?>(null) }
 
-    var postSheetOpen by remember { mutableStateOf(false) }
-    var postDraft by remember { mutableStateOf("") }
 
     var addReminderSheetOpen by remember { mutableStateOf(false) }
     var newRemTime by remember { mutableStateOf("17:30") }
@@ -415,7 +413,7 @@ internal fun FamilyDesignHome(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 Button(
-                                    onClick = { postSheetOpen = true },
+                                    onClick = { feature = HomeFeature.MESSAGES },
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = FPersimmon600,
                                         contentColor = Color.White
@@ -426,7 +424,7 @@ internal fun FamilyDesignHome(
                                         .weight(1.18f)
                                         .height(56.dp)
                                 ) {
-                                    Text(text = "发照片 / 留言", fontSize = 15.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                                    Text(text = "发文字留言", fontSize = 15.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                                 }
 
                                 Button(
@@ -818,7 +816,7 @@ internal fun FamilyDesignHome(
                 ) {
                     listOf(
                         Triple(FamilyNavTab.CARE, "守护", NianNianIcons.Sun),
-                        Triple(FamilyNavTab.POST, "寄动态", NianNianIcons.MessageCircle),
+                        Triple(FamilyNavTab.POST, "留言", NianNianIcons.MessageCircle),
                         Triple(FamilyNavTab.MEMORIES, "记忆库", NianNianIcons.HeartHandshake),
                         Triple(FamilyNavTab.SETTINGS, "家庭设置", NianNianIcons.Settings)
                     ).forEach { (tab, label, icon) ->
@@ -829,7 +827,7 @@ internal fun FamilyDesignHome(
                                 .weight(1f)
                                 .clickable {
                                     when (tab) {
-                                        FamilyNavTab.POST -> postSheetOpen = true
+                                        FamilyNavTab.POST -> feature = HomeFeature.MESSAGES
                                         FamilyNavTab.SETTINGS -> familySettingSheetOpen = true
                                         FamilyNavTab.CARE -> {
                                             activeTab = tab
@@ -887,56 +885,6 @@ internal fun FamilyDesignHome(
                     fontSize = 15.sp,
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 13.dp)
                 )
-            }
-        }
-
-        // Send Postcard Sheet
-        if (postSheetOpen) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(FInk.copy(alpha = 0.4f))
-                    .clickable { postSheetOpen = false },
-                contentAlignment = Alignment.BottomCenter
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
-                    color = FPaperCard,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(enabled = false) {}
-                ) {
-                    Column(modifier = Modifier.padding(24.dp)) {
-                        Text(
-                            text = "寄张动态明信片给妈妈",
-                            fontFamily = FontFamily.Serif,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 22.sp,
-                            color = FInk
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        OutlinedTextField(
-                            value = postDraft,
-                            onValueChange = { postDraft = it },
-                            label = { Text("写下想对妈妈说的话…") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Button(
-                            onClick = {
-                                postSheetOpen = false
-                                postDraft = ""
-                                toast = "已将照片与留言发送至妈妈首页"
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = FPersimmon600, contentColor = Color.White),
-                            shape = CircleShape,
-                            contentPadding = PaddingValues(vertical = 14.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(text = "立即寄给妈妈", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
             }
         }
 
@@ -1087,6 +1035,7 @@ internal fun FamilyDesignHome(
                                         listOf(
                                             HomeFeature.REMINDERS to "提醒管理",
                                             HomeFeature.MEMORIES to "记忆与照片",
+                                            HomeFeature.MESSAGES to "家人留言",
                                             HomeFeature.NOTIFICATIONS to "家人通知",
                                             HomeFeature.CONVERSATION to "交流回顾"
                                         ).forEach { (feat, label) ->
