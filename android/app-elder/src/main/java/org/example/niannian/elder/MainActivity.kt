@@ -3,6 +3,7 @@ package org.example.niannian.elder
 import android.os.Bundle
 import org.example.niannian.data.*
 import org.example.niannian.feature.reminder.*
+import org.example.niannian.feature.message.MessageModel
 import org.example.niannian.feature.memory.MemoryModel
 import org.json.JSONObject
 import androidx.activity.ComponentActivity
@@ -42,6 +43,7 @@ class MainActivity : ComponentActivity() {
                 override suspend fun connect(id: String, message: (String) -> Unit, closed: (Int) -> Unit) =
                     repository.withConversationConnection(id) { url, token -> transport.connect(url, token, message, closed) }
             }
+            val messageGateway = repository.messageGateway(deviceId, true)
             val memoryGateway = repository.memoryGateway()
             val reminderGateway = repository.reminderGateway()
             val factory = object : ViewModelProvider.Factory {
@@ -49,6 +51,7 @@ class MainActivity : ComponentActivity() {
                     when (modelClass) {
                         ReminderModel::class.java -> ReminderModel(reminderGateway, reminderStore, true, onCacheChanged = { ReminderScheduler.arm(applicationContext) })
                         MemoryModel::class.java -> MemoryModel(memoryGateway)
+                        MessageModel::class.java -> MessageModel(messageGateway, true)
                         ConversationModel::class.java -> ConversationModel(conversationGateway)
                         ConversationToolsModel::class.java -> ConversationToolsModel(toolsGateway)
                         else -> CompanionModel(repository, true, deviceId)
@@ -58,11 +61,13 @@ class MainActivity : ComponentActivity() {
             val model = ViewModelProvider(this, factory)[CompanionModel::class.java]
             val reminderModel = ViewModelProvider(this, factory)[ReminderModel::class.java]
             val memoryModel = ViewModelProvider(this, factory)[MemoryModel::class.java]
+            val messageModel = ViewModelProvider(this, factory)[MessageModel::class.java]
             val conversationModel = ViewModelProvider(this, factory)[ConversationModel::class.java]
             val toolsModel = ViewModelProvider(this, factory)[ConversationToolsModel::class.java]
             val runtime = RuntimeConfig.fromBuildValues(BuildConfig.ENVIRONMENT, BuildConfig.PROVIDER_MODE)
             setContent {
                 CompanionScreen(model, runtime.statusLabel, reminderModel, memoryModel, toolsModel,
+                    messages = messageModel,
                     conversation = conversationModel,
                     onNotifications = { ReminderScheduler.arm(applicationContext) },
                     offlineContent = { CachedReminderEntry(reminderModel, reminderStore, repository.savedUserId()) { ReminderScheduler.arm(applicationContext) } })

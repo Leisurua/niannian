@@ -347,7 +347,19 @@ def test_live_api_login_family_consent_slice_uses_portable_entrypoint(system):
             invite = family_app.create_invitation(fam['id'])
             assert elder_app.accept_invitation(invite['token'])['status'] == 'ACTIVE'
             assert elder_app.list_families()[0]['id'] == fam['id']
-            assert family_app.backend_features() == {'devices': False, 'messages': False}
+            assert family_app.backend_features() == {'devices': True, 'messages': True}
+            family_app.register_family_device(fam['id'])
+            elder_app.register_device(fam['id'])
+            sent = family_app.send_text_to_role('虚构 HTTP 留言')
+            inbox = elder_app.receive_messages()
+            assert inbox[0]['id'] == sent['id']
+            delivery_id = inbox[0]['deliveries'][0]['id']
+            elder_app.acknowledge(delivery_id, 'read')
+            assert family_app.message(sent['id'])['deliveries'][0]['status'] == 'READ'
+            reply = post(client, '/v1/messages', eh, {'family_id': fam['id'], 'message_type': 'TEXT',
+                'destination': {'type': 'FAMILY_ROLE', 'role': 'CHILD'}, 'payload': {'text': '虚构 Android 回复'}})
+            assert reply.status_code == 201
+            assert family_app.receive_messages()[0]['payload']['text'] == '虚构 Android 回复'
             body = {'family_id': fam['id'], 'subject_user_id': elder['user']['id'],
                 'grantee_user_id': child['user']['id'], 'scope': 'FAMILY_MEMORY', 'source': 'SETTINGS'}
             granted = post(client, '/v1/consents', eh, body)
@@ -358,6 +370,8 @@ def test_live_api_login_family_consent_slice_uses_portable_entrypoint(system):
             assert [row['status'] for row in rows] == ['REVOKED', 'GRANTED']
             assert client.post('/v1/auth/logout-all', headers=eh).status_code == 204
             assert client.get('/v1/me', headers=eh).status_code == 401
+            family_app.logout()
+            assert client.get('/v1/messages', headers=ch).status_code == 401
     finally:
         process.terminate()
         try:

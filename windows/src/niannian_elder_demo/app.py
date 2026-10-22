@@ -6,6 +6,7 @@ from typing import Any, Callable
 
 from niannian_desktop.settings import load_base_url, save_base_url
 from niannian_desktop.tasks import BackgroundTasks
+from niannian_desktop.lifecycle import DesktopLifecycle
 
 from .api import ApiError, ClientError, ElderClient, NetworkError
 
@@ -21,7 +22,7 @@ RED_LIGHT = "#F2D9D5"
 BLUE = "#315E80"
 
 
-class ElderDemoApp(tk.Tk):
+class ElderDemoApp(DesktopLifecycle, tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("念念 · Windows 老人演示端")
@@ -37,10 +38,11 @@ class ElderDemoApp(tk.Tk):
         self.busy = False
         self.polling = False
         self._poll_after_id: str | None = None
+        self._init_lifecycle()
         self._configure_styles()
         self._build_ui()
         self._load_settings()
-        self.after(80, self._drain_tasks)
+        self._schedule_drain()
 
     def _configure_styles(self) -> None:
         style = ttk.Style(self)
@@ -103,6 +105,7 @@ class ElderDemoApp(tk.Tk):
         setup_actions.pack(fill="x", pady=(10, 0))
         ttk.Button(setup_actions, text="测试连接", command=self.test_connection).pack(side="left")
         ttk.Button(setup_actions, text="登录老人演示账号", command=self.login).pack(side="left", padx=(8, 0))
+        ttk.Button(self.left, text="退出登录", command=self.logout).pack(anchor='w', pady=(8, 0))
 
         ttk.Separator(self.left).pack(fill="x", pady=18)
         ttk.Label(self.left, text="加入家庭", style="CardTitle.TLabel").pack(anchor="w")
@@ -188,6 +191,8 @@ class ElderDemoApp(tk.Tk):
         call_button.pack(side="left", expand=True, fill="x", padx=(6, 0))
 
     def _run(self, label: str, operation: Callable[[], Any], success: Callable[[Any], None] | None = None) -> None:
+        if self._exit_requested or self._exiting:
+            return
         if self.busy:
             self.feedback_label.configure(text="上一项操作还没有完成，请稍等。")
             return
@@ -199,6 +204,8 @@ class ElderDemoApp(tk.Tk):
     def _drain_tasks(self) -> None:
         for ok, value, success, label in self.tasks.drain():
             self.busy = False
+            if self._discard_for_exit(ok, value, label):
+                continue
             if ok:
                 self.status_label.configure(text="连接正常", bg=GREEN_LIGHT, fg=GREEN)
                 self.feedback_label.configure(text=label + "完成。")
@@ -206,8 +213,33 @@ class ElderDemoApp(tk.Tk):
                     success(value)
             else:
                 self.status_label.configure(text="操作失败", bg=RED_LIGHT, fg=RED)
-                self._show_error(value)
-        self.after(80, self._drain_tasks)
+                if label == '自动刷新':
+                    self.feedback_label.configure(text='连接暂不可用，恢复后会自动补收留言。')
+                    self._clear_message_view()
+                else:
+                    if isinstance(value, ApiError) and value.status in (403, 404):
+                        self._clear_message_view()
+                    self._show_error(value)
+                if self.client and not self.client.access_token:
+                    self._stop_polling()
+                    self._reset_session_view()
+        self._schedule_drain()
+
+    def _clear_message_view(self):
+        self.inbox = []
+        self.current_message_index = 0
+        self._render_message()
+
+    def _reset_session_view(self):
+        self.families = []
+        self.selected_family_id = None
+        self._clear_message_view()
+        self.family_box.configure(values=[])
+        self.family_var.set('')
+        self.invite_var.set('')
+        self.device_label.configure(text='设备尚未启用')
+        self.status_label.configure(text='未登录', bg='#EEE2CA', fg=AMBER)
+        self.feedback_label.configure(text='已退出，请重新登录。')
 
     def _show_error(self, exc: Exception) -> None:
         if isinstance(exc, NetworkError):
@@ -242,13 +274,15 @@ class ElderDemoApp(tk.Tk):
             return client, f"HTTP 连接正常，环境 {health.get('environment', 'unknown')}。"
 
         def success(result: tuple[ElderClient, str]) -> None:
-            self.client = result[0]
             self.feedback_label.configure(text=result[1])
             self._save_settings()
 
         self._run("测试连接", operation, success)
 
     def login(self) -> None:
+        if getattr(self, 'client', None) and self.client.access_token:
+            self._show_error(ClientError('请先退出当前登录，再登录其他服务器。'))
+            return
         base_url = self.url_var.get()
 
         def operation() -> tuple[ElderClient, dict[str, Any]]:
@@ -282,6 +316,9 @@ class ElderDemoApp(tk.Tk):
             else:
                 self.family_var.set("")
                 self.selected_family_id = None
+                client.binding = None
+                self._stop_polling()
+                self._clear_message_view()
                 self.feedback_label.configure(text="还没有家庭，请粘贴子女端邀请令牌。")
 
         self._run("读取家庭", client.list_families, success)
@@ -298,9 +335,19 @@ class ElderDemoApp(tk.Tk):
         self._run("接受邀请", lambda: client.accept_invitation(token), lambda _: self.refresh_families())
 
     def _select_family(self, _event: Any = None) -> None:
+        if self.busy:
+            for index, item in enumerate(self.families):
+                if str(item['id']) == self.selected_family_id:
+                    self.family_box.current(index)
+            return
         index = self.family_box.current()
         if 0 <= index < len(self.families):
             self.selected_family_id = str(self.families[index]["id"])
+            if self.client and self.client.binding and self.client.binding.get('family_id') != self.selected_family_id:
+                self.client.binding = None
+                self._stop_polling()
+                self._clear_message_view()
+                self.device_label.configure(text='请为当前家庭启用老人端')
 
     def register_device(self) -> None:
         try:
@@ -330,13 +377,7 @@ class ElderDemoApp(tk.Tk):
             return
 
         def operation() -> list[dict[str, Any]]:
-            items = client.list_messages("INBOX")
-            for item in items:
-                for delivery in item.get("deliveries", []):
-                    if delivery.get("status") not in ("RECEIVED", "READ"):
-                        client.acknowledge(str(delivery["id"]), "received")
-                        delivery["status"] = "RECEIVED"
-            return items
+            return client.receive_messages()
 
         def success(items: list[dict[str, Any]]) -> None:
             current_id = self.current_message().get("id") if self.current_message() else None
@@ -349,7 +390,7 @@ class ElderDemoApp(tk.Tk):
                         break
             self._render_message()
 
-        self._run("接收留言", operation, success)
+        self._run("自动刷新" if self.polling else "接收留言", operation, success)
 
     def current_message(self) -> dict[str, Any] | None:
         if not self.inbox or not 0 <= self.current_message_index < len(self.inbox):
@@ -421,17 +462,19 @@ class ElderDemoApp(tk.Tk):
         def success(message: dict[str, Any]) -> None:
             count = len(message.get("deliveries", []))
             if count:
-                self.feedback_label.configure(text=f"回复已发给家人，共 {count} 个子女端设备。")
+                self.feedback_label.configure(text=f"回复已保存，等待 {count} 位家人接收。")
             else:
                 messagebox.showwarning(
                     "回复已保存",
-                    "服务器已保存回复，但这个家庭还没有已注册的子女端设备。",
+                    "这个家庭还没有可接收回复的子女成员。",
                     parent=self,
                 )
 
         self._run("发送回复", lambda: client.reply_to_children(text, important=important), success)
 
     def _toggle_polling(self) -> None:
+        if getattr(self, '_exit_requested', None) or getattr(self, '_exiting', False):
+            return
         if self._poll_after_id is not None:
             self.after_cancel(self._poll_after_id)
             self._poll_after_id = None

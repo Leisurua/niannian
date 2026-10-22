@@ -3,7 +3,7 @@ info:
   title: NianNian API
   version: 1.0.0
   description: Current REST operations implemented by NianNian. Public DTOs are not ORM entities. Authentication
-    is Demo-only; conversation input is TEXT with explicit Mock or configured real LLM mode. Planned device, messaging,
+    is Demo-only; conversation input is TEXT with explicit Mock or configured real LLM mode. Family device registration, human text messages and recipient receipts are implemented. Planned
     report, emergency, export and account-deletion APIs are not available; see roadmap.md. GET /health, /docs and
     /openapi.json are unversioned runtime endpoints. Provider metadata, vectors, raw audio and transcripts are not
     exposed as public resource content.
@@ -20,6 +20,8 @@ tags:
 - name: Conversations
 - name: SignalEvents
 - name: Notifications
+- name: Devices
+- name: Messages
 security:
 - bearerAuth: []
 x-websocket-channels:
@@ -1295,6 +1297,496 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NotificationResponse'
+  /devices/register:
+    post:
+      tags:
+      - Devices
+      summary: Register
+      operationId: registerDevice
+      parameters:
+      - name: idempotency-key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceRegister'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/RegisteredDevice'
+                - type: object
+                  required:
+                  - request_id
+                  properties:
+                    request_id:
+                      type: string
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      description: Register this login session for an ACTIVE family. Client kind must match the actual ELDER or CHILD/CAREGIVER
+        role. Re-registering the same device ID updates its binding; another owner cannot claim it. ACTIVE means registered,
+        not online.
+  /devices:
+    get:
+      tags:
+      - Devices
+      summary: Listing
+      operationId: listDevices
+      parameters:
+      - name: family_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Family Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Limit
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 512
+          - type: 'null'
+          title: Cursor
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - items
+                - page
+                - request_id
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RegisteredDevice'
+                  page:
+                    $ref: '#/components/schemas/PageInfo'
+                  request_id:
+                    type: string
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      description: List ACTIVE bindings whose owners are still ACTIVE members of the caller's visible families. Device
+        hashes, platform details and capabilities are not exposed.
+  /messages:
+    post:
+      tags:
+      - Messages
+      summary: Send
+      operationId: sendMessage
+      parameters:
+      - name: idempotency-key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/FamilyTextMessage'
+                - type: object
+                  required:
+                  - request_id
+                  properties:
+                    request_id:
+                      type: string
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      description: Save 1-2000 characters of human-authored text and snapshot ACTIVE recipients in the selected family
+        role, excluding the sender. Recipients need not be online or registered. No eligible recipients returns 409.
+        Idempotency-Key deduplicates matching requests for the configured window (default 24 hours). No LLM, push
+        or consent change is triggered.
+    get:
+      tags:
+      - Messages
+      summary: Listing
+      operationId: listMessages
+      parameters:
+      - name: box
+        in: query
+        required: false
+        schema:
+          enum:
+          - INBOX
+          - OUTBOX
+          type: string
+          default: INBOX
+          title: Box
+      - name: family_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Family Id
+      - name: after_sequence
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          default: 0
+          title: After Sequence
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            maximum: 9223372036854775807
+            minimum: 0
+          - type: 'null'
+          title: Cursor
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - items
+                - page
+                - request_id
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FamilyTextMessage'
+                  page:
+                    $ref: '#/components/schemas/PageInfo'
+                  request_id:
+                    type: string
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      description: Requires a registered session and current ACTIVE family membership. INBOX contains only this user's
+        deliveries; OUTBOX only this user's sent messages. Results are ordered by increasing sequence. Pass page.next_cursor
+        as after_sequence (or cursor); cursor takes precedence. Reload from zero to refresh existing receipts. Optional
+        family_id must match the current binding.
+  /messages/{message_id}:
+    get:
+      tags:
+      - Messages
+      summary: Detail
+      operationId: getMessage
+      parameters:
+      - name: message_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Message Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/FamilyTextMessage'
+                - type: object
+                  required:
+                  - request_id
+                  properties:
+                    request_id:
+                      type: string
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      description: Only the sender or a snapshotted recipient may read a message in the currently bound ACTIVE family.
+        Recipient views include only their own receipt.
+  /message-deliveries/{delivery_id}/received:
+    post:
+      tags:
+      - Messages
+      summary: Received
+      operationId: receiveMessage
+      parameters:
+      - name: delivery_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Delivery Id
+      - name: idempotency-key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/FamilyMessageDelivery'
+                - type: object
+                  required:
+                  - request_id
+                  properties:
+                    request_id:
+                      type: string
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      description: Recipient-only, monotonic and naturally idempotent. Records first receipt after a client has received
+        the content. Does not imply a human has read it, and never downgrades READ.
+  /message-deliveries/{delivery_id}/read:
+    post:
+      tags:
+      - Messages
+      summary: Read
+      operationId: readMessage
+      parameters:
+      - name: delivery_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Delivery Id
+      - name: idempotency-key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/FamilyMessageDelivery'
+                - type: object
+                  required:
+                  - request_id
+                  properties:
+                    request_id:
+                      type: string
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Authentication, family scope or state rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      description: Recipient-only explicit read confirmation. Sets first read time and first received time if absent.
+        Repeated requests preserve both timestamps. Receipts are shared across the recipient's devices.
 components:
   securitySchemes:
     bearerAuth:
@@ -1458,6 +1950,235 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    DeviceRegister:
+      properties:
+        device_id:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Device Id
+        family_id:
+          type: string
+          format: uuid
+          title: Family Id
+        device_type:
+          type: string
+          enum:
+          - ANDROID_TABLET
+          - ANDROID_PHONE
+          - OTHER
+          title: Device Type
+        client_kind:
+          type: string
+          enum:
+          - ELDER_MOBILE
+          - FAMILY_MOBILE
+          title: Client Kind
+        app_version:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: App Version
+        os_version:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Os Version
+        capabilities:
+          additionalProperties:
+            type: boolean
+          type: object
+          maxProperties: 20
+          title: Capabilities
+      additionalProperties: false
+      type: object
+      required:
+      - device_id
+      - family_id
+      - device_type
+      - client_kind
+      - app_version
+      - os_version
+      title: DeviceRegister
+    Destination:
+      properties:
+        type:
+          type: string
+          const: FAMILY_ROLE
+          title: Type
+        role:
+          type: string
+          enum:
+          - ELDER
+          - CHILD
+          - CAREGIVER
+          title: Role
+      additionalProperties: false
+      type: object
+      required:
+      - type
+      - role
+      title: Destination
+    TextPayload:
+      properties:
+        text:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Text
+      additionalProperties: false
+      type: object
+      required:
+      - text
+      title: TextPayload
+    MessageCreate:
+      properties:
+        family_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Family Id
+        destination:
+          $ref: '#/components/schemas/Destination'
+        message_type:
+          type: string
+          const: TEXT
+          title: Message Type
+        priority:
+          type: string
+          enum:
+          - NORMAL
+          - IMPORTANT
+          title: Priority
+          default: NORMAL
+        payload:
+          $ref: '#/components/schemas/TextPayload'
+      additionalProperties: false
+      type: object
+      required:
+      - destination
+      - message_type
+      - payload
+      title: MessageCreate
+    RegisteredDevice:
+      type: object
+      required:
+      - id
+      - family_id
+      - owner_user_id
+      - client_kind
+      - device_type
+      - status
+      - last_seen_at
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        family_id:
+          type: string
+          format: uuid
+        owner_user_id:
+          type: string
+          format: uuid
+        client_kind:
+          type: string
+          enum:
+          - ELDER_MOBILE
+          - FAMILY_MOBILE
+        device_type:
+          type: string
+          enum:
+          - ANDROID_TABLET
+          - ANDROID_PHONE
+          - OTHER
+        status:
+          type: string
+          enum:
+          - ACTIVE
+        last_seen_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+    FamilyMessageDelivery:
+      type: object
+      required:
+      - id
+      - recipient_user_id
+      - status
+      - received_at
+      - read_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        recipient_user_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - QUEUED
+          - RECEIVED
+          - READ
+        received_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+        read_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+    FamilyTextMessage:
+      type: object
+      required:
+      - id
+      - family_id
+      - sender_user_id
+      - sequence
+      - message_type
+      - priority
+      - destination
+      - payload
+      - created_at
+      - deliveries
+      properties:
+        id:
+          type: string
+          format: uuid
+        family_id:
+          type: string
+          format: uuid
+        sender_user_id:
+          type: string
+          format: uuid
+        sequence:
+          type: integer
+          format: int64
+        message_type:
+          type: string
+          const: TEXT
+        priority:
+          type: string
+          enum:
+          - NORMAL
+          - IMPORTANT
+        destination:
+          $ref: '#/components/schemas/Destination'
+        payload:
+          $ref: '#/components/schemas/TextPayload'
+        created_at:
+          type: string
+          format: date-time
+        deliveries:
+          type: array
+          items:
+            $ref: '#/components/schemas/FamilyMessageDelivery'
     Id:
       type: string
       format: uuid

@@ -3,6 +3,7 @@ package org.example.niannian.family
 import android.os.Bundle
 import org.example.niannian.data.*
 import org.example.niannian.feature.reminder.*
+import org.example.niannian.feature.message.MessageModel
 import org.example.niannian.feature.memory.MemoryModel
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -30,6 +31,7 @@ class MainActivity : ComponentActivity() {
             val repository = FamilyRepository(SecureSession(applicationContext), BuildConfig.DEBUG)
             val toolsGateway = repository.toolsGateway()
             val notificationGateway = repository.notificationGateway()
+            val messageGateway = repository.messageGateway(deviceId, false)
             val memoryGateway = repository.memoryGateway()
             val reminderGateway = repository.reminderGateway()
             val factory = object : ViewModelProvider.Factory {
@@ -37,6 +39,7 @@ class MainActivity : ComponentActivity() {
                     when (modelClass) {
                         ReminderModel::class.java -> ReminderModel(reminderGateway, reminderStore, false)
                         MemoryModel::class.java -> MemoryModel(memoryGateway)
+                        MessageModel::class.java -> MessageModel(messageGateway, false)
                         ConversationToolsModel::class.java -> ConversationToolsModel(toolsGateway)
                         NotificationModel::class.java -> NotificationModel(notificationGateway)
                         else -> CompanionModel(repository, false, deviceId)
@@ -46,11 +49,13 @@ class MainActivity : ComponentActivity() {
             val model = ViewModelProvider(this, factory)[CompanionModel::class.java]
             val reminderModel = ViewModelProvider(this, factory)[ReminderModel::class.java]
             val memoryModel = ViewModelProvider(this, factory)[MemoryModel::class.java]
+            val messageModel = ViewModelProvider(this, factory)[MessageModel::class.java]
             val toolsModel = ViewModelProvider(this, factory)[ConversationToolsModel::class.java]
             val notificationModel = ViewModelProvider(this, factory)[NotificationModel::class.java]
             val runtime = RuntimeConfig.fromBuildValues(BuildConfig.ENVIRONMENT, BuildConfig.PROVIDER_MODE)
             setContent {
                 CompanionScreen(model, runtime.statusLabel, reminderModel, memoryModel, toolsModel,
+                    messages = messageModel,
                     notifications = notificationModel)
             }
         }

@@ -23,6 +23,7 @@ import org.example.niannian.core.common.parseApiInstant
 import org.example.niannian.feature.conversation.*
 import org.example.niannian.feature.memory.*
 import org.example.niannian.feature.notification.*
+import org.example.niannian.feature.message.*
 import org.example.niannian.feature.reminder.*
 import java.time.Instant
 import java.time.LocalDate
@@ -32,7 +33,7 @@ import java.time.ZonedDateTime
 
 internal enum class HomeFeature(val title: String) {
     REMINDERS("生活提醒"), MEMORIES("家庭记忆"), CHAT("和念念聊聊"),
-    CONVERSATION("主动陪伴与交流回顾"), NOTIFICATIONS("家人通知")
+    CONVERSATION("主动陪伴与交流回顾"), NOTIFICATIONS("家人通知"), MESSAGES("家人留言")
 }
 
 internal class HomeModels(
@@ -41,7 +42,8 @@ internal class HomeModels(
     val tools: ConversationToolsModel,
     val conversation: ConversationModel? = null,
     val notifications: NotificationModel? = null,
-    val onNotifications: () -> Unit = {}
+    val onNotifications: () -> Unit = {},
+    val messages: MessageModel? = null
 )
 
 internal fun homeFamily(state: CompanionState): String =
@@ -121,7 +123,7 @@ internal fun BindHomeModels(state: CompanionState, account: CompanionModel, mode
     var checkedAuthorization by remember(models) { mutableStateOf<String?>(null) }
     fun clear() {
         models.reminders.hide(); models.memories.clear(); models.conversation?.clear()
-        models.tools.clear(); models.notifications?.clear()
+        models.tools.clear(); models.notifications?.clear(); models.messages?.clear()
     }
     DisposableEffect(owner, models) {
         val observer = LifecycleEventObserver { _, event ->
@@ -138,11 +140,11 @@ internal fun BindHomeModels(state: CompanionState, account: CompanionModel, mode
         if (state.busy) return@LaunchedEffect
         models.reminders.bind(family, state.userId)
         if (state.offline || state.error.isNotBlank()) {
-            models.memories.clear(); models.conversation?.clear(); models.tools.clear(); models.notifications?.clear()
+            models.memories.clear(); models.conversation?.clear(); models.tools.clear(); models.notifications?.clear(); models.messages?.clear()
             return@LaunchedEffect
         }
         if (checkedAuthorization != authorization) {
-            models.memories.clear(); models.conversation?.clear(); models.tools.clear(); models.notifications?.clear()
+            models.memories.clear(); models.conversation?.clear(); models.tools.clear(); models.notifications?.clear(); models.messages?.clear()
             checkedAuthorization = authorization
         }
         models.memories.bind(family, state.userId)
@@ -278,6 +280,7 @@ internal fun HomeFeatureSheet(feature: HomeFeature, state: CompanionState, model
                 verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 if (family.isBlank()) Text("请先登录并确认加入家庭。") else when (feature) {
                     HomeFeature.REMINDERS -> ReminderPanel(models.reminders, family, state.userId, subjects, unavailable, models.onNotifications)
+                    HomeFeature.MESSAGES -> models.messages?.let { MessagePanel(it, family, state.userId, elder, unavailable) }
                     HomeFeature.MEMORIES -> MemoryPanel(models.memories, family, state.userId, subjects, unavailable)
                     HomeFeature.CHAT -> models.conversation?.let { conversation ->
                         val chat by conversation.state.collectAsState()

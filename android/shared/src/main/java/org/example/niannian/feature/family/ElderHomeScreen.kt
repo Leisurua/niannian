@@ -291,11 +291,8 @@ internal fun ElderDesignHome(
                 // 4. Family Moments Feed (Featured Photo + Voice Note + Asymmetric Pair)
                 ElderFamilyFeed(
                     scale = textScale,
-                    onReply = { who ->
-                        chatTopic = null
-                        chatReplyTo = who
-                        chatOpen = true
-                    },
+                    onReply = { feature = HomeFeature.MESSAGES },
+                    onOpenMessages = { feature = HomeFeature.MESSAGES },
                     onToast = { msg -> toastMessage = msg },
                     onOpenDrawing = {
                         toastMessage = "朵朵的画已放进「家人记忆」"
@@ -348,9 +345,7 @@ internal fun ElderDesignHome(
                         }
                         HomeNavTab.FAMILY -> {
                             activeTab = HomeNavTab.FAMILY
-                            coroutineScope.launch {
-                                scrollState.animateScrollTo((scrollState.maxValue * 0.62f).toInt())
-                            }
+                            feature = HomeFeature.MESSAGES
                         }
                     }
                 }
@@ -1448,6 +1443,7 @@ private fun ElderRemindersTimeline(
 private fun ElderFamilyFeed(
     scale: Float,
     onReply: (String) -> Unit,
+    onOpenMessages: () -> Unit,
     onToast: (String) -> Unit,
     onOpenDrawing: () -> Unit
 ) {
@@ -1473,7 +1469,7 @@ private fun ElderFamilyFeed(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .clip(CircleShape)
-                    .clickable { onToast("正在打开全部家人留言") }
+                    .clickable(onClick = onOpenMessages)
                     .padding(horizontal = 8.dp, vertical = 6.dp)
             ) {
                 Text(
@@ -2478,6 +2474,7 @@ private fun ElderSettingsSheet(
                                 listOf(
                                     HomeFeature.REMINDERS to "生活提醒",
                                     HomeFeature.MEMORIES to "家庭记忆",
+                                    HomeFeature.MESSAGES to "家人留言",
                                     HomeFeature.CONVERSATION to "陪伴设置"
                                 ).forEach { (feat, label) ->
                                     Surface(

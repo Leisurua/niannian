@@ -19,12 +19,15 @@ class DeviceBinding(Base):
         CheckConstraint("camera_permission IN ('UNKNOWN','GRANTED','DENIED')", name="ck_device_camera"),
         CheckConstraint("phone_permission IN ('UNKNOWN','GRANTED','DENIED')", name="ck_device_phone"),
         CheckConstraint("status IN ('ACTIVE','UNBOUND','LOST','DISABLED')", name="ck_device_status"),
+        CheckConstraint("client_kind IN ('ELDER_MOBILE','FAMILY_MOBILE')", name="ck_device_client_kind"),
         CheckConstraint("jsonb_typeof(capabilities) = 'object'", name="ck_device_capabilities"),
         Index("ix_device_owner_seen", "owner_user_id", "last_seen_at"),
     )
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
     device_id_hash: Mapped[str] = mapped_column(CHAR(64), unique=True)
     owner_user_id: Mapped[UUID] = mapped_column(ForeignKey("user.id", ondelete="RESTRICT"))
+    family_id: Mapped[UUID | None] = mapped_column(ForeignKey("family.id", ondelete="RESTRICT"))
+    client_kind: Mapped[str | None] = mapped_column(String(24))
     device_type: Mapped[str] = mapped_column(String(32))
     app_version: Mapped[str] = mapped_column(String(64))
     os_version: Mapped[str] = mapped_column(String(64))

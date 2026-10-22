@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import socket
+import threading
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlparse, urlunparse
@@ -82,6 +83,8 @@ class ApiClient:
         self.user: dict[str, Any] | None = None
         self.binding: dict[str, Any] | None = None
         self._feature_cache: dict[str, bool] | None = None
+        self._request_lock = threading.RLock()
+        self._pending_message: tuple[dict[str, Any], str] | None = None
         self.login_device_id = f"windows-{self.login_kind}-login-{uuid4()}"
 
     def _request(
@@ -93,6 +96,30 @@ class ApiClient:
         auth: bool = True,
         idempotency_key: str | None = None,
     ) -> dict[str, Any]:
+        with self._request_lock:
+            try:
+                return self._exchange(method, path, body=body, auth=auth, idempotency_key=idempotency_key)
+            except ApiError as exc:
+                if not auth or exc.status != 401:
+                    raise
+                if exc.code != 'AUTH_TOKEN_EXPIRED' or not self.refresh_token:
+                    self.clear_session()
+                    raise
+                try:
+                    pair = self._exchange('POST', '/v1/auth/refresh', auth=False,
+                                          body={'refresh_token': self.refresh_token})
+                    self.access_token, self.refresh_token = pair['access_token'], pair['refresh_token']
+                except Exception as refresh_error:
+                    self.clear_session()
+                    raise ClientError('登录续期未能确认，请重新登录。') from refresh_error
+                try:
+                    return self._exchange(method, path, body=body, auth=auth, idempotency_key=idempotency_key)
+                except ApiError as retry_error:
+                    if retry_error.status == 401:
+                        self.clear_session()
+                    raise
+
+    def _exchange(self, method, path, *, body=None, auth=True, idempotency_key=None):
         self._check_optional_api(path)
         headers = {"Accept": "application/json", "User-Agent": f"NianNian-Windows/{APP_VERSION}"}
         data = None
@@ -147,10 +174,49 @@ class ApiClient:
         feature = ("devices" if path.startswith("/v1/devices") else
                    "messages" if path.startswith(("/v1/messages", "/v1/message-deliveries")) else None)
         if feature and not self.backend_features()[feature]:
-            raise ClientError("当前 main 服务器尚未提供设备注册或消息收发 API，"
-                              "现可使用登录、家庭和邀请功能；消息功能仍待服务端实现。")
+            raise ClientError("当前服务器版本不支持设备或留言功能，请更新后端并运行数据库迁移。")
+
+    def clear_session(self) -> None:
+        self.access_token = self.refresh_token = None
+        self.user = self.binding = None
+        self._pending_message = None
+
+    def logout(self) -> None:
+        with self._request_lock:
+            try:
+                if self.access_token:
+                    self._request('POST', '/v1/auth/logout', body={})
+            except ApiError as exc:
+                if exc.status != 401:
+                    raise
+            finally:
+                self.clear_session()
+
+    def send_text(self, text: str, role: str, priority: str) -> dict[str, Any]:
+        clean = text.strip()
+        if not clean or len(clean) > 2000:
+            raise ClientError('留言需为 1 到 2000 个字符。')
+        body = {'destination': {'type': 'FAMILY_ROLE', 'role': role},
+                'message_type': 'TEXT', 'priority': priority, 'payload': {'text': clean}}
+        if self.binding:
+            body['family_id'] = self.binding['family_id']
+        with self._request_lock:
+            if self._pending_message and self._pending_message[0] != body:
+                raise ClientError('上条留言的发送结果尚未确认，请先用原内容重试发送。')
+            if not self._pending_message:
+                self._pending_message = body, str(uuid4())
+            try:
+                result = self._request('POST', '/v1/messages', body=body,
+                                       idempotency_key=self._pending_message[1])
+            except ApiError as exc:
+                if 400 <= exc.status < 500 and exc.status not in (408, 429):
+                    self._pending_message = None
+                raise
+            self._pending_message = None
+            return result
 
     def login(self, identifier: str | None = None, *, device_name: str | None = None) -> dict[str, Any]:
+        self.clear_session()
         result = self._request(
             "POST",
             "/v1/auth/login",
@@ -176,6 +242,8 @@ class ApiClient:
         items = []
         while True:
             query = urlencode({"box": box, "after_sequence": after_sequence, "limit": 100})
+            if self.binding:
+                query += '&' + urlencode({'family_id': self.binding['family_id']})
             result = self._request("GET", "/v1/messages?" + query)
             items.extend(result.get("items", []))
             page = result.get("page", {})
@@ -188,6 +256,14 @@ class ApiClient:
             if next_sequence <= after_sequence:
                 raise NetworkError("服务器返回的消息分页未向前推进。")
             after_sequence = next_sequence
+
+    def receive_messages(self) -> list[dict[str, Any]]:
+        items = self.list_messages('INBOX')
+        for item in items:
+            for delivery in item.get('deliveries', []):
+                if delivery.get('status') == 'QUEUED':
+                    delivery.update(self.acknowledge(str(delivery['id']), 'received'))
+        return items
 
     def acknowledge(self, delivery_id: str, kind: str) -> dict[str, Any]:
         if kind not in ("received", "read"):

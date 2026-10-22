@@ -6,6 +6,7 @@ from typing import Any, Callable
 
 from niannian_desktop.settings import load_base_url, save_base_url
 from niannian_desktop.tasks import BackgroundTasks
+from niannian_desktop.lifecycle import DesktopLifecycle
 
 from .api import ApiError, ClientError, NetworkError, NianNianClient
 
@@ -19,7 +20,7 @@ AMBER = "#A86518"
 RED = "#A53B32"
 
 
-class FamilyClientApp(tk.Tk):
+class FamilyClientApp(DesktopLifecycle, tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("念念 · Windows 子女端")
@@ -34,10 +35,11 @@ class FamilyClientApp(tk.Tk):
         self.busy = False
         self.polling = False
         self._poll_after_id: str | None = None
+        self._init_lifecycle()
         self._configure_styles()
         self._build_ui()
         self._load_settings()
-        self.after(80, self._drain_tasks)
+        self._schedule_drain()
 
     def _configure_styles(self) -> None:
         style = ttk.Style(self)
@@ -103,6 +105,7 @@ class FamilyClientApp(tk.Tk):
         row.pack(fill="x")
         ttk.Button(row, text="测试连接", command=self.test_connection).pack(side="left")
         ttk.Button(row, text="登录演示子女", style="Accent.TButton", command=self.login).pack(side="left", padx=8)
+        ttk.Button(row, text="退出登录", command=self.logout).pack(side="left")
         ttk.Label(left, text="演示账号：demo-child（仅 Mock 环境可用）", style="Muted.TLabel").pack(anchor="w", pady=(16, 0))
         self.identity_label = ttk.Label(left, text="当前未登录", style="Card.TLabel")
         self.identity_label.pack(anchor="w", pady=(6, 0))
@@ -111,7 +114,7 @@ class FamilyClientApp(tk.Tk):
         self.probe_output = scrolledtext.ScrolledText(right, height=13, bg="#FAFBF9", fg=INK, relief="flat",
                                                        font=("Microsoft YaHei UI", 9), wrap="word")
         self.probe_output.pack(fill="both", expand=True, pady=(12, 0))
-        self.probe_output.insert("1.0", "点击“测试连接”查看服务器状态。当前 main 提供登录、家庭和邀请；消息及设备注册 API 尚未实现。")
+        self.probe_output.insert("1.0", "点击“测试连接”查看服务器状态。登录并注册当前家庭设备后，可与 Android 或 Windows 家人互发文字留言。")
         self.probe_output.configure(state="disabled")
 
     def _build_family_tab(self) -> None:
@@ -173,11 +176,13 @@ class FamilyClientApp(tk.Tk):
         bottom = ttk.Frame(table_card, style="Card.TFrame")
         bottom.pack(fill="x", pady=(8, 0))
         ttk.Button(bottom, text="将选中收件标为已读", command=self.mark_selected_read).pack(side="left")
-        self.auto_poll_var = tk.BooleanVar(value=False)
+        self.auto_poll_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(bottom, text="每 3 秒自动刷新", variable=self.auto_poll_var,
                         command=self._toggle_polling).pack(side="right")
 
     def _run(self, label: str, operation: Callable[[], Any], success: Callable[[Any], None] | None = None) -> None:
+        if self._exit_requested or self._exiting:
+            return
         if self.busy:
             self._log("当前操作尚未完成，请稍候。")
             return
@@ -189,15 +194,45 @@ class FamilyClientApp(tk.Tk):
     def _drain_tasks(self) -> None:
         for ok, value, success, label in self.tasks.drain():
             self.busy = False
+            if self._discard_for_exit(ok, value, label):
+                continue
             if ok:
                 self.status.configure(text="已连接", bg=LIGHT_GREEN, fg=GREEN)
-                self._log(label + "完成。")
+                if label != '自动刷新':
+                    self._log(label + "完成。")
                 if success:
                     success(value)
             else:
                 self.status.configure(text="操作失败", bg="#F4DAD6", fg=RED)
-                self._show_error(value)
-        self.after(80, self._drain_tasks)
+                if label == '自动刷新':
+                    self._log('自动刷新失败，将在连接恢复后重试。')
+                    self._clear_message_view()
+                else:
+                    if isinstance(value, ApiError) and value.status in (403, 404):
+                        self._clear_message_view()
+                    self._show_error(value)
+                if self.client and not self.client.access_token:
+                    self._stop_polling()
+                    self._reset_session_view()
+        self._schedule_drain()
+
+    def _clear_message_view(self):
+        self.messages.clear()
+        for item in self.message_tree.get_children():
+            self.message_tree.delete(item)
+
+    def _reset_session_view(self):
+        self.families = []
+        self.selected_family_id = None
+        self._clear_message_view()
+        self.message_var.set('')
+        self.family_list.delete(0, 'end')
+        self.invite_text.delete('1.0', 'end')
+        for item in self.device_tree.get_children():
+            self.device_tree.delete(item)
+        self.identity_label.configure(text='当前未登录')
+        self.binding_label.configure(text='本会话尚未绑定设备')
+        self.status.configure(text='未登录', bg='#EEE2CA', fg=AMBER)
 
     def _show_error(self, exc: Exception) -> None:
         if isinstance(exc, NetworkError):
@@ -225,7 +260,6 @@ class FamilyClientApp(tk.Tk):
             return {"client": client, "health": health}
 
         def success(result: dict[str, Any]) -> None:
-            self.client = result["client"]
             self._save_settings()
             self.probe_output.configure(state="normal")
             self.probe_output.delete("1.0", "end")
@@ -236,6 +270,9 @@ class FamilyClientApp(tk.Tk):
         self._run("连接检查", operation, success)
 
     def login(self) -> None:
+        if getattr(self, 'client', None) and self.client.access_token:
+            self._show_error(ClientError('请先退出当前登录，再登录其他服务器。'))
+            return
         base_url = self.url_var.get()
 
         def operation() -> tuple[NianNianClient, dict[str, Any]]:
@@ -258,6 +295,7 @@ class FamilyClientApp(tk.Tk):
 
     def refresh_families(self) -> None:
         def success(items: list[dict[str, Any]]) -> None:
+            items = [item for item in items if item.get('member_status') == 'ACTIVE']
             self.families = items
             self.family_list.delete(0, "end")
             for item in items:
@@ -267,6 +305,9 @@ class FamilyClientApp(tk.Tk):
                 self._family_selected()
             else:
                 self.selected_family_id = None
+                client.binding = None
+                self._stop_polling()
+                self._clear_message_view()
                 self._log("当前账号还没有家庭，可创建“念念演示家庭”。")
 
         try:
@@ -289,10 +330,22 @@ class FamilyClientApp(tk.Tk):
         self._run("创建家庭", lambda: client.create_family(name), lambda _: self.refresh_families())
 
     def _family_selected(self, _event: Any = None) -> None:
+        if self.busy:
+            if self.selected_family_id:
+                self.family_list.selection_clear(0, 'end')
+                for index, item in enumerate(self.families):
+                    if str(item['id']) == self.selected_family_id:
+                        self.family_list.selection_set(index)
+            return
         selection = self.family_list.curselection()
         if not selection or selection[0] >= len(self.families):
             return
         self.selected_family_id = str(self.families[selection[0]]["id"])
+        if self.client and self.client.binding and self.client.binding.get('family_id') != self.selected_family_id:
+            self.client.binding = None
+            self._stop_polling()
+            self._clear_message_view()
+            self.binding_label.configure(text='请为当前家庭注册本机')
         self.refresh_devices()
 
     def register_device(self) -> None:
@@ -307,7 +360,9 @@ class FamilyClientApp(tk.Tk):
 
         def success(binding: dict[str, Any]) -> None:
             self.binding_label.configure(text=f"已绑定：{binding['id']}  ·  {binding['client_kind']}")
-            self.refresh_devices()
+            self._toggle_polling()
+            if not self.polling:
+                self.refresh_messages()
 
         self._run("注册设备", lambda: client.register_family_device(family_id), success)
 
@@ -365,9 +420,9 @@ class FamilyClientApp(tk.Tk):
         def success(message: dict[str, Any]) -> None:
             count = len(message.get("deliveries", []))
             if count:
-                self._log(f"消息已进入服务器队列，共 {count} 个目标设备。")
+                self._log(f"留言已保存，等待 {count} 位家人接收。")
             else:
-                messagebox.showwarning("已接收但尚无投递目标", "服务器已接收消息，但当前家庭没有已注册的老人端设备。", parent=self)
+                messagebox.showwarning("尚无接收成员", "当前家庭没有可接收留言的老人。", parent=self)
             self.refresh_messages()
 
         priority = self.priority_var.get()
@@ -384,10 +439,11 @@ class FamilyClientApp(tk.Tk):
             return
 
         def operation() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-            return client.list_messages("INBOX"), client.list_messages("OUTBOX")
+            return client.receive_messages(), client.list_messages("OUTBOX")
 
         def success(result: tuple[list[dict[str, Any]], list[dict[str, Any]]]) -> None:
             inbox, outbox = result
+            selection = self.message_tree.selection()
             self.messages.clear()
             for item in self.message_tree.get_children():
                 self.message_tree.delete(item)
@@ -401,8 +457,10 @@ class FamilyClientApp(tk.Tk):
                 delivery = ", ".join(str(d.get("status", "-")) for d in message.get("deliveries", [])) or "无目标"
                 self.message_tree.insert("", "end", iid=key, values=(direction, message.get("created_at", "-"),
                                                                         message.get("priority", "-"), text, delivery))
+            if selection and selection[0] in self.messages:
+                self.message_tree.selection_set(selection[0])
 
-        self._run("刷新消息", operation, success)
+        self._run("自动刷新" if self.polling else "刷新消息", operation, success)
 
     def mark_selected_read(self) -> None:
         selection = self.message_tree.selection()
@@ -435,10 +493,12 @@ class FamilyClientApp(tk.Tk):
         self._run("确认已读", operation, lambda _: self.refresh_messages())
 
     def _toggle_polling(self) -> None:
+        if getattr(self, '_exit_requested', None) or getattr(self, '_exiting', False):
+            return
         if self._poll_after_id is not None:
             self.after_cancel(self._poll_after_id)
             self._poll_after_id = None
-        self.polling = self.auto_poll_var.get()
+        self.polling = self.auto_poll_var.get() and bool(self.client and self.client.binding)
         if self.polling:
             self._poll_tick()
 
