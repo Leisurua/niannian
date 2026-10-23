@@ -11,13 +11,13 @@ from app.modules.reminder.models import Reminder, ReminderExecution
 from app.modules.conversation.models import Conversation
 from app.modules.conversation.proactive_models import ProactivePreference, ProactiveDailyCounter
 from app.modules.signal.models import SignalEvent
-from app.modules.notification.models import Notification, NotificationAttempt, NotificationPreference
+from app.modules.notification.models import FamilyContact, Notification, NotificationAttempt, NotificationPreference
 from app.platform.tasks import Task
 
 DOMAIN_MODELS = (
     User, Family, AuditLog, FamilyMember, FamilyInvitation, Consent, DeviceBinding,
     DeviceSession, Memory, FileAsset, Reminder, ReminderExecution, Conversation,
     MemoryChunk, MemoryEmbedding, Task, ProactivePreference, ProactiveDailyCounter,
-    SignalEvent, Notification, NotificationAttempt, NotificationPreference,
+    SignalEvent, Notification, NotificationAttempt, NotificationPreference, FamilyContact,
     FamilyMessage, MessageDelivery,
 )

@@ -22,7 +22,7 @@ def test_quiet_hours_follow_utc_across_midnight_and_dst(zone,start,end,now,expec
 
 
 @pytest.mark.parametrize('body', [
-    {'channels':['SMS'],'timezone':'Asia/Shanghai'}, {'channels':['PUSH','PUSH'],'timezone':'UTC'},
+    {'channels':['EMAIL'],'timezone':'Asia/Shanghai'}, {'channels':['PUSH','PUSH'],'timezone':'UTC'},
     {'channels':['IN_APP'],'timezone':'Mars/Unknown'},
     {'channels':['IN_APP'],'timezone':'UTC','quiet_hours_start':'22:00'},
     {'channels':['IN_APP'],'timezone':'UTC','quiet_hours_start':'22:00:01','quiet_hours_end':'08:00'},

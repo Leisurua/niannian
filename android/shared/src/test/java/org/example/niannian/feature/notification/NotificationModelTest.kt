@@ -12,6 +12,11 @@ class NotificationModelTest {
     private inner class Gateway : NotificationGateway {
         var family = "family"; var fail = false; var wait: CompletableDeferred<Unit>? = null
         var readCount = 0; var lastBody: JSONObject? = null; var lastVersion: Long? = null
+        var eventStatus = "NOTIFIED"; var canHandle = true; var actionCount = 0
+        var actionWait: CompletableDeferred<Unit>? = null
+        fun event() = JSONObject().put("id", eventId).put("family_id", family).put("owner_user_id", "elder")
+            .put("summary", "Mock · 请先联系家人核实").put("status", eventStatus).put("can_handle", canHandle)
+        override suspend fun events(family: String) = listOf(event())
         override suspend fun list(): List<JSONObject> {
             wait?.await(); if (fail) error("offline")
             return listOf(JSONObject().put("id", id).put("signal_event_id", eventId).put("status", "SENT")
@@ -19,8 +24,7 @@ class NotificationModelTest {
         }
         override suspend fun call(path: String, method: String, body: JSONObject?, version: Long?): JSONObject {
             if (fail) error("offline")
-            if (path.startsWith("/v1/signal-events")) return JSONObject().put("family_id", family).put("owner_user_id", "elder")
-                .put("summary", "Mock · 请先联系家人核实")
+            if (path.startsWith("/v1/signal-events")) return event()
             lastBody = body; lastVersion = version
             return JSONObject().put("family_id", "family").put("owner_user_id", "elder").put("recipient_user_id", "child")
                 .put("channels", JSONArray(listOf("IN_APP"))).put("timezone", "Asia/Shanghai").put("version", if (method == "PUT") 1 else 0)
@@ -29,6 +33,17 @@ class NotificationModelTest {
         override suspend fun read(id: String, key: String): JSONObject {
             java.util.UUID.fromString(key); readCount++
             return JSONObject().put("id", id).put("status", "READ")
+        }
+        override suspend fun act(id: String, body: JSONObject, key: String): JSONObject {
+            java.util.UUID.fromString(key)
+            actionWait?.await()
+            if (fail) error("offline")
+            assertEquals(eventStatus, body.getString("expected_status"))
+            actionCount++; lastBody = body
+            eventStatus = when (body.getString("action")) {
+                "ACKNOWLEDGE" -> "ACKNOWLEDGED"; "CONTACT" -> "CONTACTED"; "FALSE_POSITIVE" -> "FALSE_POSITIVE"; else -> "RESOLVED"
+            }
+            return event().put("actioned_at", "2026-10-23T04:00:00Z")
         }
     }
     @Test fun refreshAndReadShowOnlyCurrentAuthorizedFamily() = runBlocking {
@@ -76,5 +91,54 @@ class NotificationModelTest {
         assertEquals(1, model.state.value.items.size)
         model.clear(); yield()
         assertTrue(model.state.value.items.isEmpty()); assertEquals("", model.state.value.family)
+    }
+
+    @Test fun eventActionsRequirePermissionAndOnlyAdvanceAfterServerConfirmation() = runBlocking {
+        val gateway = Gateway(); val model = NotificationModel(gateway, this)
+        model.bind("family", "elder", "child"); model.refresh(); yield()
+        model.read(model.state.value.items.single()); yield()
+        assertEquals("NOTIFIED", model.state.value.event!!.status)
+        model.handle("CONTACT"); yield()
+        assertEquals(0, gateway.actionCount)
+        for ((action, expected) in listOf("ACKNOWLEDGE" to "ACKNOWLEDGED", "CONTACT" to "CONTACTED", "RESOLVE" to "RESOLVED")) {
+            model.handle(action); yield()
+            assertEquals(expected, model.state.value.event!!.status)
+            assertTrue(model.state.value.event!!.actionedAt.isNotBlank())
+        }
+        model.handle("ACKNOWLEDGE"); yield(); assertEquals(3, gateway.actionCount)
+        model.refresh(); yield()
+        gateway.canHandle = false
+        model.read(model.state.value.items.single()); yield()
+        assertTrue(model.state.value.event!!.actions.isEmpty())
+        model.clear()
+    }
+
+    @Test fun failedOrLateActionCannotRestoreDetailAfterRevocationOrFamilyChange() = runBlocking {
+        for (leave in listOf(false, true)) {
+            val gateway = Gateway(); val model = NotificationModel(gateway, this)
+            model.bind("family", "elder", "child"); model.refresh(); yield()
+            model.read(model.state.value.items.single()); yield()
+            gateway.actionWait = CompletableDeferred()
+            model.handle("ACKNOWLEDGE"); yield()
+            assertNull(model.state.value.event)
+            if (leave) model.bind("other", "elder", "child") else gateway.fail = true
+            gateway.actionWait!!.complete(Unit); yield()
+            assertNull(model.state.value.event); assertTrue(model.state.value.detail.isEmpty())
+            assertEquals(0, gateway.actionCount)
+            model.clear()
+        }
+    }
+
+    @Test fun falsePositiveClosesEventAndBlocksFurtherActions() = runBlocking {
+        val gateway = Gateway(); val model = NotificationModel(gateway, this)
+        model.bind("family", "elder", "child"); model.refresh(); yield()
+        model.read(model.state.value.items.single()); yield()
+        assertTrue("FALSE_POSITIVE" in model.state.value.event!!.actions)
+        model.handle("FALSE_POSITIVE"); yield()
+        assertEquals("FALSE_POSITIVE", model.state.value.event!!.status)
+        assertTrue(model.state.value.event!!.actions.isEmpty())
+        assertTrue(model.state.value.message.contains("误报"))
+        model.handle("CONTACT"); yield(); assertEquals(1, gateway.actionCount)
+        model.clear()
     }
 }

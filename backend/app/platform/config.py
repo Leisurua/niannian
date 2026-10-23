@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     tts_api_key: str | None = Field(default=None, repr=False)
     embedding_api_key: str | None = Field(default=None, repr=False)
     push_api_key: str | None = Field(default=None, repr=False)
+    notification_external_enabled: bool = False
+    notification_push_provider: Literal['mock', 'ntfy'] = 'mock'
+    ntfy_base_url: str | None = None
+    twilio_account_sid: str | None = Field(default=None, repr=False)
+    twilio_auth_token: str | None = Field(default=None, repr=False)
+    twilio_from_number: str | None = Field(default=None, repr=False)
+    contact_encryption_key: SecretStr = Field(default=SecretStr(''), repr=False)
     s3_endpoint: str = "http://localhost:9000"
     s3_public_endpoint: str | None = None
     s3_bucket: str = "nianian-private"
@@ -55,6 +62,16 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def keep_demo_fictional(self) -> "Settings":
+        if self.notification_external_enabled and self.app_env != 'dev':
+            raise ValueError('external notifications require APP_ENV=dev')
+        if self.ntfy_base_url:
+            url = urlsplit(self.ntfy_base_url)
+            if url.scheme != 'https' or not url.hostname or url.username or url.password or url.query or url.fragment:
+                raise ValueError('NTFY_BASE_URL must be HTTPS without credentials or query')
+        if self.twilio_account_sid:
+            import re
+            if not re.fullmatch(r'AC[0-9a-fA-F]{32}', self.twilio_account_sid):
+                raise ValueError('Invalid Twilio account SID')
         if self.app_env == "demo" and (not self.demo_data or self.provider_mode != "mock"):
             raise ValueError("demo requires fictional data and mock providers")
         if self.app_env == "test" and self.provider_mode != "mock":

@@ -564,7 +564,7 @@ UNIQUE `(message_id, recipient_member_id)`，索引 `(recipient_member_id, messa
 
 ### signal_event
 
-受规则验证的有限非紧急事件；当前 source_message_id 留空，不创建伪持久化消息。 模型：[SignalEvent](../backend/app/modules/signal/models.py)。
+受规则验证的有限非紧急事件；当前 source_message_id 留空，不创建伪持久化消息。 模型：[SignalEvent](../backend/app/modules/signal/models.py)。家属处理复用已有字段：确认 → ACKNOWLEDGED、人工记录已联系 → CONTACTED、标记误报 → FALSE_POSITIVE、确认解决 → RESOLVED；更新 `last_action_by` / `last_action_at`，解决时写 `resolved_at` / `resolution_code=FAMILY_CONFIRMED`。各次操作写入现有审计表，重复操作不改处理时间，保留期限不延长。事件动作复用既有字段；联系人与发送回执字段通过 `20261023_attention_contacts` 迁移增加。
 
 | 字段 | PostgreSQL 类型 | NULL / 键 | 默认或关联 |
 | --- | --- | --- | --- |
@@ -697,8 +697,14 @@ UNIQUE `(message_id, recipient_member_id)`，索引 `(recipient_member_id, messa
 
 ## 迁移和生命周期
 
-保留现有全部 Alembic 历史，当前迁移头为 `20261021_family_messages`。从 backend/ 运行 `python -m alembic upgrade head`；修改数据库时新增兼容迁移，不因为文档整理重写旧迁移或删除已有数据。普通功能修改不要求空库回退演练。
+保留现有全部 Alembic 历史，当前迁移头为 `20261023_attention_contacts`。从 backend/ 运行 `python -m alembic upgrade head`；修改数据库时新增兼容迁移，不因为文档整理重写旧迁移或删除已有数据。普通功能修改不要求空库回退演练。
 
 撤权/删除先隐藏，后台清理向量、对象和通知；已删除行、外部字节和副本的清理是不同步骤。保留期和隐私规则只在 [security](security.md) 维护。真实账户删除/导出和备份期限尚未完成，见 [roadmap](roadmap.md)。
 
 当前向量类型为 vector(8)，使用获准子集内的距离查询，没有独立向量服务或已实现的通用语义模型。换模型/维度需修改相应实现和迁移，不能只改文档。
+
+## 关注处理与联系人（20261023_attention_contacts）
+
+`family_contact` 按 `(family_id,user_id)` 唯一保存本人联系方式：`phone_ciphertext`、`topic_ciphertext` 为 Fernet 密文，`share_phone`、`emergency` 默认 false，`version` 用于并发更新。本人删除或成员退出/撤销会删除记录。
+
+`notification_preference.channels` 支持 IN_APP/PUSH/SMS/PHONE；`notification.provider_status` 保存供应商状态，发送资源 ID 仅存于 `notification_attempt.provider_message_id`。外部发送不自动重试，未知结果用 DELIVERY_UNKNOWN。事件处理历史复用审计动作（不记录号码），最近状态仍保存在 signal_event，误报同时写 resolved_at/resolution_code。

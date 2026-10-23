@@ -6,7 +6,8 @@ from sqlalchemy import delete, select
 
 from app.ai.signal_candidates import extract_mock
 from app.modules.audit import service as audit
-from app.modules.auth.service import active_user, codec
+from app.modules.audit.models import AuditLog
+from app.modules.auth.service import active_user, codec, display_names
 from app.modules.consent import service as consent
 from app.modules.conversation import service as conversation
 from app.modules.family import service as family
@@ -119,13 +120,13 @@ async def accessible(db, row, actor, *, owner_status=False):
         return False
 
 
-async def delivery_context(db, event_id, recipient_id):
+async def delivery_context(db, event_id, recipient_id, *, for_delivery=True):
     row = await db.get(SignalEvent, event_id, populate_existing=True)
     authorized_with_family_lock = await accessible(db, row, SimpleNamespace(user_id=recipient_id))
     if not authorized_with_family_lock:
         return None
     await db.refresh(row)
-    if row.deleted_at or row.status in ('WITHHELD','FALSE_POSITIVE','RESOLVED'):
+    if row.deleted_at or (for_delivery and row.status in ('WITHHELD','FALSE_POSITIVE','RESOLVED')):
         return None
     grants = await recipient(db, row.family_id, row.owner_user_id, recipient_id, row.type)
     return snapshot(row) | {'grants': grants}
@@ -147,7 +148,19 @@ def view(row, *, owner=False, detail=False):
         result.update(reason={'category': row.trigger_category, 'display_text': COPY[row.type][0]}, recommended_action=COPY[row.type][1])
         if detail:
             result.update(source_conversation_id=str(row.source_conversation_id), occurred_at=iso_utc(row.detected_at))
+            if row.last_action_at:
+                result.update(actioned_at=iso_utc(row.last_action_at), last_action_by=str(row.last_action_by) if row.last_action_by else None)
+            if row.resolved_at:
+                result.update(resolved_at=iso_utc(row.resolved_at), resolution_code=row.resolution_code)
     return result
+
+
+async def can_handle(db, actor, row):
+    try:
+        await authorize(db, actor, row.family_id, row.owner_user_id, 'SIGNAL_WRITE', allow_self=False)
+        return True
+    except AppError:
+        return False
 
 
 async def detail(db, actor, event_id, request_id):
@@ -155,7 +168,57 @@ async def detail(db, actor, event_id, request_id):
     if not await accessible(db, row, actor, owner_status=True):
         raise AppError('SIGNAL_NOT_FOUND', '提示不存在或无权查看。', 404)
     await audit.record(db, actor.user_id, 'SIGNAL_READ', 'SIGNAL', row.id, row.family_id, request_id)
-    return view(row, owner=actor.user_id == row.owner_user_id, detail=True)
+    result = view(row, owner=actor.user_id == row.owner_user_id, detail=True)
+    result['can_handle'] = actor.user_id != row.owner_user_id and await can_handle(db, actor, row)
+    if actor.user_id != row.owner_user_id:
+        result['history'] = await action_history(db, row.id)
+        from app.modules.notification.contacts import event_contacts
+        result['contacts'] = await event_contacts(db, actor, row)
+    return result
+
+
+async def action_history(db, event_id):
+    rows = (await db.scalars(select(AuditLog).where(AuditLog.target_id == event_id,
+        AuditLog.target_type == 'SIGNAL', AuditLog.action.in_(
+            ('SIGNAL_ACKNOWLEDGE', 'SIGNAL_CONTACT', 'SIGNAL_FALSE_POSITIVE', 'SIGNAL_RESOLVE')))
+        .order_by(AuditLog.created_at, AuditLog.id))).all()
+    names = await display_names(db, [r.actor_user_id for r in rows if r.actor_user_id])
+    return [dict(action=r.action.removeprefix('SIGNAL_'), actor_user_id=str(r.actor_user_id) if r.actor_user_id else None,
+        actor_display_name=names.get(r.actor_user_id, '家庭成员'), occurred_at=iso_utc(r.created_at)) for r in rows]
+
+
+async def handle_action(db, actor, event_id, body, key, request_id, settings):
+    row = await db.get(SignalEvent, event_id)
+    # Recheck source, family, membership and current consent before idempotent replay too.
+    # accessible() acquires the family lock used by consent changes and notification delivery.
+    if not await accessible(db, row, actor):
+        raise AppError('SIGNAL_NOT_FOUND', '提示不存在或无权处理。', 404)
+    if not await can_handle(db, actor, row):
+        raise AppError('PERMISSION_DENIED', '当前成员没有关注事件处理权限。', 403)
+    idem = audit.Idempotency(key, 'signal-action:' + str(event_id), body.model_dump())
+    previous = await idem.previous(db, actor.user_id, settings.idempotency_seconds)
+    if not previous:
+        target, allowed = {
+            'ACKNOWLEDGE': ('ACKNOWLEDGED', ('VALIDATED', 'NOTIFIED', 'NOTIFICATION_FAILED')),
+            'CONTACT': ('CONTACTED', ('ACKNOWLEDGED',)),
+            'RESOLVE': ('RESOLVED', ('ACKNOWLEDGED', 'CONTACTED')),
+            'FALSE_POSITIVE': ('FALSE_POSITIVE', ('VALIDATED', 'NOTIFIED', 'NOTIFICATION_FAILED', 'ACKNOWLEDGED', 'CONTACTED')),
+        }[body.action]
+        if row.status != target:
+            if row.status != body.expected_status or row.status not in allowed:
+                raise AppError('RESOURCE_STATE_CONFLICT', '处理状态已变化，请刷新后确认；不能跳过确认或退回旧状态。', 409)
+            row.status = target
+            row.last_action_by, row.last_action_at = actor.user_id, utcnow()
+            if target in ('RESOLVED', 'FALSE_POSITIVE'):
+                row.resolved_at = row.last_action_at
+                row.resolution_code = 'FALSE_POSITIVE' if target == 'FALSE_POSITIVE' else 'FAMILY_CONFIRMED'
+            from app.modules.notification.service import event_action
+            await event_action(db, row.id, target)
+        else:
+            return await detail(db, actor, event_id, request_id)
+        await audit.record(db, actor.user_id, 'SIGNAL_' + body.action, 'SIGNAL', row.id, row.family_id,
+            request_id, metadata=idem.metadata)
+    return await detail(db, actor, event_id, request_id)
 
 
 async def visible_ids(db, actor, *, owner_status=False):

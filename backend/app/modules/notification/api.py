@@ -1,7 +1,7 @@
 from typing import Literal
 from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Query, Request, Response
-from app.modules.notification import service, preferences
+from app.modules.notification import service, preferences, contacts
 from app.platform.authentication import current_identity
 from app.platform.config import get_settings
 from app.platform.resource_access import expected_version
@@ -9,6 +9,32 @@ from app.platform.uow import transaction
 
 router = APIRouter(prefix='/v1', tags=['Notifications'])
 PreferencePath = '/families/{family_id}/notification-preferences/{owner_user_id}'
+ContactPath = '/families/{family_id}/my-contact'
+
+
+@router.get('/notification-capabilities', operation_id='getNotificationCapabilities')
+async def capabilities(response: Response, actor=Depends(current_identity)):
+    from app.integrations.notifications import capabilities as available
+    response.headers['Cache-Control'] = 'no-store'
+    return available(get_settings())
+
+
+@router.get(ContactPath, operation_id='getMyFamilyContact')
+async def read_contact(family_id: UUID, response: Response, actor=Depends(current_identity), db=Depends(transaction)):
+    response.headers['Cache-Control'] = 'no-store'
+    return await contacts.read(db, actor, family_id)
+
+
+@router.put(ContactPath, operation_id='putMyFamilyContact')
+async def update_contact(family_id: UUID, body: contacts.ContactInput, request: Request, response: Response,
+    if_match: str = Header(), actor=Depends(current_identity), db=Depends(transaction)):
+    response.headers['Cache-Control'] = 'no-store'
+    return await contacts.update(db, actor, family_id, body, expected_version(if_match, allow_zero=True), request.state.request_id)
+
+
+@router.delete(ContactPath, status_code=204, operation_id='deleteMyFamilyContact')
+async def delete_contact(family_id: UUID, request: Request, actor=Depends(current_identity), db=Depends(transaction)):
+    await contacts.remove(db, actor, family_id, request.state.request_id)
 
 
 @router.get('/notifications', operation_id='listNotifications')
