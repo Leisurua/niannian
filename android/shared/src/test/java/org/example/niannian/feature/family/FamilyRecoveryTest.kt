@@ -90,6 +90,22 @@ private suspend fun CompanionModel.idle() = withTimeout(5000) {
 }
 
 class FamilyRecoveryTest {
+    @Test fun elderCanGrantVoiceForTheirOwnConversation() = runBlocking {
+        val api = FakeApi()
+        api.handler = { request ->
+            if (request.url.path == "/v1/consents" && request.requestMethod == "POST") Reply()
+            else api.respond(request)
+        }
+        val model = CompanionModel(api.repository, true, "device", this)
+        model.idle()
+        model.grantSelf("VOICE"); model.idle()
+        val request = api.requests.single { it.url.path == "/v1/consents" && it.requestMethod == "POST" }
+        val body = JSONObject(request.sentBody.toString("UTF-8"))
+        assertEquals("VOICE", body.getString("scope"))
+        assertEquals(body.getString("subject_user_id"), body.getString("grantee_user_id"))
+        assertEquals("", model.state.value.error)
+    }
+
     @Test fun notificationReadUsesIdempotencyWithoutPersistingContentOrPendingAction() = runBlocking {
         val api = FakeApi()
         val id = "0192f1e4-6ed8-7c21-a4c1-5d58db7c3002"

@@ -2,6 +2,8 @@ package org.example.niannian.feature.family
 
 import org.example.niannian.feature.memory.MemoryItem
 import org.example.niannian.feature.memory.MemoryState
+import org.example.niannian.feature.message.FamilyLetter
+import org.example.niannian.feature.message.MessageState
 import org.example.niannian.feature.reminder.ReminderCard
 import org.example.niannian.feature.reminder.ReminderState
 import org.json.JSONArray
@@ -13,6 +15,22 @@ import java.time.Instant
 class HomeStateTest {
     private val connected = CompanionState(loggedIn = true, userId = "elder-a",
         selected = FamilyChoice("family-a", "虚构家庭", "ELDER", "ACTIVE"))
+
+    @Test fun homeMessagesUseRealReceiptsAndCannotCrossAccountOrFamilyBoundaries() {
+        val letter = FamilyLetter("letter", "测试留言", "2026-10-23T00:00:00Z", true,
+            listOf("a" to "READ", "b" to "RECEIVED", "c" to "QUEUED"))
+        val messages = MessageState(family = "family-a", user = "elder-a", items = listOf(letter), loaded = true)
+        assertEquals(listOf(letter), homeMessageItems(connected, messages))
+        assertEquals("已读 1 · 已接收未读 1 · 等待接收 1", homeReceiptLabel(letter))
+        assertEquals("暂无回执", homeReceiptLabel(letter.copy(receipts = emptyList())))
+        for (account in listOf(connected.copy(loggedIn = false), connected.copy(userId = "elder-b"),
+            connected.copy(offline = true), connected.copy(error = "权限已变更"),
+            connected.copy(selected = connected.selected!!.copy(id = "family-b")))) {
+            assertTrue(homeMessageItems(account, messages).isEmpty())
+        }
+        assertTrue(homeMessageItems(connected, messages.copy(error = "读取失败")).isEmpty())
+        assertTrue(homeMessageItems(connected, messages.copy(items = emptyList())).isEmpty())
+    }
 
     @Test fun savedLoginCannotClaimConnectionWhileOfflineOrAwaitingMembership() {
         assertTrue(homeConnectionLabel(connected).startsWith("已连接"))

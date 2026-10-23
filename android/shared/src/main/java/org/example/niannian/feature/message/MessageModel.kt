@@ -18,7 +18,8 @@ interface MessageGateway {
 data class FamilyLetter(val id: String, val text: String, val time: String, val outgoing: Boolean,
     val receipts: List<Pair<String, String>>)
 data class MessageState(val family: String = "", val user: String = "", val busy: Boolean = false,
-    val items: List<FamilyLetter> = emptyList(), val notice: String = "", val sentVersion: Int = 0)
+    val items: List<FamilyLetter> = emptyList(), val notice: String = "", val sentVersion: Int = 0,
+    val error: String = "", val loaded: Boolean = false)
 
 class MessageModel(private val gateway: MessageGateway, private val elder: Boolean,
     private val scope: CoroutineScope? = null) : ViewModel() {
@@ -36,6 +37,7 @@ class MessageModel(private val gateway: MessageGateway, private val elder: Boole
     }
 
     fun bind(family: String, user: String) {
+        if (current.value.family == family && current.value.user == user && polling?.isActive == true) return
         clear(); current.value = MessageState(family = family, user = user)
         polling = tasks.launch { while (isActive) { refresh(); delay(3000) } }
     }
@@ -53,7 +55,7 @@ class MessageModel(private val gateway: MessageGateway, private val elder: Boole
                 if (stamp == generation) {
                     registered = false
                     if (error is ApiFailure && error.status == 401) polling?.cancel()
-                    current.value = current.value.copy(items = emptyList(), notice =
+                    current.value = current.value.copy(items = emptyList(), loaded = false, error =
                         if (error is ApiFailure || error is IllegalArgumentException) error.message.orEmpty()
                         else "连接未完成，恢复后会自动补收。发送结果未确认时，请保留原内容重试。")
                 }
@@ -79,7 +81,8 @@ class MessageModel(private val gateway: MessageGateway, private val elder: Boole
                     row.getString("created_at"), box == "OUTBOX", statuses))
             }
         }
-        if (stamp == generation) current.value = current.value.copy(items = items.sortedByDescending { it.time })
+        if (stamp == generation) current.value = current.value.copy(items = items.sortedByDescending { it.time },
+            loaded = true, error = "")
     }
 
     fun refresh() = action { stamp, family -> load(stamp, family) }
