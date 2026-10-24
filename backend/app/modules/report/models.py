@@ -9,7 +9,6 @@ from app.platform.db import Base
 
 
 class InteractionMetric(Base):
-    """One successfully completed turn. No input, reply or free-form labels."""
     __tablename__ = 'interaction_metric'
     __table_args__ = (
         CheckConstraint('sequence > 0 AND duration_seconds BETWEEN 0 AND 300', name='ck_metric_duration'),

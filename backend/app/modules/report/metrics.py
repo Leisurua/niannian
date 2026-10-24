@@ -1,4 +1,3 @@
-"""Local, finite phrase classification; counts are observations, never diagnoses."""
 import re
 from collections import Counter
 from datetime import datetime, timedelta

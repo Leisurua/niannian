@@ -1,4 +1,3 @@
-"""Weather for a manually selected public city ID. Never accepts device coordinates."""
 import json
 import math
 from datetime import datetime, timedelta, timezone

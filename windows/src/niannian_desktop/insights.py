@@ -1,4 +1,3 @@
-"""Shared weather and weekly report view. All displayed data stays in memory."""
 import tkinter as tk
 from datetime import datetime, timedelta, timezone
 from tkinter import scrolledtext, ttk
