@@ -10,6 +10,7 @@
 | LLM | `backend/app/integrations/openai_compatible.py` | DeepSeek 官方 HTTPS 服务、关闭深度思考、非流式 JSON 回复；未配置时使用 Mock |
 | Embedding | `backend/app/integrations/mock/adapters.py` | 仍为 8 维 Mock，不能作为通用语义准确率证据 |
 | Android ASR / TTS | `android/shared/.../conversation/AndroidConversationVoice.kt` | 系统 SpeechRecognizer 收音识别，TextToSpeech 中文朗读；依赖已安装的服务，可能联网 |
+| Android 基础数字人 | `android/shared/.../conversation/PersimmonCompanionOrb.kt` | Compose Canvas 2D 柿子形象；待机、听您说话、思考中、正在回答；口型随设备实际播放启停 |
 | 后端 ASR / TTS / Avatar | `backend/app/integrations/mock/adapters.py` | 仍为 Mock 占位，不解码/返回音频；Android 语音不调用它们 |
 | Push | 同上，MockPush | 仅模拟派发，不声明设备送达 |
 | 摘要 | `backend/app/modules/conversation/summary.py` | 从受控主题生成最多四条回顾，不存逐字稿 |
@@ -44,6 +45,10 @@ WSS 保持本人文字/状态通道。Android 点击说话后由系统 ASR 收�
 `ConversationModel` 管理录音、识别、等待和播放状态。语音由本人对自己的显式 VOICE 授权控制，握手返回 `voice_allowed`，撤回或到期通过 `voice.permission` 停止音频；规则见安全说明。单次收音最多 30 秒，点击“说完了”停止收音并等待最终结果最多 10 秒；空白、超长、超时或服务失败不自动重发。点击“停止”或“打断并说话”立即取消本地识别/朗读并发送 `interrupt` 取消后端任务。后端用 `in_reply_to` 标记请求序号，客户端校验服务器连续序号后丢弃旧轮次；设备回调使用递增代次丢弃迟到结果。断线、后台、结束和切换家庭同样停止音频。当前支持按钮打断，不做持续监听或自动人声打断。
 
 重播重新请求服务器复验记忆权限，不直接朗读缓存回答；主动邀请不自动播音。语音实现遵循 Android [SpeechRecognizer](https://developer.android.com/reference/android/speech/SpeechRecognizer) 和 [TextToSpeech](https://developer.android.com/reference/android/speech/tts/TextToSpeech) 生命周期。具体协议在 [openapi.yaml](openapi.yaml)，传输与留存边界见 [security](security.md)。
+
+老人首页和聊天入口共用 `ConversationPanel`，移除了聊天页固定示例回复和持续“正在听”的模拟状态。`ConversationState.companionPhase` 由本地录音、识别、请求等待、待播和实际播音派生；服务端 `LISTENING` / `SPEAKING` 不能单独让形象显示收音或动嘴。TTS `onStart` 才标记实际播音，`onDone`、`onStop`、失败、按钮打断、切后台、断线和 VOICE 撤权立即清除待播/播音标记并丢弃旧回调。ASR 自动结束收音后进入识别等待。基础口型是播放期间的开合循环，不是音素对齐或音量分析。
+
+聊天页持续显示“念念 AI 陪伴”、当前状态和停止按钮；点击形象复用麦克风权限与语音授权检查，保留文字输入。当前为代码与构建验证，真机语音和动画观感仍待验证。
 
 回顾采用固定主题，生成需要本人的 CONVERSATION_SUMMARY 显式授权。家属读取还需指定家属的该 scope、SUMMARY_READ 和访问理由。主题最多四条，失败不回退为全文；保留期和撤权处理只在安全文档维护。
 

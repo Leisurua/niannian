@@ -63,6 +63,7 @@ Android 以 demo-elder 登录并加入家庭，点击“开始聊天”，输入
 
 ## Android
 
+老人端点击首页柿子形象可进入真实会话并请求说话；也可在聊天页点击形象。界面显示“念念 AI 陪伴”和待机/听您说话/思考中/正在回答，只有系统 TTS 开始播放才动嘴，停止按钮始终可见。没有连接设备时，单测和 APK 构建不能替代真机收音、播音和打断验证。
 
 家属端在“家人关注事件”中确认关注、人工记录已联系、标记误报或解决。误报可以直接关闭待确认事件；解决需先确认关注。详情展示处理时间线，误报/解决立即取消待发通知，已发布记录保留至原期限。当前家庭创建者或同时有 `SIGNAL_READ`、`SIGNAL_WRITE` 的子女、照护人、紧急联系人可以处理，仍需长辈的 `NOTIFICATION_TO_FAMILY` 授权，身体不适另需 `HEALTH_MEDICATION`。
 
@@ -87,6 +88,10 @@ cd android
 ```
 
 Windows 使用 `gradlew.bat`；按需运行 `:shared:lintDebug`。APK 位于各 `app-*/build/outputs/apk/demo/debug/`。dev、qa、demo 的应用 ID 和原有 Room 数据库身份保持不变，不要求全部变体构建。
+
+双端首页“选择城市”接入 [Open-Meteo 城市搜索](https://open-meteo.com/en/docs/geocoding-api)与[天气接口](https://open-meteo.com/en/docs)，需设备可访问 `geocoding-api.open-meteo.com`、`api.open-meteo.com` 的 HTTPS。首次无默认城市；手动选择按本机账户/家庭/长辈分别保存，可清除，不表示长辈实时位置。页面显示城市、摄氏温度、天气、数据时间和来源，前台每 15 分钟刷新，可手动重试；退后台隐藏天气，恢复前台重新获取，超过 3 小时的数据不展示。使用公共非商业接口，商用部署需按服务方条款配置。
+
+首页动态与留言页共用真实文字消息；“看到啦”提交已读回执，收到消息不自动算已读。照片通过“分享照片到家庭记忆”进入已有上传/授权流程。原声留言和视频通话仍无服务端能力：界面明确标注未接入，不模拟播放、拨通或家人回话。
 
 模拟器连接 `http://10.0.2.2:8000`。真机 API 用 HTTPS；USB Debug 可执行 `adb reverse tcp:8000 tcp:8000` 后填 `http://127.0.0.1:8000`。照片上传直接访问 S3_PUBLIC_ENDPOINT，下载通过 PUBLIC_BASE_URL 表示的 API；这些地址都需从设备可达。必要时为 USB 联调转发存储端口，或设置设备可访问的存储地址。不能把任意局域网 HTTP 地址当作 Android 已允许的 API。
 

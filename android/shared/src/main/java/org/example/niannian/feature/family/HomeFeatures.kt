@@ -148,6 +148,7 @@ internal fun BindHomeModels(state: CompanionState, account: CompanionModel, mode
             checkedAuthorization = authorization
         }
         models.memories.bind(family, state.userId)
+        models.messages?.bind(family, state.userId)
         if (subject.isNotBlank()) {
             models.tools.bind(family, subject)
             models.notifications?.let { it.bind(family, subject, state.userId); it.startPolling() }
@@ -250,7 +251,7 @@ internal fun HomeMemorySection(state: CompanionState, model: MemoryModel, subjec
 @Composable
 internal fun HomeFeatureSheet(feature: HomeFeature, state: CompanionState, models: HomeModels,
     subjects: List<Pair<String, String>>, elder: Boolean, initialTopic: String? = null,
-    conversationId: String = "", onClose: () -> Unit) {
+    conversationId: String = "", startWithVoice: Boolean = false, onClose: () -> Unit) {
     val family = homeFamily(state)
     val unavailable = state.busy || state.offline || state.pendingWrite || state.error.isNotBlank()
     val scope = rememberCoroutineScope()
@@ -276,11 +277,14 @@ internal fun HomeFeatureSheet(feature: HomeFeature, state: CompanionState, model
                 Text(feature.title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).padding(top = 12.dp))
                 TextButton(onClick = ::close, enabled = !closing) { Text(if (closing) "正在结束…" else "返回首页") }
             }
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp),
+            Column(Modifier.weight(1f).then(if (feature == HomeFeature.CHAT) Modifier.fillMaxWidth()
+                else Modifier.verticalScroll(rememberScrollState())).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 if (family.isBlank()) Text("请先登录并确认加入家庭。") else when (feature) {
                     HomeFeature.REMINDERS -> ReminderPanel(models.reminders, family, state.userId, subjects, unavailable, models.onNotifications)
-                    HomeFeature.MESSAGES -> models.messages?.let { MessagePanel(it, family, state.userId, elder, unavailable) }
+                    HomeFeature.MESSAGES -> models.messages?.let {
+                        MessagePanel(it, family, state.userId, elder, unavailable, manageLifecycle = false)
+                    }
                     HomeFeature.MEMORIES -> MemoryPanel(models.memories, family, state.userId, subjects, unavailable)
                     HomeFeature.CHAT -> models.conversation?.let { conversation ->
                         val chat by conversation.state.collectAsState()
@@ -294,7 +298,7 @@ internal fun HomeFeatureSheet(feature: HomeFeature, state: CompanionState, model
                                 sent = true; conversation.input(initialTopic)
                             }
                         }
-                        ConversationPanel(conversation, family, state.userId, unavailable)
+                        ConversationPanel(conversation, family, state.userId, unavailable, startWithVoice)
                     }
                     HomeFeature.CONVERSATION -> {
                         val conversation = models.conversation?.state?.collectAsState()?.value
