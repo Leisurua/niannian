@@ -1038,7 +1038,6 @@ private fun ElderRemindersTimeline(
 }
 
 // ============================================================================
-// 5. Material 3 Senior-Friendly Bottom Navigation Bar
 // ============================================================================
 @Composable
 private fun ElderBottomNavBar(

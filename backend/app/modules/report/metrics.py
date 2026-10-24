@@ -26,8 +26,6 @@ TOPICS = {
 
 
 def classify(text):
-    # Restrict emotions to first-person clauses and reject questions/quotes,
-    # negation and other speakers. One label per turn, not per keyword.
     emotions = set()
     for clause in re.split(r'[，,。！!；;\n]', text):
         clause = clause.strip()
@@ -52,7 +50,6 @@ async def collect(db, row, sequence, text, started_at, completed_at):
             return
         raise
     grant = await consent.latest(db, row.family_id, row.owner_user_id, row.owner_user_id, 'INTERACTION_STATS')
-    # Do not collect a turn begun before the user enabled this grant.
     if started_at < grant.granted_at:
         return
     cleared = row.provider_metadata.get('stats_cleared_at')
@@ -62,7 +59,6 @@ async def collect(db, row, sequence, text, started_at, completed_at):
         InteractionMetric.conversation_id == row.id, InteractionMetric.consent_id == grant_id,
         InteractionMetric.sequence < sequence).order_by(InteractionMetric.sequence.desc()).limit(1))
     start = max(started_at, previous.occurred_at) if previous else started_at
-    # Include the between-turn interval only when the session remained active.
     if previous and (started_at - previous.occurred_at).total_seconds() <= 300:
         start = previous.occurred_at
     duration = min(300, max(0, int((completed_at - start).total_seconds())))
@@ -77,7 +73,6 @@ async def collect(db, row, sequence, text, started_at, completed_at):
 
 async def erase(db, family_id, owner):
     await db.execute(delete(InteractionMetric).where(InteractionMetric.family_id == family_id, InteractionMetric.owner_user_id == owner))
-    # A provider call already in flight at deletion must not recreate old data.
     await db.execute(update(Conversation).where(Conversation.family_id == family_id, Conversation.owner_user_id == owner).values(
         provider_metadata=Conversation.provider_metadata.op('||')({'stats_cleared_at': utcnow().isoformat()})))
 

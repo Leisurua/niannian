@@ -50,7 +50,6 @@ def test_live_turns_template_statistics_and_delete(system):
     assert '交流观察线索' in data['text'] and 'Mock' in data['text']
     assert data['current']['attention'] is None
     assert report(client, home).json()['current']['interaction'] == data['current']['interaction']
-    # Duplicate sequence is a no-op; no input or reply is persisted in metrics.
     async def duplicate():
         async with factory() as db:
             row = await db.get(Conversation, UUID(ids[0]))
@@ -64,7 +63,6 @@ def test_live_turns_template_statistics_and_delete(system):
     stats = client.get('/v1/statistics', headers=home[4], params=dict(family_id=home[0], owner_user_id=home[3],
         start=period['start'], end=period['end_exclusive'])).json()
     assert stats['interaction'] == data['current']['interaction']
-    # A family member can only delete their own collection, not the elder's.
     assert client.delete('/v1/reports/data', params={'family_id': home[0]}, headers=home[2]).status_code == 204
     assert report(client, home).json()['current']['interaction']['turns'] == 2
     assert client.delete('/v1/reports/data', params={'family_id': home[0]}, headers=home[4]).status_code == 204
@@ -123,7 +121,6 @@ def test_week_comparison_range_and_medication_scope(system):
     assert report(client, home, timezone='invalid').status_code == 422
     assert report(client, home, week_start=str(monday - timedelta(days=70))).status_code == 422
     assert report(client, home, week_start='9999-12-27').status_code == 422
-    # Expired data excluded immediately, then physically removed by worker.
     with engine.begin() as conn:
         conn.execute(text("UPDATE interaction_metric SET occurred_at=now()-interval '36 days', retention_until=now()-interval '1 day'"))
     assert report(client, home).json()['current']['interaction']['turns'] == 0

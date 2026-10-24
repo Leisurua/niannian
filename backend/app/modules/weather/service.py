@@ -71,7 +71,6 @@ class WeatherService:
             raise AppError('WEATHER_UNAVAILABLE', '城市搜索数据不可用，请稍后重试。', 503) from None
 
     async def current(self, city_id):
-        # Coordinates come solely from the provider's public city catalogue.
         city = await self.fetch('https://geocoding-api.open-meteo.com/v1/get', dict(id=city_id))
         try:
             selected = city_view(city)
