@@ -65,3 +65,5 @@ API 和 worker 共享事务/领域规则。索引、摘要和通知写回须复�
 数据库不实现“客户端隐藏即授权”；敏感服务、WSS 与后台派发都独立校验。权限、缓存、保留期和删除边界只在 [security](security.md) 完整维护。
 
 关注通知复用现有 outbox/worker：Mock 保持可演示；显式启用时使用 ntfy HTTPS 推送及 Twilio SMS/Voice，详情见 [部署](deployment.md)。联系人、通知和事件处理均由确定性代码检查权限与授权。
+
+后端 `weather` 提供 Open-Meteo 城市搜索和公共城市编号天气查询，Windows 双端复用共享面板；Android 保留现有直连天气客户端。`report` 提供授权指标采集、日期范围统计和实时固定模板周报，复用家庭、提醒和关注权限；最小轮次指标持久化，报告每次读取重新聚合。Android 双端有周报入口和本人统计开关，Windows 双端通过共享 API 读取。统计口径见 [ai](ai.md)。

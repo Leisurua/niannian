@@ -4,7 +4,7 @@ info:
   version: 1.0.0
   description: Current REST operations implemented by NianNian. Public DTOs are not ORM entities. Authentication is Demo-only;
     conversation input is TEXT with explicit Mock or configured real LLM mode. Family device registration, human text messages
-    and recipient receipts are implemented. Planned report, emergency, export and account-deletion APIs are not available;
+    and recipient receipts are implemented. Weather, consented interaction statistics and on-demand weekly reports are implemented. Emergency, export and account-deletion APIs are not available;
     see roadmap.md. GET /health, /docs and /openapi.json are unversioned runtime endpoints. Provider metadata, vectors, raw
     audio and transcripts are not exposed as public resource content.
 servers:
@@ -48,6 +48,319 @@ x-websocket-channels:
       and interrupt acknowledgements. The initial ready, unsolicited invitations and protocol rejection errors may omit it.
       Clients validate server sequence continuity before discarding events older than the latest input or interrupt.
 paths:
+  /statistics:
+    get:
+      tags:
+      - Reports
+      summary: Statistics
+      operationId: getStatistics
+      description: Aggregates retained authorized data over local dates [start, end). Returns period, interaction (sessions, turns, active_seconds, days, hourly_turns, night_turns, emotions, repeated_topics, simulated_turns), reminders, attention, missing_data, collection_enabled, generated_at, notice and methodology. Requires REPORT_READ plus shared INTERACTION_STATS for family readers; X-Access-Reason must be FAMILY_CHECK_IN or FOLLOW_UP. Reminder and signal scopes are checked independently. No-store.
+      parameters:
+      - name: family_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Family Id
+      - name: owner_user_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Owner User Id
+      - name: start
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+          title: Start
+      - name: end
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+          title: End
+      - name: timezone
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 64
+          default: Asia/Shanghai
+          title: Timezone
+      - name: x-access-reason
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Access-Reason
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Authentication, permission or provider error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authentication, permission or provider error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Authentication, permission or provider error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /reports/weekly:
+    get:
+      tags:
+      - Reports
+      summary: Weekly
+      operationId: getWeeklyReport
+      description: Generates a fixed-template weekly report on demand without storing a report snapshot. week_start must be a Monday within the last 28 days, defaults to this week. Returns family_id, owner_user_id, current, previous, comparison (sessions_delta, turns_delta, active_seconds_delta, night_turns_delta) and text. Each period uses the statistics response shape. Deltas are null when either week has no interaction records. Current permissions and retention apply on every request. No-store.
+      parameters:
+      - name: family_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Family Id
+      - name: owner_user_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Owner User Id
+      - name: week_start
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Week Start
+      - name: timezone
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 64
+          default: Asia/Shanghai
+          title: Timezone
+      - name: x-access-reason
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Access-Reason
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Authentication, permission or provider error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authentication, permission or provider error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Authentication, permission or provider error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /reports/data:
+    delete:
+      tags:
+      - Reports
+      summary: Erase
+      operationId: deleteMyInteractionStatistics
+      description: Deletes only the authenticated owner statistics within the selected family. Also fences in-flight turns begun before deletion. An existing enabled collection grant continues to apply to future turns. Does not delete conversations or change other members data. No-store.
+      parameters:
+      - name: family_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Family Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Authentication, permission or provider error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authentication, permission or provider error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Authentication, permission or provider error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /weather/cities:
+    get:
+      tags:
+      - Weather
+      summary: Cities
+      operationId: searchWeatherCities
+      description: Searches the public Open-Meteo city catalogue by manually entered city name. Returns items with id and label, and source attribution. Sends no application credentials or device location to the provider.
+      parameters:
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 2
+          maxLength: 80
+          title: Q
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Authentication, permission or provider error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authentication, permission or provider error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Authentication, permission or provider error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /weather/current:
+    get:
+      tags:
+      - Weather
+      summary: Current
+      operationId: getCurrentWeather
+      description: Accepts a public Open-Meteo city ID, resolves catalogue coordinates, then returns city, temperature_c, weather_code, description, observed_at, utc_offset_seconds, fetched_at and source. Rejects stale data older than three hours and invalid provider responses with WEATHER_UNAVAILABLE (503). Does not accept device coordinates. No-store.
+      parameters:
+      - name: city_id
+        in: query
+        required: true
+        schema:
+          type: integer
+          maximum: 2147483647
+          exclusiveMinimum: 0
+          title: City Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Authentication, permission or provider error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authentication, permission or provider error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Authentication, permission or provider error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /auth/login:
     post:
       tags:
@@ -2304,6 +2617,7 @@ components:
       - FAMILY_MEMORY
       - HEALTH_MEDICATION
       - CONVERSATION_SUMMARY
+      - INTERACTION_STATS
       - CAMERA_PROXIMITY
       - NOTIFICATION_TO_FAMILY
     FamilyRole:

@@ -6,7 +6,7 @@ from pydantic import AwareDatetime, Field, model_validator
 from app.modules.auth.schemas import Input
 
 Role = Literal["ELDER", "CHILD", "CAREGIVER", "EMERGENCY_CONTACT"]
-Scope = Literal["VOICE", "PORTRAIT", "FAMILY_MEMORY", "HEALTH_MEDICATION", "CONVERSATION_SUMMARY", "CAMERA_PROXIMITY", "NOTIFICATION_TO_FAMILY"]
+Scope = Literal["VOICE", "PORTRAIT", "FAMILY_MEMORY", "HEALTH_MEDICATION", "CONVERSATION_SUMMARY", "CAMERA_PROXIMITY", "NOTIFICATION_TO_FAMILY", "INTERACTION_STATS"]
 
 
 class FamilyCreate(Input):

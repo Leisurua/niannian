@@ -445,6 +445,7 @@ internal fun FamilyDesignHome(
                     Text("视频通话尚未接入，当前可发送文字留言。", color = FInkMute, fontSize = 14.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(onClick = { feature = HomeFeature.CONVERSATION }) { Text("交流回顾") }
+                        TextButton(onClick = { feature = HomeFeature.REPORTS }) { Text("统计周报") }
                         TextButton(onClick = { feature = HomeFeature.NOTIFICATIONS }) { Text("家人通知") }
                     }
                     HomeMessagesSection(state, models.messages,
@@ -912,7 +913,8 @@ internal fun FamilyDesignHome(
                                             HomeFeature.MEMORIES to "记忆与照片",
                                             HomeFeature.MESSAGES to "家人留言",
                                             HomeFeature.NOTIFICATIONS to "家人通知",
-                                            HomeFeature.CONVERSATION to "交流回顾"
+                                            HomeFeature.CONVERSATION to "交流回顾",
+                                            HomeFeature.REPORTS to "统计与周报"
                                         ).forEach { (feat, label) ->
                                             Surface(
                                                 shape = CircleShape,

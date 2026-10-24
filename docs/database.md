@@ -1,6 +1,6 @@
 # 当前数据库设计
 
-PostgreSQL/pgvector 是唯一事实库，异步 SQLAlchemy 模型注册于 [platform/models.py](../backend/app/platform/models.py)。当前有以下 24 张业务/平台表；Alembic 自带的 alembic_version 不计入。没有 conversation_message、weekly_report、emergency_contact、interaction_metric 等规划表。
+PostgreSQL/pgvector 是唯一事实库，异步 SQLAlchemy 模型注册于 [platform/models.py](../backend/app/platform/models.py)。当前有以下 26 张业务/平台表；Alembic 自带的 alembic_version 不计入。没有 conversation_message、weekly_report、emergency_contact 等规划表；周报按需聚合，不保存易过期的报告副本。
 
 ## 关系和约定
 
@@ -708,3 +708,10 @@ UNIQUE `(message_id, recipient_member_id)`，索引 `(recipient_member_id, messa
 `family_contact` 按 `(family_id,user_id)` 唯一保存本人联系方式：`phone_ciphertext`、`topic_ciphertext` 为 Fernet 密文，`share_phone`、`emergency` 默认 false，`version` 用于并发更新。本人删除或成员退出/撤销会删除记录。
 
 `notification_preference.channels` 支持 IN_APP/PUSH/SMS/PHONE；`notification.provider_status` 保存供应商状态，发送资源 ID 仅存于 `notification_attempt.provider_message_id`。外部发送不自动重试，未知结果用 DELIVERY_UNKNOWN。事件处理历史复用审计动作（不记录号码），最近状态仍保存在 signal_event，误报同时写 resolved_at/resolution_code。
+
+
+### interaction_metric
+
+迁移 `20261024_interaction_stats` 新增，模型为 `modules/report/models.py`。主键 `(conversation_id, sequence)` 保证同一成功轮次只记录一次；字段 `family_id`、`owner_user_id`、`consent_id` 关联当前家庭、长辈和本人统计授权，`occurred_at` 是服务端完成时间，`duration_seconds` 为 0—300 秒，`emotions`、`topics` 是固定分类代码数组，`simulated` 标记 Mock，`retention_until` 用于到期过滤和 worker 清理。没有原文、摘要文本、自由主题或音频字段。索引为 `(family_id, owner_user_id, occurred_at)`。
+
+同一迁移将 `INTERACTION_STATS` 加入 consent scope；已有授权不会自动开启统计。删除统计时更新 conversation.provider_metadata 中的 `stats_cleared_at`，阻止删除前已经在途的回复重新写回记录。保留期与访问条件见 [security](security.md)，统计口径见 [ai](ai.md)。

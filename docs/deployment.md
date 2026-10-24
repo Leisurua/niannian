@@ -109,7 +109,7 @@ niannian-elder-demo
 
 也可执行 `windows/run.ps1 -Client family` 或 `-Client elder`。两端设置只保存服务器地址；令牌在内存中。选择家庭后点击注册/启用本机，即可与连接同一后端、加入同一家庭的 Android 或 Windows 家人收发文字留言。默认每 3 秒刷新，可关闭自动刷新；令牌过期自动轮换续期。退出登录或关闭窗口会停止轮询，等待正在执行的请求结束后撤销当前会话并清空界面；断网退出会明确提示服务端撤销未确认。
 
-升级前从 `backend/` 执行 `python -m alembic upgrade head`，再重启 API，迁移头为 `20261023_attention_contacts`。Android 双端登录并选择已确认加入的家庭后，留言卡片自动注册设备，在前台每 3 秒同步；进入后台停止轮询并清空已加载留言，返回前台重新补拉。Windows 的设备能力检测用于提示旧版后端缺少接口。
+升级前从 `backend/` 执行 `python -m alembic upgrade head`，再重启 API，迁移头为 `20261024_interaction_stats`。Android 双端登录并选择已确认加入的家庭后，留言卡片自动注册设备，在前台每 3 秒同步；进入后台停止轮询并清空已加载留言，返回前台重新补拉。Windows 的设备能力检测用于提示旧版后端缺少接口。
 
 首次联调：家属建家并生成邀请 → 长辈接受并确认加入 → Windows 注册本机/Android 打开留言卡片 → 家属发文字 → 长辈收到并点击“我已读完这条” → 回复 → 家属查看回执。接收方暂未注册或离线时仍保存给该成员，稍后可补收；回执表示这个成员的客户端已接收或本人已确认，不表示所有设备均在线。留言发送失败后用原内容重试，客户端复用幂等键；不会自动重复发送。当前没有后台消息推送。
 
@@ -144,3 +144,12 @@ docker compose --env-file infra/linux/.env -f infra/linux/docker-compose.yml dow
 - Linux API 未启动：先查看 migrate、api 日志；Android 连不上时先核对 HTTPS/回环限制和端口可达性。
 
 开发验证统一用 `scripts/verify.py`，只运行关联范围；测试库及真实 MinIO 参数见 [测试说明](../tests/README.md)。没有执行的真机、供应商或部署检查如实写未验证，不新建多份报告。
+
+
+## 天气与周报启用
+
+升级时在 `backend/` 执行 `python -m alembic upgrade head` 并重启 API/worker；新表仅在独立测试库验证，部署数据库仍需执行迁移。天气后端使用 [Open-Meteo 城市目录](https://open-meteo.com/en/docs/geocoding-api)和[天气服务](https://open-meteo.com/en/docs)，无需密钥，服务主机须能访问两个供应商 HTTPS 域名。Windows 双端“天气与周报”中搜索并手动选择城市，失败或超过三小时的数据不展示。Android 现有天气入口不变。公共接口的非商业使用要求仍适用。
+
+统计默认关闭。在 Android 老人端“家庭设置”开启本人“互动统计与周报”，如需家属阅读，再单独向家庭创建者授予同项授权；非创建者还需要 REPORT_READ。实际文字或设备语音转写完成后积累记录，开启前历史不会补录。家属首页“统计周报”选择长辈、星期一及查看理由，老人端设置区可打开“我的周报”并删除本人记录；Windows 先选择家庭，再读取长辈列表、选择周和理由后生成。
+
+报告无需定时任务或外部 LLM，查询时生成；现有 worker 负责到期清理。空报告会说明原因；提醒/关注提示还需各自授权。限定主题分类与统计口径见 [ai](ai.md)，不以空记录推断健康状态。真实设备上的周报布局与完整操作仍需真机验证。

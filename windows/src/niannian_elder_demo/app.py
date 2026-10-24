@@ -7,6 +7,7 @@ from typing import Any, Callable
 from niannian_desktop.settings import load_base_url, save_base_url
 from niannian_desktop.tasks import BackgroundTasks
 from niannian_desktop.lifecycle import DesktopLifecycle
+from niannian_desktop.insights import InsightsPanel
 
 from .api import ApiError, ClientError, ElderClient, NetworkError
 
@@ -85,6 +86,7 @@ class ElderDemoApp(DesktopLifecycle, tk.Tk):
         self.right.pack(side="left", fill="both", expand=True, padx=(10, 0))
         self._build_setup_panel()
         self._build_message_panel()
+        ttk.Button(self.left, text='天气与我的周报', command=self.open_insights).pack(fill='x', pady=10)
 
         footer = ttk.Frame(self, padding=(28, 0, 28, 22))
         footer.pack(fill="x")
@@ -95,6 +97,15 @@ class ElderDemoApp(DesktopLifecycle, tk.Tk):
             text="演示程序 · 不提供真实急救或电话呼叫",
             style="Sub.TLabel",
         ).pack(side="right")
+
+    def open_insights(self):
+        if getattr(self, 'insights_window', None) and self.insights_window.winfo_exists():
+            self.insights_window.lift()
+            return
+        self.insights_window = tk.Toplevel(self)
+        self.insights_window.title('念念 · 天气与我的周报')
+        self.insights_window.geometry('1000x680')
+        InsightsPanel(self.insights_window, self).pack(fill='both', expand=True)
 
     def _build_setup_panel(self) -> None:
         ttk.Label(self.left, text="开始使用", style="CardTitle.TLabel").pack(anchor="w")

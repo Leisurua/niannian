@@ -33,7 +33,7 @@ import java.time.ZonedDateTime
 
 internal enum class HomeFeature(val title: String) {
     REMINDERS("生活提醒"), MEMORIES("家庭记忆"), CHAT("和念念聊聊"),
-    CONVERSATION("主动陪伴与交流回顾"), NOTIFICATIONS("家人通知"), MESSAGES("家人留言")
+    CONVERSATION("主动陪伴与交流回顾"), NOTIFICATIONS("家人通知"), MESSAGES("家人留言"), REPORTS("统计与周报")
 }
 
 internal class HomeModels(
@@ -281,6 +281,8 @@ internal fun HomeFeatureSheet(feature: HomeFeature, state: CompanionState, model
                 else Modifier.verticalScroll(rememberScrollState())).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 if (family.isBlank()) Text("请先登录并确认加入家庭。") else when (feature) {
+                    HomeFeature.REPORTS -> WeeklyReportPanel(models.tools, family, subjects, elder, unavailable,
+                        state.permissions.toString() + state.selfPermissions.toString() + state.members.toString())
                     HomeFeature.REMINDERS -> ReminderPanel(models.reminders, family, state.userId, subjects, unavailable, models.onNotifications)
                     HomeFeature.MESSAGES -> models.messages?.let {
                         MessagePanel(it, family, state.userId, elder, unavailable, manageLifecycle = false)

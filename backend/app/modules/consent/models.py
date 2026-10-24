@@ -7,13 +7,13 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.platform.db import Base
 from app.platform.identifiers import utcnow, uuid7
 
-SCOPES = ("VOICE", "PORTRAIT", "FAMILY_MEMORY", "HEALTH_MEDICATION", "CONVERSATION_SUMMARY", "CAMERA_PROXIMITY", "NOTIFICATION_TO_FAMILY")
+SCOPES = ("VOICE", "PORTRAIT", "FAMILY_MEMORY", "HEALTH_MEDICATION", "CONVERSATION_SUMMARY", "CAMERA_PROXIMITY", "NOTIFICATION_TO_FAMILY", "INTERACTION_STATS")
 
 
 class Consent(Base):
     __tablename__ = "consent"
     __table_args__ = (
-        CheckConstraint("scope IN ('VOICE','PORTRAIT','FAMILY_MEMORY','HEALTH_MEDICATION','CONVERSATION_SUMMARY','CAMERA_PROXIMITY','NOTIFICATION_TO_FAMILY')", name="ck_consent_scope"),
+        CheckConstraint("scope IN ('VOICE','PORTRAIT','FAMILY_MEMORY','HEALTH_MEDICATION','CONVERSATION_SUMMARY','CAMERA_PROXIMITY','NOTIFICATION_TO_FAMILY','INTERACTION_STATS')", name="ck_consent_scope"),
         CheckConstraint("status IN ('GRANTED','REVOKED','EXPIRED')", name="ck_consent_status"),
         CheckConstraint("source IN ('ONBOARDING','SETTINGS','IMPORT')", name="ck_consent_source"),
         CheckConstraint("version > 0", name="ck_consent_version"),

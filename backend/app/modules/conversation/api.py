@@ -237,7 +237,7 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                                     history.clear()
                                 row.backend_state = 'THINKING'
                                 pending_topic = recap.topic_for(message.payload['text'])
-                                pending_signal_input = (message.payload['text'], f'turn-{message.sequence}')
+                                pending_signal_input = (message.payload['text'], f'turn-{message.sequence}', utcnow())
                                 pending_sequence = message.sequence
                                 outgoing = [service.event(row, 'assistant.state', {'state': 'THINKING'})]
                                 outgoing += service.scam_warning(row, message.payload['text'])
@@ -273,6 +273,9 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                         if pending_topic and result.trace.get('result_status') != 'FAILED' and last_reply != UNAVAILABLE:
                             await recap.add_topic(db, row, pending_topic)
                         pending_topic = None
+                        if pending_signal_input and result.trace.get('result_status') != 'FAILED' and last_reply not in (UNAVAILABLE, UNKNOWN):
+                            from app.modules.report.metrics import collect
+                            await collect(db, row, pending_sequence, pending_signal_input[0], pending_signal_input[2], utcnow())
                         if pending_signal_input and result.trace.get('result_status') != 'FAILED':
                             from app.modules.signal.service import record_turn
                             signal_events = await record_turn(db, actor, row.id, pending_signal_input[1],

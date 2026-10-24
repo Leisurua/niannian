@@ -7,6 +7,7 @@ from typing import Any, Callable
 from niannian_desktop.settings import load_base_url, save_base_url
 from niannian_desktop.tasks import BackgroundTasks
 from niannian_desktop.lifecycle import DesktopLifecycle
+from niannian_desktop.insights import InsightsPanel
 
 from .api import ApiError, ClientError, NetworkError, NianNianClient
 
@@ -81,6 +82,8 @@ class FamilyClientApp(DesktopLifecycle, tk.Tk):
         self._build_connect_tab()
         self._build_family_tab()
         self._build_message_tab()
+        self.insights = InsightsPanel(self.tabs, self)
+        self.tabs.add(self.insights, text=' 天气与周报 ')
 
         log_card = ttk.Frame(self, style="Card.TFrame", padding=(14, 8))
         log_card.pack(fill="x", padx=28, pady=(0, 22))

@@ -23,12 +23,13 @@
 | 提醒反馈 | 执行记录的本人；离线反馈验证 owner/family、提醒版本、发生时间、期限与幂等键，不能伪造执行或送达 |
 | 会话/WSS | ACTIVE 老人本人创建文字会话，WSS 仅会话本人；连接与后续操作复查会话、令牌、家庭和设备状态 |
 | 摘要 | 本人明确允许生成；指定家属需 CONVERSATION_SUMMARY、SUMMARY_READ 和 FAMILY_CHECK_IN/FOLLOW_UP 理由，读取审计 |
+| 统计与周报 | 采集需本人显式 INTERACTION_STATS；家属读取另需 REPORT_READ、指定家属的 INTERACTION_STATS 和访问理由。提醒及关注数据再次检查各自权限和 scope，不随统计授权放行。所有读取 no-store 并审计 |
 | 主动邀请 | 家属提议、老人确认同一版本；本人可暂停，不以通知偏好代替共同确认 |
 | SignalEvent | 同家庭授权家属需 SIGNAL_READ 和 NOTIFICATION_TO_FAMILY；身体不适另需 HEALTH_MEDICATION；确认、记录联系和解决另需 SIGNAL_WRITE，家庭创建者拥有读写权限；本人仅有限安全状态 |
 | Notification | 仅指定收件人，且每次读/派发复验事件来源和当前 scope；已取消/过期/删除不可读发 |
 | 设备与家庭留言 | 绑定当前登录者及其 ACTIVE 家庭，ELDER/CHILD/CAREGIVER 角色与端类型匹配；文字仅发送人和发送时确定的收件成员可读，回执仅收件本人可写。每次收发复查当前家庭成员资格；退出/撤销成员后不可继续拉取或确认 |
 
-scope 词表保持：VOICE、PORTRAIT、FAMILY_MEMORY、HEALTH_MEDICATION、CONVERSATION_SUMMARY、CAMERA_PROXIMITY、NOTIFICATION_TO_FAMILY。通用 scope 存在不代表对应语音、相机或电话功能已实现。AI 处理另需显式授权，详见 [ai](ai.md)。
+scope 词表保持：VOICE、PORTRAIT、FAMILY_MEMORY、HEALTH_MEDICATION、CONVERSATION_SUMMARY、CAMERA_PROXIMITY、NOTIFICATION_TO_FAMILY、INTERACTION_STATS。通用 scope 存在不代表对应语音、相机或电话功能已实现。AI 处理另需显式授权，详见 [ai](ai.md)。
 
 ## 照片与敏感传输
 
@@ -45,6 +46,7 @@ Android API 默认 HTTPS，Debug HTTP 仅限回环/模拟器主机；局域网�
 | 数据 | 当前规则 |
 | --- | --- |
 | 原始音频、逐字稿 | 应用不保存录音文件，后端不接收原始音频；识别文字与回复仅在会话内存使用，设备语音服务的外部留存不由应用控制 |
+| 互动统计 | 仅从本人开启统计之后的成功轮次采集，最长 35 天并受授权更早到期约束；本人撤回立即物理删除，再次授权不恢复历史；分享撤回立即拒绝家属读取。本人可 DELETE /reports/data 清空，worker 清理过期、撤权、失效会话/家庭的数据。报告按需计算，无持久化报告副本 |
 | 受控摘要 | 首次允许收集主题起最长 24 小时，受授权更早到期约束；访问时先过滤，到期/撤权后台清理，不借阅读或重试续期 |
 | 老人离线提醒与待同步反馈 | 最多 24 小时，按用户/家庭/提醒版本隔离；退出、切换、到期及已知撤权清理 |
 | 家属照片、摘要、通知和 RAG | 不新增离线磁盘副本；Android 通知只在前台内存展示，后台/退出/换家庭/离线清空 |
@@ -76,3 +78,5 @@ Android 语音需要本人对自己的显式 VOICE 授权（授予家属不等�
 紧急联系人只扩展 SIGNAL_READ/SIGNAL_WRITE 的可授权角色，不获得其他业务权限；仍逐次检查长辈关注/健康授权。号码仅由成员本人登记，share_phone 默认关闭，仅事件处理人可读取当前允许分享的长辈/已获授权紧急联系人号码。号码和 ntfy 主题加密落库，不进入日志或审计正文，删除联系人/退出/移除成员后不可再使用。号码暂为本人声明，未验证运营商归属。
 
 外发默认关闭，demo/test 禁止启用真实渠道；用户还需选择接收渠道。发送前在家庭锁内再次检查授权、偏好、事件状态，网络调用限制 5 秒；撤回与发送按此锁串行，撤回不能追回此前已提交供应商的通知。仅发送通用 AI 提示。ntfy 主题须配置私有访问控制。短信送达和电话结束不代表事件解决，均不能自动产生家属处理动作。
+
+周报页面仅驻留内存：Android 后台/换家庭/读取失败清空，打开时每 30 秒重新检查；Windows 离开页面、失去窗口焦点、换家庭/账户或展示 30 秒后清空。天气后端只接收公共城市编号，从 Open-Meteo 城市目录取得公共坐标，不接收设备经纬度，也不向天气供应商发送登录凭证。

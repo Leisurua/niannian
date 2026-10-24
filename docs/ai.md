@@ -65,3 +65,14 @@ WSS 保持本人文字/状态通道。Android 点击说话后由系统 ASR 收�
 记录 request/conversation id、provider/model、prompt/rule version、状态、延迟和候选计数，禁止输入全文、原始音频、完整健康/家庭记忆与模型思考过程。完整数据保护规则见 [security](security.md)。
 
 改动编排/RAG 时运行关联 conversation、embedding、summary、safety 测试；涉及授权、索引失效或任务写回时补对应集成测试。测试路径见 [测试说明](../tests/README.md)，不另建分周 AI 评估报告。
+
+
+## 互动统计与固定模板周报
+
+`modules/report` 在 WSS 成功完成文字轮次时记录最小指标，默认关闭，需独立本人 `INTERACTION_STATS` 授权；无需另启 LLM 或 Embedding 服务。失败、打断、重播、ping 不记新轮次。保存范围与撤回删除规则见 [security](security.md)。统计同时支持真实 LLM 和 Mock，并单列 Mock 轮数。
+
+`GET /v1/statistics` 接收 family_id、owner_user_id、start、end（不含）、timezone；允许最近 35 天内开始、长度 1—31 天的范围。`GET /v1/reports/weekly` 接收同一家庭/主体及可选 week_start（星期一，默认本周）、timezone（默认 Asia/Shanghai），按当前记录生成固定模板，返回 current、previous、comparison、text。上周或本周无互动记录时变化值为 null，不输出虚假的增长率。当前周标注未完成，客户端提供最近四周选择。每次查询复验授权，不写报告快照，也不调用模型编造叙述。
+
+口径：有成功轮次的不同会话计一次交流；同一会话跨日只在周总次数中计一次。轮次按服务端完成时间和所选 IANA 时区归属，汇总每日首末互动、24 小时时段及夜间（22:00—06:00）轮数。活跃时长为每轮回复耗时与同会话内不超过五分钟的相邻轮次间隔，每轮最多五分钟；它是估计，不是录音时长。提醒按计划执行时点计数，展示 DONE/LATER/SKIPPED/PENDING/NO_RESPONSE 和已反馈记录的平均响应秒数，不将未反馈解释为未服药。关注提示仅聚合当前仍可访问的事件，注明七天保留导致的缺失。
+
+情绪类别为开心、难过、孤独、担忧、思念家人；仅识别有限的第一人称明确表达，过滤否定、提问、引语和转述。主题使用固定词组/同义词分类（如包饺子、种花种菜、工作往事），按不同会话去重并列出至少两次的主题。这是真实输入上的有限本地规则，尚不是需求中完整的 embedding 语义聚类；未分类不代表没有相关内容。周报始终标注“交流观察线索”、方法、授权/保留/数据缺失及 Mock，不推断健康、睡眠、心理或认知结论。
