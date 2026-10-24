@@ -104,6 +104,17 @@ class CompanionModel(private val repository: FamilyRepository, val elder: Boolea
     }
 
     fun reload() = action { home() }
+    suspend fun contact(family: String, method: String = "GET", body: JSONObject? = null, version: Long? = null): JSONObject {
+        require(current.value.selected?.id == family && current.value.selected?.status == "ACTIVE")
+        return repository.call("/v1/families/$family/my-contact", method, body, false, version)
+    }
+    suspend fun contactConsent(family: String, recipient: String, scope: String, revokeId: String?) {
+        require(elder && current.value.selected?.id == family && current.value.selected?.status == "ACTIVE")
+        require(scope in listOf("NOTIFICATION_TO_FAMILY", "HEALTH_MEDICATION"))
+        if (revokeId != null) repository.call("/v1/consents/$revokeId/revoke", "POST", JSONObject(), true)
+        else repository.call("/v1/consents", "POST", JSONObject().put("family_id", family)
+            .put("subject_user_id", current.value.userId).put("grantee_user_id", recipient).put("scope", scope).put("source", "SETTINGS"), true)
+    }
     fun choose(id: String) = action { repository.noteFamily(id); current.value = current.value.copy(invite = ""); home(id) }
     fun createFamily(name: String) = action {
         require(name.isNotBlank()) { "请输入家庭称呼。" }
@@ -187,6 +198,13 @@ class CompanionModel(private val repository: FamilyRepository, val elder: Boolea
         require(!elder) { "需要家庭管理权限。" }
         repository.call("/v1/families/${family.id}/members/${member.id}", "PATCH",
             JSONObject().put("permission_codes", JSONArray((member.permissions + "MEMBER_READ").distinct())), expectedVersion = member.version)
+        home()
+    }
+    fun allowSignalHandling(member: Member) = action {
+        val family = current.value.selected ?: return@action
+        require(!elder)
+        repository.call("/v1/families/${family.id}/members/${member.id}", "PATCH",
+            JSONObject().put("permission_codes", JSONArray((member.permissions + listOf("MEMBER_READ", "SIGNAL_READ", "SIGNAL_WRITE")).distinct())), expectedVersion = member.version)
         home()
     }
 

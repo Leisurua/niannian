@@ -12,7 +12,7 @@ from app.modules.signal import service as signals
 from app.platform import tasks
 from app.platform.identifiers import utcnow
 from app.worker.tasks import run_one
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from backend.tests.support import (
     URL,
@@ -321,7 +321,7 @@ def test_preferences_version_validation_and_no_delegated_recipient(system):
     pref(client,home)
     body=dict(channels=['PUSH'],timezone='Asia/Shanghai')
     assert client.put(path,headers={**home[2],'If-Match':'0'},json=body).status_code==409
-    for change in ({'channels':['SMS']},{'channels':['PUSH','PUSH']},{'timezone':'invalid'},
+    for change in ({'channels':['EMAIL']},{'channels':['PUSH','PUSH']},{'timezone':'invalid'},
                    {'recipient_user_id':home[3]},{'quiet_hours_start':'22:00'}):
         assert client.put(path,headers={**home[2],'If-Match':'1'},json=body|change).status_code==422
     assert client.get(path,headers=home[4]).status_code==403
@@ -454,3 +454,231 @@ def test_standalone_worker_process_publishes_inapp_notification(system):
         capture_output=True,timeout=40)
     assert completed.returncode==0
     assert client.get('/v1/notifications',headers=home[2]).json()['items'][0]['status']=='SENT'
+
+
+def test_signal_confirmation_contact_resolution_and_replay(system):
+    client, engine, factory, _ = system
+    home, _, _, events = setup_event(system)
+    drain(factory)
+    path = '/v1/signal-events/' + events[0]['signal_event_id']
+    detail = client.get(path, headers=home[2]).json()
+    assert detail['can_handle'] and detail['status'] == 'NOTIFIED'
+    body = {'action': 'ACKNOWLEDGE', 'expected_status': 'NOTIFIED'}
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        responses = list(pool.map(lambda _: post(client, path + '/actions', home[2], body, key='ack-once'), range(3)))
+    assert all(r.status_code == 200 for r in responses)
+    assert len({r.json()['actioned_at'] for r in responses}) == 1
+    first_time = responses[0].json()['actioned_at']
+    assert post(client, path + '/actions', home[2], body).json()['actioned_at'] == first_time
+    conflict = post(client, path + '/actions', home[2], {'action': 'CONTACT', 'expected_status': 'NOTIFIED'})
+    assert conflict.status_code == 409
+    contact = post(client, path + '/actions', home[2], {'action': 'CONTACT', 'expected_status': 'ACKNOWLEDGED'}, key='contact-once')
+    assert contact.status_code == 200 and contact.json()['status'] == 'CONTACTED'
+    resolved = post(client, path + '/actions', home[2], {'action': 'RESOLVE', 'expected_status': 'CONTACTED'}, key='resolve-once')
+    assert resolved.status_code == 200
+    assert resolved.json()['resolved_at'] == resolved.json()['actioned_at']
+    assert resolved.json()['resolution_code'] == 'FAMILY_CONFIRMED'
+    assert client.get(path, headers=home[2]).json()['status'] == 'RESOLVED'
+    assert post(client, path + '/actions', home[2], body, key='ack-once').json()['status'] == 'RESOLVED'
+    assert post(client, path + '/actions', home[2], body).status_code == 409
+    assert post(client, path + '/actions', home[2], {'action': 'CONTACT', 'expected_status': 'RESOLVED'}, key='ack-once').status_code == 409
+    # Resolved events and published notifications remain readable within their original retention.
+    item = client.get('/v1/notifications', headers=home[2]).json()['items'][0]
+    assert post(client, '/v1/notifications/' + item['id'] + '/read', home[2]).status_code == 200
+    async def maintain():
+        async with factory() as db:
+            await notifications.maintenance(db)
+            await db.commit()
+    asyncio.run(maintain())
+    assert client.get('/v1/notifications', headers=home[2]).json()['items']
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM audit_log WHERE action='SIGNAL_CONTACT'")).scalar() == 1
+        assert str(conn.execute(text('SELECT last_action_by FROM signal_event')).scalar()) == home[1]
+
+
+@pytest.mark.parametrize('reason', ['revoke', 'expired', 'member', 'source'])
+def test_signal_action_replay_revalidates_authorization(system, reason):
+    client, engine, _, _ = system
+    home, _, consent_id, events = setup_event(system)
+    path = '/v1/signal-events/' + events[0]['signal_event_id'] + '/actions'
+    body = {'action': 'ACKNOWLEDGE', 'expected_status': 'VALIDATED'}
+    assert post(client, path, home[2], body, key='ack').status_code == 200
+    if reason == 'revoke':
+        assert post(client, '/v1/consents/' + consent_id + '/revoke', home[4]).status_code == 201
+    else:
+        with engine.begin() as conn:
+            if reason == 'expired':
+                conn.execute(text("UPDATE consent SET expires_at=now()-interval '1 second'"))
+            elif reason == 'member':
+                conn.execute(text("UPDATE family_member SET status='REVOKED' WHERE user_id=:id"), {'id': home[1]})
+            else:
+                conn.execute(text("UPDATE conversation SET deleted_at=now()"))
+    assert post(client, path, home[2], body, key='ack').status_code == 404
+    assert post(client, path, home[2], {'action': 'RESOLVE', 'expected_status': 'ACKNOWLEDGED'}).status_code == 404
+    with engine.connect() as conn:
+        assert conn.execute(text('SELECT status FROM signal_event')).scalar() == 'ACKNOWLEDGED'
+
+
+@pytest.mark.parametrize('role', ['CAREGIVER', 'EMERGENCY_CONTACT'])
+def test_signal_read_permission_does_not_grant_handling(system, role):
+    client, engine, _, _ = system
+    home, _, _, events = setup_event(system)
+    path = '/v1/signal-events/' + events[0]['signal_event_id']
+    body = {'action': 'ACKNOWLEDGE', 'expected_status': 'VALIDATED'}
+    assert post(client, path + '/actions', home[4], body).status_code == 404
+    outsider, outsider_headers = login(client, 'demo-other')
+    assert post(client, path + '/actions', outsider_headers, body).status_code == 404
+    other, headers = login(client, 'demo-caregiver')
+    invitation = post(client, f'/v1/families/{home[0]}/invitations', home[2],
+        {'target_role': role, 'expires_at': (utcnow()+timedelta(hours=1)).isoformat()}).json()['token']
+    joined = post(client, f'/v1/family-invitations/{invitation}/accept', headers, {'confirm_identity': True}).json()
+    consent = post(client, '/v1/consents', home[4], dict(family_id=home[0], subject_user_id=home[3],
+        grantee_user_id=other, scope='NOTIFICATION_TO_FAMILY', source='SETTINGS'))
+    assert consent.status_code == 201
+    member_path = f'/v1/families/{home[0]}/members/{joined["id"]}'
+    read_member = client.patch(member_path, headers={**home[2], 'If-Match': str(joined['version'])},
+        json={'permission_codes': ['SIGNAL_READ']})
+    assert read_member.status_code == 200
+    assert client.get(path, headers=headers).json()['can_handle'] is False
+    assert post(client, path + '/actions', headers, body, key='caregiver-ack').status_code == 403
+    writer = client.patch(member_path, headers={**home[2], 'If-Match': str(read_member.json()['version'])},
+        json={'permission_codes': ['SIGNAL_READ', 'SIGNAL_WRITE']})
+    assert writer.status_code == 200
+    assert post(client, path + '/actions', headers, body, key='caregiver-ack').status_code == 200
+    removed = client.patch(member_path, headers={**home[2], 'If-Match': str(writer.json()['version'])},
+        json={'permission_codes': ['SIGNAL_READ']})
+    assert removed.status_code == 200
+    assert post(client, path + '/actions', headers, body, key='caregiver-ack').status_code == 403
+
+
+def test_signal_resolution_stops_pending_dispatch_and_rejects_skipped_confirmation(system):
+    client, engine, factory, _ = system
+    home, _, _, events = setup_event(system, channels=['IN_APP', 'PUSH'])
+    path = '/v1/signal-events/' + events[0]['signal_event_id'] + '/actions'
+    assert post(client, path, home[2], {'action': 'CONTACT', 'expected_status': 'VALIDATED'}).status_code == 409
+    assert post(client, path, home[2], {'action': 'RESOLVE', 'expected_status': 'VALIDATED'}).status_code == 409
+    assert post(client, path, home[2], {'action': 'ACKNOWLEDGE', 'expected_status': 'VALIDATED', 'owner_user_id': home[1]}).status_code == 422
+    assert post(client, path, home[2], {'action': 'ACKNOWLEDGE', 'expected_status': 'VALIDATED'}).status_code == 200
+    assert post(client, path, home[2], {'action': 'RESOLVE', 'expected_status': 'ACKNOWLEDGED'}).status_code == 200
+    drain(factory)
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM notification WHERE status <> 'CANCELLED'")).scalar() == 0
+        assert conn.execute(text('SELECT status FROM signal_event')).scalar() == 'RESOLVED'
+
+
+def test_false_positive_is_terminal_idempotent_and_cancels_queue(system):
+    client, engine, factory, _ = system
+    home, _, _, events = setup_event(system, channels=['IN_APP', 'PUSH', 'SMS', 'PHONE'])
+    path = '/v1/signal-events/' + events[0]['signal_event_id']
+    body = {'action': 'FALSE_POSITIVE', 'expected_status': 'VALIDATED'}
+    response = post(client, path + '/actions', home[2], body, key='false-positive')
+    assert response.status_code == 200
+    assert response.json()['status'] == response.json()['resolution_code'] == 'FALSE_POSITIVE'
+    assert [entry['action'] for entry in response.json()['history']] == ['FALSE_POSITIVE']
+    assert post(client, path + '/actions', home[2], body, key='false-positive').status_code == 200
+    assert post(client, path + '/actions', home[2], {'action': 'RESOLVE', 'expected_status': 'FALSE_POSITIVE'}).status_code == 409
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM notification WHERE status='CANCELLED'")).scalar() == 4
+        assert conn.execute(text("SELECT count(*) FROM audit_log WHERE action='SIGNAL_FALSE_POSITIVE'")).scalar() == 1
+    drain(factory)
+
+
+def test_contacts_are_self_managed_encrypted_shared_with_handlers_and_deleted(system, monkeypatch):
+    from cryptography.fernet import Fernet
+    from app.platform.config import get_settings
+    monkeypatch.setenv('CONTACT_ENCRYPTION_KEY', Fernet.generate_key().decode())
+    get_settings.cache_clear()
+    client, engine, _, _ = system
+    home, _, _, events = setup_event(system)
+    path = f'/v1/families/{home[0]}/my-contact'
+    assert client.get(path, headers=home[4]).json()['version'] == 0
+    body = dict(phone='+12025550101', share_phone=True, emergency=False, ntfy_topic='')
+    saved = client.put(path, headers={**home[4], 'If-Match': '0'}, json=body)
+    assert saved.status_code == 200
+    assert client.put(path, headers={**home[4], 'If-Match': '0'}, json=body).status_code == 409
+    with engine.connect() as conn:
+        ciphertext = conn.execute(text('SELECT phone_ciphertext FROM family_contact')).scalar()
+        assert '+12025550101' not in ciphertext
+    event = '/v1/signal-events/' + events[0]['signal_event_id']
+    assert client.get(event, headers=home[2]).json()['contacts'][0]['phone'] == '+12025550101'
+    assert client.get(event, headers=home[4]).json().get('contacts') is None
+    assert client.get(path, headers=home[2]).json()['phone'] == ''
+    _, outsider = login(client, 'demo-other')
+    assert client.get(path, headers=outsider).status_code == 404
+    assert client.delete(path, headers=home[4]).status_code == 204
+    assert client.get(event, headers=home[2]).json()['contacts'] == []
+    assert client.put(path, headers={**home[4], 'If-Match': '0'}, json=body).status_code == 200
+    members = client.get(f'/v1/families/{home[0]}/members', headers=home[2]).json()['items']
+    elder = next(m for m in members if m['user_id'] == home[3])
+    assert client.patch(f'/v1/families/{home[0]}/members/{elder["id"]}',
+        headers={**home[2], 'If-Match': str(elder['version'])}, json={'status': 'REVOKED'}).status_code == 200
+    with engine.connect() as conn:
+        assert conn.execute(text('SELECT count(*) FROM family_contact')).scalar() == 0
+
+
+def test_external_disabled_fails_explicitly_without_sending(system):
+    client, engine, factory, _ = system
+    home, _, _, _ = setup_event(system, channels=['SMS', 'PHONE'])
+    assert client.get('/v1/notification-capabilities', headers=home[2]).json()['external_enabled'] is False
+    drain(factory)
+    with engine.connect() as conn:
+        assert conn.execute(text('SELECT status,error_code FROM notification ORDER BY channel')).all() == [
+            ('FAILED', 'CHANNEL_NOT_CONFIGURED'), ('FAILED', 'CHANNEL_NOT_CONFIGURED')]
+
+
+@pytest.mark.parametrize('outcome', ['accepted', 'timeout', 'crash'])
+def test_external_delivery_persistence_receipts_and_no_duplicate_send(system, monkeypatch, outcome):
+    from cryptography.fernet import Fernet
+    from app.integrations.notifications import Receipt, DeliveryFailure
+    from app.platform.config import get_settings, Settings
+    from app.modules.notification.models import Notification
+    monkeypatch.setenv('CONTACT_ENCRYPTION_KEY', Fernet.generate_key().decode())
+    get_settings.cache_clear()
+    config = Settings(app_env='dev', notification_external_enabled=True)
+    monkeypatch.setattr(notifications, 'get_settings', lambda: config)
+    sent = []
+    class Provider:
+        def __init__(self, settings):
+            pass
+        async def send(self, channel, destination):
+            sent.append(channel)
+            assert destination == '+12025550101'
+            if outcome == 'timeout':
+                raise DeliveryFailure('DELIVERY_UNKNOWN')
+            return Receipt('twilio', ('SM' if channel == 'SMS' else 'CA') + 'a' * 32, 'queued')
+        async def status(self, channel, identifier):
+            return 'delivered' if channel == 'SMS' else 'completed'
+    monkeypatch.setattr(notifications, 'ExternalNotifications', Provider)
+    client, engine, factory, _ = system
+    home, _, _, events = setup_event(system, channels=['SMS', 'PHONE'])
+    path = f'/v1/families/{home[0]}/my-contact'
+    assert client.put(path, headers={**home[2], 'If-Match': '0'}, json={'phone': '+12025550101'}).status_code == 200
+    if outcome == 'crash':
+        async def interrupted():
+            async with factory() as db:
+                task = await tasks.claim(db)
+                await db.commit()
+            async with factory() as db:
+                await notifications.prepare(db, task.id, task.lease_token, task.resource_id)
+                await db.commit()
+        asyncio.run(interrupted())
+        with engine.begin() as conn:
+            conn.execute(text("UPDATE task_outbox SET lease_until=now()-interval '1 second' WHERE status='RUNNING'"))
+    drain(factory)
+    drain(factory)
+    if outcome == 'accepted':
+        async def maintain():
+            async with factory() as db:
+                for row in (await db.scalars(select(Notification))).all():
+                    await notifications.refresh_receipt(db, row)
+                await db.commit()
+        asyncio.run(maintain())
+        assert sorted(sent) == ['PHONE', 'SMS']
+        with engine.connect() as conn:
+            assert conn.execute(text('SELECT channel,status,provider_status FROM notification ORDER BY channel')).all() == [
+                ('PHONE', 'SENT', 'completed'), ('SMS', 'DELIVERED', 'delivered')]
+            assert conn.execute(text('SELECT status FROM signal_event')).scalar() == 'NOTIFIED'
+    else:
+        assert len(sent) == (1 if outcome == 'crash' else 2)
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT count(*) FROM notification WHERE error_code='DELIVERY_UNKNOWN'")).scalar() == (1 if outcome == 'crash' else 2)

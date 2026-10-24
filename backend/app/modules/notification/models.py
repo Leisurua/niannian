@@ -1,6 +1,6 @@
 from datetime import datetime, time
 from uuid import UUID
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, Time, UniqueConstraint, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, Time, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from app.platform.db import Base
@@ -29,6 +29,7 @@ class Notification(Base):
     summary: Mapped[str] = mapped_column(Text)
     policy_version: Mapped[str] = mapped_column(String(64))
     provider: Mapped[str | None] = mapped_column(String(64))
+    provider_status: Mapped[str | None] = mapped_column(String(24))
     action: Mapped[str] = mapped_column(String(24), default='NONE', server_default='NONE')
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, server_default=func.now())
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -68,7 +69,7 @@ class NotificationPreference(Base):
         UniqueConstraint('family_id', 'owner_user_id', 'recipient_user_id', name='uq_notification_preference'),
         CheckConstraint('version > 0', name='ck_notification_preference_version'),
         CheckConstraint('(quiet_hours_start IS NULL) = (quiet_hours_end IS NULL)', name='ck_notification_preference_quiet'),
-        CheckConstraint("jsonb_typeof(channels) = 'array' AND channels <@ '[\"IN_APP\",\"PUSH\"]'::jsonb", name='ck_notification_preference_channels'),
+        CheckConstraint("jsonb_typeof(channels) = 'array' AND channels <@ '[\"IN_APP\",\"PUSH\",\"SMS\",\"PHONE\"]'::jsonb", name='ck_notification_preference_channels'),
     )
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
     family_id: Mapped[UUID] = mapped_column(ForeignKey('family.id', ondelete='RESTRICT'))
@@ -81,3 +82,17 @@ class NotificationPreference(Base):
     version: Mapped[int] = mapped_column(Integer, default=1, server_default='1')
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, server_default=func.now())
+
+
+class FamilyContact(Base):
+    __tablename__ = 'family_contact'
+    __table_args__ = (UniqueConstraint('family_id', 'user_id', name='uq_family_contact_member'),
+        CheckConstraint('version > 0', name='ck_family_contact_version'))
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
+    family_id: Mapped[UUID] = mapped_column(ForeignKey('family.id', ondelete='CASCADE'))
+    user_id: Mapped[UUID] = mapped_column(ForeignKey('user.id', ondelete='CASCADE'))
+    phone_ciphertext: Mapped[str | None] = mapped_column(Text)
+    topic_ciphertext: Mapped[str | None] = mapped_column(Text)
+    share_phone: Mapped[bool] = mapped_column(Boolean, default=False, server_default='false')
+    emergency: Mapped[bool] = mapped_column(Boolean, default=False, server_default='false')
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default='1')

@@ -187,6 +187,12 @@ class FamilyRepository(
         executeCall(path = "/v1/notifications/$id/read", method = "POST", body = JSONObject(), idempotent = false, expectedVersion = null, explicitKey = key)
     }
 
+    suspend fun handleSignal(id: String, body: JSONObject, key: String): JSONObject = requestMutex.withLock {
+        require(UUID.fromString(id).toString() == id && UUID.fromString(key).toString() == key)
+        executeCall(path = "/v1/signal-events/$id/actions", method = "POST", body = body, idempotent = false,
+            expectedVersion = null, explicitKey = key)
+    }
+
     suspend fun registerMessageDevice(body: JSONObject): JSONObject = requestMutex.withLock {
         executeCall("/v1/devices/register", "POST", body, false, null, UUID.randomUUID().toString())
     }

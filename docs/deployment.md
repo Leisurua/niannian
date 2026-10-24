@@ -63,6 +63,21 @@ Android 以 demo-elder 登录并加入家庭，点击“开始聊天”，输入
 
 ## Android
 
+
+家属端在“家人关注事件”中确认关注、人工记录已联系、标记误报或解决。误报可以直接关闭待确认事件；解决需先确认关注。详情展示处理时间线，误报/解决立即取消待发通知，已发布记录保留至原期限。当前家庭创建者或同时有 `SIGNAL_READ`、`SIGNAL_WRITE` 的子女、照护人、紧急联系人可以处理，仍需长辈的 `NOTIFICATION_TO_FAMILY` 授权，身体不适另需 `HEALTH_MEDICATION`。
+
+双方在家庭设置的“我的联系方式与紧急联系”登记本人号码（E.164，如带 +86 国家区号），可单独允许号码分享、登记为紧急联系人或删除。号码加密保存；退出/移除成员时删除。长辈可在此处逐人授予或撤回关注通知、健康信息授权。管理员可邀请紧急联系人并授予处理权限。事件中的拨号、短信入口使用当前获准分享的号码，打开系统拨号/短信编辑器，由用户完成发送；不会据此标记联系成功。号码为本人声明，尚未做运营商验证。
+
+### 外部关注通知（默认关闭）
+
+API 和 worker 同时配置 `CONTACT_ENCRYPTION_KEY`（用 `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` 生成并仅保存到本地 `.env`），才能保存号码/推送主题。升级数据库后可使用联系人功能，无须开启外发。密钥丢失会导致已存号码无法解密；不要使用登录签名密钥替代。
+
+外发需显式设置 `APP_ENV=dev`、`NOTIFICATION_EXTERNAL_ENABLED=true`。ntfy 推送设置 `NOTIFICATION_PUSH_PROVIDER=ntfy`、`NTFY_BASE_URL`（HTTPS 私有服务）、`PUSH_API_KEY`，接收者在联系人设置填写本人主题，并在 ntfy 手机客户端订阅；服务端必须为主题配置访问控制。此实现通过 ntfy 客户端接收后台推送，念念 APK 尚未内置厂商推送 SDK。[ntfy 官方发送接口](https://docs.ntfy.sh/publish/)。
+
+短信和自动语音电话配置 `TWILIO_ACCOUNT_SID`、`TWILIO_AUTH_TOKEN`、`TWILIO_FROM_NUMBER`。接收者登记本人号码并在对应长辈通知偏好中主动开启 SMS/PHONE，遵守免打扰；服务商账号、号码、地区发送权限与费用由部署方配置。发送内容仅为“念念 AI 提醒，请到应用查看授权详情”，不外发逐字稿、健康线索、家庭名称或事件标识。语音为 AI 自动播报，不是接通长辈本人。[短信 API](https://www.twilio.com/docs/messaging/api/message-resource)、[语音 API](https://www.twilio.com/docs/voice/api/call-resource)。
+
+`GET /v1/notification-capabilities` 返回实际配置状态；外发关闭、缺少配置或接收地址会保留明确失败记录，不回退为成功。供应商受理仅标记 SENT；worker 查询 Twilio 回执，短信 delivered 才记送达，电话 busy/no-answer/failed 显示失败，completed 仅表示呼叫结束（可能是语音信箱），不会自动确认、联系或解决事件。外部发送超时、丢失回包或进程在发送中崩溃时标记 DELIVERY_UNKNOWN 并停止自动重发，避免重复呼叫；需人工核实。Mock 推送仍仅为模拟，不证明设备送达。尚未使用真实账号、号码或设备验证外部渠道。
+
 `android/local.properties` 配置本机 `sdk.dir`，不要提交。两个应用共享 `shared`；日常只构建所改应用或一个 Demo 变体：
 
 ```bash
@@ -89,7 +104,7 @@ niannian-elder-demo
 
 也可执行 `windows/run.ps1 -Client family` 或 `-Client elder`。两端设置只保存服务器地址；令牌在内存中。选择家庭后点击注册/启用本机，即可与连接同一后端、加入同一家庭的 Android 或 Windows 家人收发文字留言。默认每 3 秒刷新，可关闭自动刷新；令牌过期自动轮换续期。退出登录或关闭窗口会停止轮询，等待正在执行的请求结束后撤销当前会话并清空界面；断网退出会明确提示服务端撤销未确认。
 
-升级前从 `backend/` 执行 `python -m alembic upgrade head`，再重启 API，迁移头为 `20261021_family_messages`。Android 双端登录并选择已确认加入的家庭后，留言卡片自动注册设备，在前台每 3 秒同步；进入后台停止轮询并清空已加载留言，返回前台重新补拉。Windows 的设备能力检测用于提示旧版后端缺少接口。
+升级前从 `backend/` 执行 `python -m alembic upgrade head`，再重启 API，迁移头为 `20261023_attention_contacts`。Android 双端登录并选择已确认加入的家庭后，留言卡片自动注册设备，在前台每 3 秒同步；进入后台停止轮询并清空已加载留言，返回前台重新补拉。Windows 的设备能力检测用于提示旧版后端缺少接口。
 
 首次联调：家属建家并生成邀请 → 长辈接受并确认加入 → Windows 注册本机/Android 打开留言卡片 → 家属发文字 → 长辈收到并点击“我已读完这条” → 回复 → 家属查看回执。接收方暂未注册或离线时仍保存给该成员，稍后可补收；回执表示这个成员的客户端已接收或本人已确认，不表示所有设备均在线。留言发送失败后用原内容重试，客户端复用幂等键；不会自动重复发送。当前没有后台消息推送。
 

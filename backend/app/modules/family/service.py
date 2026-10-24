@@ -13,7 +13,7 @@ from app.platform.identifiers import utcnow, uuid7
 from app.platform.pagination import page_rows
 
 PERMISSIONS = frozenset({"MEMBER_READ", "MEMBER_ADMIN", "MEMORY_READ", "MEMORY_WRITE", "REMINDER_READ",
-                         "REMINDER_WRITE", "SIGNAL_READ", "REPORT_READ", "SUMMARY_READ"})
+                         "REMINDER_WRITE", "SIGNAL_READ", "SIGNAL_WRITE", "REPORT_READ", "SUMMARY_READ"})
 
 
 def version(member: FamilyMember) -> int:
@@ -235,6 +235,8 @@ async def update_member(db: AsyncSession, actor: Identity, family_id: UUID, memb
         member.role = body.role
     if body.status == "REVOKED":
         member.status, member.left_at = "REVOKED", utcnow()
+        from app.modules.notification.contacts import delete_member
+        await delete_member(db, family_id, member.user_id)
     if body.permission_codes is not None:
         member.permission_codes = dict.fromkeys(body.permission_codes, True)
     member.updated_at = max(utcnow(), member.updated_at + timedelta(microseconds=1))
@@ -248,6 +250,8 @@ async def leave(db: AsyncSession, actor: Identity, family_id: UUID, member_id: U
     if member.id != member_id:
         raise AppError("PERMISSION_DENIED", "只能退出您自己的成员关系。", 403)
     member.status, member.left_at = "LEFT", utcnow()
+    from app.modules.notification.contacts import delete_member
+    await delete_member(db, family_id, member.user_id)
     member.updated_at = max(utcnow(), member.updated_at + timedelta(microseconds=1))
     await audit.record(db, actor.user_id, "FAMILY_MEMBER_LEFT", "FAMILY_MEMBER", member.id, family_id, request_id)
 

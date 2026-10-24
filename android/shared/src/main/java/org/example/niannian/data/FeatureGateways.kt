@@ -59,8 +59,10 @@ fun FamilyRepository.notificationGateway(): NotificationGateway {
     val repository = this
     return object : NotificationGateway {
         override suspend fun list() = repository.readAll("/v1/notifications?limit=100")
+        override suspend fun events(family: String) = repository.readAll("/v1/signal-events?family_id=$family&limit=100")
         override suspend fun call(path: String, method: String, body: JSONObject?, version: Long?) =
                     repository.call(path, method, body, false, version)
         override suspend fun read(id: String, key: String) = repository.markNotificationRead(id, key)
+        override suspend fun act(id: String, body: JSONObject, key: String) = repository.handleSignal(id, body, key)
     }
 }

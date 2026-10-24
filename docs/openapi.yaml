@@ -2,11 +2,11 @@ openapi: 3.1.0
 info:
   title: NianNian API
   version: 1.0.0
-  description: Current REST operations implemented by NianNian. Public DTOs are not ORM entities. Authentication
-    is Demo-only; conversation input is TEXT with explicit Mock or configured real LLM mode. Family device registration, human text messages and recipient receipts are implemented. Planned
-    report, emergency, export and account-deletion APIs are not available; see roadmap.md. GET /health, /docs and
-    /openapi.json are unversioned runtime endpoints. Provider metadata, vectors, raw audio and transcripts are not
-    exposed as public resource content.
+  description: Current REST operations implemented by NianNian. Public DTOs are not ORM entities. Authentication is Demo-only;
+    conversation input is TEXT with explicit Mock or configured real LLM mode. Family device registration, human text messages
+    and recipient receipts are implemented. Planned report, emergency, export and account-deletion APIs are not available;
+    see roadmap.md. GET /health, /docs and /openapi.json are unversioned runtime endpoints. Provider metadata, vectors, raw
+    audio and transcripts are not exposed as public resource content.
 servers:
 - url: /v1
   description: Versioned API base path
@@ -36,17 +36,15 @@ x-websocket-channels:
       $ref: '#/components/schemas/WebSocketClientMessage'
     serverMessages:
       $ref: '#/components/schemas/WebSocketServerMessage'
-    description: Implemented authenticated owner-only TEXT/state channel. Android device ASR sends its final
-      transcript as text.input and device TTS reads assistant.text. Raw audio is not uploaded;
-      Audio/ASR/TTS names in message enums remain reserved or rejected as unavailable.
-      Initial session.ready payload includes llm_mode (mock or real) and voice_allowed (boolean, owner's explicit
-      self VOICE consent). voice.permission carries allowed (boolean) when this consent changes or expires;
-      the server rechecks it each loop (at most one second idle wait). Clients stop device speech on denial.
-      Permission events are unsolicited and are delivered before same-loop turn output. assistant.text source_labels
-      contains Mock for simulated responses or AI for real-mode responses. Real mode
-      uses non-streaming JSON Chat Completions; errors use fixed fallback text and an error event.
-      Recent context is connection-local and cleared on disconnect; clients must not automatically replay input.
-      Solicited events carry in_reply_to with the originating client sequence, including asynchronous turn results
+    description: Implemented authenticated owner-only TEXT/state channel. Android device ASR sends its final transcript as
+      text.input and device TTS reads assistant.text. Raw audio is not uploaded; Audio/ASR/TTS names in message enums remain
+      reserved or rejected as unavailable. Initial session.ready payload includes llm_mode (mock or real) and voice_allowed
+      (boolean, owner's explicit self VOICE consent). voice.permission carries allowed (boolean) when this consent changes
+      or expires; the server rechecks it each loop (at most one second idle wait). Clients stop device speech on denial. Permission
+      events are unsolicited and are delivered before same-loop turn output. assistant.text source_labels contains Mock for
+      simulated responses or AI for real-mode responses. Real mode uses non-streaming JSON Chat Completions; errors use fixed
+      fallback text and an error event. Recent context is connection-local and cleared on disconnect; clients must not automatically
+      replay input. Solicited events carry in_reply_to with the originating client sequence, including asynchronous turn results
       and interrupt acknowledgements. The initial ready, unsolicited invitations and protocol rejection errors may omit it.
       Clients validate server sequence continuity before discarding events older than the latest input or interrupt.
 paths:
@@ -980,8 +978,8 @@ paths:
       operationId: getProactivePreference
       responses:
         '200':
-          description: Current setting; family and role checked, only owner confirms or pauses. Default disabled.
-            No delivery promise.
+          description: Current setting; family and role checked, only owner confirms or pauses. Default disabled. No delivery
+            promise.
           content:
             application/json:
               schema:
@@ -1015,8 +1013,8 @@ paths:
               $ref: '#/components/schemas/ProactivePreferenceInput'
       responses:
         '200':
-          description: Current setting; family and role checked, only owner confirms or pauses. Default disabled.
-            No delivery promise.
+          description: Current setting; family and role checked, only owner confirms or pauses. Default disabled. No delivery
+            promise.
           content:
             application/json:
               schema:
@@ -1064,8 +1062,8 @@ paths:
               $ref: '#/components/schemas/ProactiveConfirmInput'
       responses:
         '200':
-          description: Current setting; family and role checked, only owner confirms or pauses. Default disabled.
-            No delivery promise.
+          description: Current setting; family and role checked, only owner confirms or pauses. Default disabled. No delivery
+            promise.
           content:
             application/json:
               schema:
@@ -1107,8 +1105,8 @@ paths:
           type: string
       responses:
         '200':
-          description: Current setting; family and role checked, only owner confirms or pauses. Default disabled.
-            No delivery promise.
+          description: Current setting; family and role checked, only owner confirms or pauses. Default disabled. No delivery
+            promise.
           content:
             application/json:
               schema:
@@ -1179,6 +1177,39 @@ paths:
                 $ref: '#/components/schemas/SignalEventDetailResponse'
         '404':
           $ref: '#/components/responses/NotFoundError'
+  /signal-events/{event_id}/actions:
+    parameters:
+    - $ref: '#/components/parameters/EventId'
+    post:
+      tags:
+      - SignalEvents
+      operationId: handleSignalEvent
+      description: Requires SIGNAL_READ, SIGNAL_WRITE and current elder consent. ACKNOWLEDGE precedes CONTACT/RESOLVE. FALSE_POSITIVE
+        closes an open event. Terminal actions cancel queued notifications; repeats are idempotent, and authorization is rechecked
+        on replay.
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignalActionInput'
+      responses:
+        '200':
+          description: Persisted current handling status and timestamps; Cache-Control no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignalEventDetailResponse'
+        '403':
+          description: No handling permission
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Stale status, invalid transition, or reused idempotency key with different input
+        '422':
+          description: Invalid action, status, header, or additional input fields
   /families/{family_id}/notification-preferences/{owner_user_id}:
     parameters:
     - name: family_id
@@ -1199,8 +1230,8 @@ paths:
       operationId: getNotificationPreference
       responses:
         '200':
-          description: Own recipient preference; default version 0, IN_APP only, 22-08 Asia/Shanghai when no family
-            timezone is available. No consent implied.
+          description: Own recipient preference; default version 0, IN_APP only, 22-08 Asia/Shanghai when no family timezone
+            is available. No consent implied.
           content:
             application/json:
               schema:
@@ -1227,8 +1258,8 @@ paths:
               $ref: '#/components/schemas/NotificationPreferenceInput'
       responses:
         '200':
-          description: Updated own preferences, version incremented. Mock PUSH only; SMS/PHONE unsupported. Does
-            not grant consent.
+          description: Updated own preferences, version incremented. Mock PUSH only; SMS/PHONE unsupported. Does not grant
+            consent.
           content:
             application/json:
               schema:
@@ -1439,8 +1470,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-      description: List ACTIVE bindings whose owners are still ACTIVE members of the caller's visible families. Device
-        hashes, platform details and capabilities are not exposed.
+      description: List ACTIVE bindings whose owners are still ACTIVE members of the caller's visible families. Device hashes,
+        platform details and capabilities are not exposed.
   /messages:
     post:
       tags:
@@ -1500,10 +1531,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-      description: Save 1-2000 characters of human-authored text and snapshot ACTIVE recipients in the selected family
-        role, excluding the sender. Recipients need not be online or registered. No eligible recipients returns 409.
-        Idempotency-Key deduplicates matching requests for the configured window (default 24 hours). No LLM, push
-        or consent change is triggered.
+      description: Save 1-2000 characters of human-authored text and snapshot ACTIVE recipients in the selected family role,
+        excluding the sender. Recipients need not be online or registered. No eligible recipients returns 409. Idempotency-Key
+        deduplicates matching requests for the configured window (default 24 hours). No LLM, push or consent change is triggered.
     get:
       tags:
       - Messages
@@ -1603,10 +1633,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-      description: Requires a registered session and current ACTIVE family membership. INBOX contains only this user's
-        deliveries; OUTBOX only this user's sent messages. Results are ordered by increasing sequence. Pass page.next_cursor
-        as after_sequence (or cursor); cursor takes precedence. Reload from zero to refresh existing receipts. Optional
-        family_id must match the current binding.
+      description: Requires a registered session and current ACTIVE family membership. INBOX contains only this user's deliveries;
+        OUTBOX only this user's sent messages. Results are ordered by increasing sequence. Pass page.next_cursor as after_sequence
+        (or cursor); cursor takes precedence. Reload from zero to refresh existing receipts. Optional family_id must match
+        the current binding.
   /messages/{message_id}:
     get:
       tags:
@@ -1661,8 +1691,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-      description: Only the sender or a snapshotted recipient may read a message in the currently bound ACTIVE family.
-        Recipient views include only their own receipt.
+      description: Only the sender or a snapshotted recipient may read a message in the currently bound ACTIVE family. Recipient
+        views include only their own receipt.
   /message-deliveries/{delivery_id}/received:
     post:
       tags:
@@ -1723,8 +1753,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-      description: Recipient-only, monotonic and naturally idempotent. Records first receipt after a client has received
-        the content. Does not imply a human has read it, and never downgrades READ.
+      description: Recipient-only, monotonic and naturally idempotent. Records first receipt after a client has received the
+        content. Does not imply a human has read it, and never downgrades READ.
   /message-deliveries/{delivery_id}/read:
     post:
       tags:
@@ -1785,8 +1815,80 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-      description: Recipient-only explicit read confirmation. Sets first read time and first received time if absent.
-        Repeated requests preserve both timestamps. Receipts are shared across the recipient's devices.
+      description: Recipient-only explicit read confirmation. Sets first read time and first received time if absent. Repeated
+        requests preserve both timestamps. Receipts are shared across the recipient's devices.
+  /families/{family_id}/my-contact:
+    parameters:
+    - name: family_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      tags:
+      - Notifications
+      operationId: getMyFamilyContact
+      responses:
+        '200':
+          description: Current member contact
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyContactResponse'
+    put:
+      tags:
+      - Notifications
+      operationId: putMyFamilyContact
+      responses:
+        '200':
+          description: Current member contact
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyContactResponse'
+      parameters:
+      - name: If-Match
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FamilyContactInput'
+    delete:
+      tags:
+      - Notifications
+      operationId: deleteMyFamilyContact
+      responses:
+        '204':
+          description: Current member contact deleted
+  /notification-capabilities:
+    get:
+      tags:
+      - Notifications
+      operationId: getNotificationCapabilities
+      responses:
+        '200':
+          description: Configured channel availability, not proof of delivery
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  external_enabled:
+                    type: boolean
+                  channels:
+                    type: object
+                    additionalProperties:
+                      type: string
+                      enum:
+                      - AVAILABLE
+                      - MOCK
+                      - DISABLED
 components:
   securitySchemes:
     bearerAuth:
@@ -3358,6 +3460,22 @@ components:
           type: string
         created_at:
           $ref: '#/components/schemas/Timestamp'
+    SignalActionInput:
+      type: object
+      additionalProperties: false
+      required:
+      - action
+      - expected_status
+      properties:
+        action:
+          type: string
+          enum:
+          - ACKNOWLEDGE
+          - CONTACT
+          - FALSE_POSITIVE
+          - RESOLVE
+        expected_status:
+          $ref: '#/components/schemas/SignalStatus'
     SignalEventDetailResponse:
       allOf:
       - $ref: '#/components/schemas/SignalEventResponse'
@@ -3369,8 +3487,54 @@ components:
             $ref: '#/components/schemas/Timestamp'
           actioned_at:
             $ref: '#/components/schemas/Timestamp'
-          withheld_reason:
+          last_action_by:
+            type:
+            - string
+            - 'null'
+            format: uuid
+          resolved_at:
+            $ref: '#/components/schemas/Timestamp'
+          resolution_code:
             type: string
+            enum:
+            - FAMILY_CONFIRMED
+            - FALSE_POSITIVE
+          can_handle:
+            type: boolean
+          history:
+            type: array
+            items:
+              type: object
+              properties:
+                action:
+                  type: string
+                  enum:
+                  - ACKNOWLEDGE
+                  - CONTACT
+                  - FALSE_POSITIVE
+                  - RESOLVE
+                actor_user_id:
+                  type:
+                  - string
+                  - 'null'
+                  format: uuid
+                actor_display_name:
+                  type: string
+                occurred_at:
+                  $ref: '#/components/schemas/Timestamp'
+          contacts:
+            type: array
+            items:
+              type: object
+              properties:
+                user_id:
+                  $ref: '#/components/schemas/Id'
+                display_name:
+                  type: string
+                phone:
+                  type: string
+                emergency:
+                  type: boolean
     NotificationPreferenceInput:
       type: object
       additionalProperties: false
@@ -3380,13 +3544,15 @@ components:
       properties:
         channels:
           type: array
-          maxItems: 2
+          maxItems: 4
           uniqueItems: true
           items:
             type: string
             enum:
             - IN_APP
             - PUSH
+            - SMS
+            - PHONE
         timezone:
           type: string
           maxLength: 64
@@ -3424,13 +3590,15 @@ components:
           minimum: 0
         channels:
           type: array
-          maxItems: 2
+          maxItems: 4
           uniqueItems: true
           items:
             type: string
             enum:
             - IN_APP
             - PUSH
+            - SMS
+            - PHONE
         timezone:
           type: string
           maxLength: 64
@@ -3474,6 +3642,20 @@ components:
           $ref: '#/components/schemas/Timestamp'
         read_at:
           $ref: '#/components/schemas/Timestamp'
+        provider:
+          type:
+          - string
+          - 'null'
+        simulated:
+          type: boolean
+        delivery_status:
+          type:
+          - string
+          - 'null'
+        error_code:
+          type:
+          - string
+          - 'null'
     DataJobResponse:
       type: object
       required:
@@ -3643,3 +3825,50 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/NotificationResponse'
+    FamilyContactInput:
+      type: object
+      additionalProperties: false
+      properties:
+        phone: &id001
+          type: string
+          pattern: ^(?:\+[1-9][0-9]{6,14})?$
+          default: ''
+        share_phone: &id002
+          type: boolean
+          default: false
+        emergency: &id003
+          type: boolean
+          default: false
+        ntfy_topic: &id004
+          type: string
+          pattern: ^[A-Za-z0-9_-]{0,120}$
+          default: ''
+    FamilyContactResponse:
+      type: object
+      properties:
+        phone: *id001
+        share_phone: *id002
+        emergency: *id003
+        ntfy_topic: *id004
+        version:
+          type: integer
+          minimum: 0
+        recipients:
+          type: array
+          description: Only the elder receives eligible family members and their current notification/health grant IDs.
+          items:
+            type: object
+            properties:
+              user_id:
+                $ref: '#/components/schemas/Id'
+              display_name:
+                type: string
+              role:
+                type: string
+              grants:
+                type: object
+                additionalProperties:
+                  type:
+                  - string
+                  - 'null'
+                  format: uuid

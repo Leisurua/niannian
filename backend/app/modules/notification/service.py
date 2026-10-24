@@ -6,13 +6,16 @@ from sqlalchemy import delete, select
 
 from app.integrations.contracts import PushRequest
 from app.integrations.mock import MockPush
+from app.integrations.notifications import ExternalNotifications, DeliveryFailure, provider_name
 from app.modules.audit import service as audit
 from app.modules.auth.service import codec
 from app.modules.notification.models import Notification, NotificationAttempt
 from app.modules.notification import preferences
+from app.modules.notification import contacts
 from app.modules.signal import service as signals
 from app.platform import tasks
 from app.platform.errors import AppError
+from app.platform.config import get_settings
 from app.platform.identifiers import utcnow, uuid7, iso_utc
 from app.platform.pagination import page_rows
 
@@ -30,23 +33,27 @@ async def create_for_event(db, source, recipients):
                 continue
             row = Notification(id=uuid7(), signal_event_id=source['id'], recipient_user_id=uid,
                 channel=channel, status='QUEUED', summary=SUMMARY, policy_version=signals.POLICY_VERSION,
-                provider='mock', created_at=now, retention_until=min(now + timedelta(days=7), source['retention_until']),
+                provider=provider_name(get_settings(), channel), created_at=now, retention_until=min(now + timedelta(days=7), source['retention_until']),
                 dispatch_deadline=now + timedelta(hours=24), dedupe_key=key)
+            if row.provider != 'mock':
+                row.summary = '有一条关注提示，请在应用内查看授权详情。'
             db.add(row)
             await db.flush()
             await tasks.enqueue(db, 'NOTIFICATION_DISPATCH', source['family_id'], row.id, 1)
 
 
-async def context(db, row):
+async def context(db, row, *, for_delivery=True):
     if (not row or row.deleted_at or row.retention_until <= utcnow() or not row.recipient_user_id
             or not row.signal_event_id or row.status == 'CANCELLED'):
         return None
-    return await signals.delivery_context(db, row.signal_event_id, row.recipient_user_id)
+    return await signals.delivery_context(db, row.signal_event_id, row.recipient_user_id, for_delivery=for_delivery)
 
 
 def view(row):
     result = dict(id=str(row.id), signal_event_id=str(row.signal_event_id), channel=row.channel,
-        status=row.status, summary=row.summary, action=row.action, created_at=iso_utc(row.created_at))
+        status=row.status, summary=row.summary, action=row.action, created_at=iso_utc(row.created_at),
+        provider=row.provider, simulated=row.provider == 'mock', delivery_status=row.provider_status,
+        error_code=row.error_code)
     if row.read_at:
         result['read_at'] = iso_utc(row.read_at)
     return result
@@ -54,7 +61,7 @@ def view(row):
 
 async def detail(db, actor, notification_id, request_id, *, read_key=None, settings=None):
     row = await db.get(Notification, notification_id)
-    if not row or row.recipient_user_id != actor.user_id or not await context(db, row):
+    if not row or row.recipient_user_id != actor.user_id or not await context(db, row, for_delivery=False):
         raise AppError('NOTIFICATION_NOT_FOUND', '通知不存在或无权查看。', 404)
     await db.refresh(row)
     if row.deleted_at or row.status not in ('SENT','DELIVERED','READ','FAILED'):
@@ -94,6 +101,16 @@ async def cancel(db, row, code='AUTHORIZATION_OR_SOURCE_CHANGED'):
         attempt.status, attempt.finished_at, attempt.error_code = 'FAILED', utcnow(), code
 
 
+async def event_action(db, event_id, target):
+    rows = (await db.scalars(select(Notification).where(Notification.signal_event_id == event_id,
+        Notification.deleted_at.is_(None)))).all()
+    for row in rows:
+        if target in ('ACKNOWLEDGED', 'CONTACTED', 'FALSE_POSITIVE'):
+            row.action, row.action_at = target, utcnow()
+        if target in ('RESOLVED', 'FALSE_POSITIVE') and row.status in ('PENDING', 'QUEUED'):
+            await cancel(db, row, 'EVENT_CLOSED')
+
+
 async def aggregate(db, event_id):
     states = list((await db.scalars(select(Notification.status).where(Notification.signal_event_id == event_id,
         Notification.deleted_at.is_(None), Notification.status != 'CANCELLED'))).all())
@@ -121,7 +138,7 @@ async def prepare(db, task_id, token, notification_id):
         await tasks.finish(db, task_id, token)
         return None
     pref = await preferences.current(db, locked_source['family_id'], locked_source['owner_user_id'], row.recipient_user_id)
-    if row.channel not in pref.channels or row.channel not in ('IN_APP','PUSH'):
+    if row.channel not in pref.channels or row.channel not in ('IN_APP','PUSH','SMS','PHONE'):
         await cancel(db, row, 'CHANNEL_DISABLED')
         await tasks.finish(db, task_id, token)
         return None
@@ -134,9 +151,15 @@ async def prepare(db, task_id, token, notification_id):
         NotificationAttempt.status == 'STARTED'))).all()
     for attempt in old:
         attempt.status, attempt.finished_at, attempt.error_code = 'FAILED', now, 'LEASE_EXPIRED'
-    db.add(NotificationAttempt(notification_id=row.id, attempt_no=task.attempts, provider='mock', status='STARTED'))
+    if old and row.provider != 'mock':
+        # The process may have died after the provider accepted the message.
+        row.status, row.error_code = 'FAILED', 'DELIVERY_UNKNOWN'
+        await tasks.finish(db, task_id, token)
+        await aggregate(db, row.signal_event_id)
+        return None
+    db.add(NotificationAttempt(notification_id=row.id, attempt_no=task.attempts, provider=row.provider, status='STARTED'))
     await db.flush()
-    return (locked_source, pref.version, row.channel, task.attempts)
+    return (locked_source, pref.version, row.channel, task.attempts, row.provider)
 
 
 def _defer_without_provider_attempt(task, ready_at):
@@ -150,6 +173,9 @@ async def dispatch(factory, task_id, token, notification_id, push=None):
         prepared = await prepare(db, task_id, token, notification_id)
         await db.commit()
     if not prepared:
+        return
+    if prepared[4] != 'mock':
+        await dispatch_external(factory, task_id, token, notification_id, prepared)
         return
     failure = False
     if prepared[2] == 'PUSH':
@@ -197,6 +223,85 @@ async def dispatch(factory, task_id, token, notification_id, push=None):
         await db.commit()
 
 
+async def dispatch_external(factory, task_id, token, notification_id, prepared):
+    # Revalidate immediately before I/O and serialize with consent, membership and
+    # event actions. The short provider timeout bounds the family lock duration.
+    async with factory() as db:
+        row = await db.get(Notification, notification_id, populate_existing=True)
+        source = await context(db, row)
+        task = await tasks.leased(db, task_id, token)
+        if not task:
+            return
+        if not row:
+            await tasks.finish(db, task_id, token)
+            await db.commit()
+            return
+        await db.refresh(row)
+        pref = await preferences.current(db, source['family_id'], source['owner_user_id'], row.recipient_user_id) if source else None
+        attempt = await db.scalar(select(NotificationAttempt).where(NotificationAttempt.notification_id == row.id,
+            NotificationAttempt.attempt_no == prepared[3]))
+        if source != prepared[0] or not pref or pref.version != prepared[1] or row.status == 'CANCELLED' or row.dispatch_deadline <= utcnow():
+            await cancel(db, row)
+        else:
+            try:
+                settings = get_settings()
+                if provider_name(settings, row.channel) != row.provider:
+                    raise DeliveryFailure('CHANNEL_CONFIGURATION_CHANGED')
+                destination = await contacts.destination(db, source, row.recipient_user_id, row.channel)
+                async with asyncio.timeout(5):
+                    receipt = await ExternalNotifications(settings).send(row.channel, destination.value if destination else '')
+                row.status, row.sent_at, row.error_code = 'SENT', utcnow(), None
+                apply_receipt(row, receipt.status)
+                attempt.provider_message_id = receipt.message_id
+                attempt.status = 'SUCCEEDED'
+            except (DeliveryFailure, AppError) as exc:
+                row.status, row.error_code = 'FAILED', exc.code
+                attempt.status, attempt.error_code = 'FAILED', exc.code
+            except Exception:
+                row.status, row.error_code = 'FAILED', 'DELIVERY_UNKNOWN'
+                attempt.status, attempt.error_code = 'FAILED', 'DELIVERY_UNKNOWN'
+            attempt.finished_at = utcnow()
+        await tasks.finish(db, task_id, token)
+        await aggregate(db, row.signal_event_id)
+        await db.commit()
+
+
+async def refresh_receipt(db, row):
+    if row.provider != 'twilio' or row.status not in ('SENT', 'READ') or row.provider_status in (
+            'delivered', 'completed', 'busy', 'no-answer', 'failed', 'undelivered', 'canceled'):
+        return
+    settings = get_settings()
+    if not settings.notification_external_enabled:
+        return
+    attempt = await db.scalar(select(NotificationAttempt).where(NotificationAttempt.notification_id == row.id,
+        NotificationAttempt.status == 'SUCCEEDED').order_by(NotificationAttempt.attempt_no.desc()).limit(1))
+    if not attempt or not attempt.provider_message_id:
+        return
+    try:
+        async with asyncio.timeout(5):
+            status = await ExternalNotifications(settings).status(row.channel, attempt.provider_message_id)
+    except Exception:
+        return  # Read-only polling retries on the next maintenance cycle.
+    if status not in ('queued', 'accepted', 'sending', 'sent', 'delivered', 'undelivered',
+            'scheduled', 'canceled', 'failed', 'ringing', 'in-progress', 'completed', 'busy', 'no-answer'):
+        return
+    apply_receipt(row, status)
+    await aggregate(db, row.signal_event_id)
+
+
+def apply_receipt(row, status):
+    row.provider_status = status
+    if status == 'delivered' and row.channel == 'SMS':
+        row.delivered_at = row.delivered_at or utcnow()
+        if row.status != 'READ':
+            row.status = 'DELIVERED'
+    elif status in ('failed', 'undelivered', 'canceled', 'busy', 'no-answer'):
+        row.error_code = 'PROVIDER_DELIVERY_FAILED'
+        if row.status != 'READ':
+            row.status = 'FAILED'
+    # A completed voice call may be voicemail. It never becomes CONTACTED/RESOLVED.
+
+
 async def invalidate(db, fid, owner, grantee, scope):
     if scope not in ('NOTIFICATION_TO_FAMILY','HEALTH_MEDICATION'):
         return
@@ -219,7 +324,7 @@ async def maintenance(db):
         if source is None:
             await db.delete(row)
             continue
-        current = await context(db, row)
+        current = await context(db, row, for_delivery=row.status not in ('SENT','DELIVERED','READ','FAILED'))
         if row.deleted_at or row.retention_until <= utcnow() or not current:
             row.deleted_at = row.deleted_at or utcnow()
             await cancel(db, row)
@@ -234,6 +339,8 @@ async def maintenance(db):
                         NotificationAttempt.status == 'STARTED'))).all():
                     attempt.status, attempt.finished_at, attempt.error_code = 'FAILED', utcnow(), 'LEASE_EXHAUSTED'
                 await aggregate(db, row.signal_event_id)
+        else:
+            await refresh_receipt(db, row)
 
 
 async def cleanup(db, notification_id):

@@ -15,7 +15,7 @@ from app.platform.resource_access import authorize
 
 
 class PreferenceInput(Input):
-    channels: list[Literal['IN_APP','PUSH']] = Field(max_length=2)
+    channels: list[Literal['IN_APP','PUSH','SMS','PHONE']] = Field(max_length=4)
     timezone: str = Field(max_length=64)
     quiet_hours_start: time | None = None
     quiet_hours_end: time | None = None

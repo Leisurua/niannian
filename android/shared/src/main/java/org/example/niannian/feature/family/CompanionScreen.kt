@@ -158,10 +158,12 @@ fun CompanionScreen(model: CompanionModel, environmentLabel: String,
                 }
                 if (selected?.status == "ACTIVE") {
                     Text(selected.name, fontSize = 24.sp)
+                    ContactSettingsPanel(model, selected.id, mutationUnavailable)
                     Text(if (model.elder) "今日 · 家庭已连接" else "家庭动态 · 已连接", fontSize = 20.sp)
                     Text(if (model.elder) "家庭记忆、语音/文字聊天和提醒已开放。" else "家庭记忆与提醒已开放。")
                     if (!model.elder) {
                         if (state.canManageMembers) Action("生成长辈邀请码", mutationUnavailable) { model.invite("ELDER") }
+                        if (state.canManageMembers) Action("邀请紧急联系人", mutationUnavailable) { model.invite("EMERGENCY_CONTACT") }
                         if (state.invite.isNotEmpty()) SelectionContainer { Text(state.invite, fontSize = 18.sp) }
                         state.members.forEach { member ->
                             Text("${member.name.ifEmpty { "历史成员" }} · ${roleLabel(member.role)} · ${statusLabel(member.status)}")
@@ -169,6 +171,9 @@ fun CompanionScreen(model: CompanionModel, environmentLabel: String,
                                 Action("撤销${member.name}的成员资格", mutationUnavailable) { revokeMember = member }
                                 if (member.status == "ACTIVE" && "MEMBER_READ" !in member.permissions)
                                     Action("允许${member.name}查看家庭成员", mutationUnavailable) { model.allowMemberRead(member) }
+                                if (member.status == "ACTIVE" && member.role in listOf("CHILD", "CAREGIVER", "EMERGENCY_CONTACT") &&
+                                    !("SIGNAL_READ" in member.permissions && "SIGNAL_WRITE" in member.permissions))
+                                    Action("允许${member.name}处理关注事件", mutationUnavailable) { model.allowSignalHandling(member) }
                             }
                         }
                         Text("长辈授权状态（仅本人可修改）", fontSize = 20.sp)

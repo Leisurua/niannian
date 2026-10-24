@@ -25,7 +25,8 @@ async def authorize(db, actor, family_id, subject, permission, scope=None, *, al
     await family.require_member(db, family_id, subject)
     if actor.user_id == subject and allow_self:
         return member
-    if member.role not in ('CHILD', 'CAREGIVER') or not (
+    allowed_roles = ('CHILD', 'CAREGIVER', 'EMERGENCY_CONTACT') if permission in ('SIGNAL_READ', 'SIGNAL_WRITE') else ('CHILD', 'CAREGIVER')
+    if member.role not in allowed_roles or not (
         fam.created_by_user_id == actor.user_id or member.permission_codes.get(permission) is True
     ):
         raise AppError('PERMISSION_DENIED', '当前成员没有此项权限。', 403)
