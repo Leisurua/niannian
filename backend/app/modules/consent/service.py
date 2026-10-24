@@ -97,6 +97,9 @@ async def grant(db, actor, body, key, settings, request_id):
     db.add(row)
     await db.flush()
     if row.subject_user_id == row.grantee_user_id:
+        if row.scope == 'INTERACTION_STATS':
+            from app.modules.report.metrics import erase
+            await erase(db, row.family_id, row.subject_user_id)
         from app.modules.memory.rag import consent_changed
         await consent_changed(db, row.family_id, row.subject_user_id, row.scope, row.id)
     return view(row)
@@ -128,6 +131,9 @@ async def revoke(db, actor, consent_id, body, key, settings, request_id):
     row.audit_log_id = event.id
     db.add(row)
     await db.flush()
+    if row.scope == 'INTERACTION_STATS' and row.subject_user_id == row.grantee_user_id:
+        from app.modules.report.metrics import erase
+        await erase(db, row.family_id, row.subject_user_id)
     from app.modules.memory.rag import consent_changed
     await consent_changed(db, row.family_id, row.subject_user_id, row.scope, row.id)
     from app.modules.conversation.summary import consent_changed as summary_consent_changed

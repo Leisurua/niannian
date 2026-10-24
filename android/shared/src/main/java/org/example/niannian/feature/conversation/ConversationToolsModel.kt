@@ -22,6 +22,10 @@ data class ConversationToolsState(val family: String = "", val owner: String = "
     val paused: String = "", val loaded: Boolean = false, val message: String = "", val summary: String = "")
 
 class ConversationToolsModel(private val gateway: ConversationToolsGateway, private val scope: CoroutineScope? = null) : ViewModel() {
+    suspend fun weeklyReport(family: String, owner: String, week: String, reason: String?): String =
+        gateway.call("/v1/reports/weekly?family_id=$family&owner_user_id=$owner&week_start=$week&timezone=Asia%2FShanghai",
+            reason = reason).getString("text")
+    suspend fun deleteStatistics(family: String) { gateway.call("/v1/reports/data?family_id=$family", "DELETE") }
     private val current = MutableStateFlow(ConversationToolsState())
     val state = current.asStateFlow()
     private var generation = 0

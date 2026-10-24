@@ -11,12 +11,13 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 
 @Composable
-fun MessagePanel(model: MessageModel, family: String, user: String, elder: Boolean, unavailable: Boolean) {
+fun MessagePanel(model: MessageModel, family: String, user: String, elder: Boolean, unavailable: Boolean,
+    manageLifecycle: Boolean = true) {
     val state by model.state.collectAsState()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var draft by remember(family, user) { mutableStateOf("") }
     LaunchedEffect(state.sentVersion) { if (state.sentVersion > 0) draft = "" }
-    DisposableEffect(lifecycle, family, user, unavailable) {
+    if (manageLifecycle) DisposableEffect(lifecycle, family, user, unavailable) {
         fun activate() { if (!unavailable) model.bind(family, user) else model.clear() }
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) model.clear()
@@ -40,6 +41,8 @@ fun MessagePanel(model: MessageModel, family: String, user: String, elder: Boole
                 OutlinedButton(onClick = { draft = "方便时请给我打个电话。" }, enabled = !state.busy) { Text("请给我打电话") }
             }
             if (state.notice.isNotBlank()) Text(state.notice, fontSize = 18.sp)
+            if (state.error.isNotBlank()) Text(state.error, color = MaterialTheme.colorScheme.error)
+            if (state.loaded && state.items.isEmpty()) Text("还没有家人留言。")
             OutlinedButton(onClick = { model.refresh() }, enabled = !state.busy) { Text("刷新收发箱") }
             state.items.forEach { item ->
                 HorizontalDivider()

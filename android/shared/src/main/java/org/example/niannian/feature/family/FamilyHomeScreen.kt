@@ -1,5 +1,7 @@
 package org.example.niannian.feature.family
 
+import org.example.niannian.feature.conversation.PersimmonCompanionOrb
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -7,7 +9,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,7 +17,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
@@ -48,16 +49,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.example.niannian.shared.R
 import java.time.LocalDate
 import java.time.LocalTime
 
@@ -112,7 +109,9 @@ internal fun FamilyDesignHome(
     val scope = rememberCoroutineScope()
     val family = homeFamily(state)
     val subjects = homeSubjects(state, false)
-    val subject = subjects.firstOrNull()
+    var selectedSubject by remember(state.userId, family) { mutableStateOf("") }
+    val subject = subjects.firstOrNull { it.first == selectedSubject } ?: subjects.firstOrNull()
+    val subjectName = subject?.second ?: "尚未选择长辈"
     val subjectId = subject?.first.orEmpty()
     var feature by remember(state.userId, family) { mutableStateOf<HomeFeature?>(null) }
     val remindersState by models.reminders.state.collectAsState()
@@ -135,7 +134,7 @@ internal fun FamilyDesignHome(
     val memoryCandidates = backendMemories.map { item ->
         val confirmed = item.status == "CONFIRMED"
         FamilyMemoryCandidateRow(item.id, item.title, item.content,
-            if (confirmed) "已人工核对 · 存入家庭记忆库" else "由小念对话提炼 · 待家属核对", confirmed)
+            if (confirmed) "已人工核对 · 存入家庭记忆库" else "待人工核对 · 不作为事实引用", confirmed)
     }
 
     LaunchedEffect(toast) {
@@ -145,7 +144,7 @@ internal fun FamilyDesignHome(
         }
     }
 
-    val childName = state.userName.takeIf { it.isNotBlank() && it != "演示子女" } ?: "小雨"
+    val childName = state.userName.ifBlank { "家人" }
 
     Box(
         modifier = Modifier
@@ -222,7 +221,7 @@ internal fun FamilyDesignHome(
                                     state.busy -> "核对中"
                                     family.isBlank() -> "待加入"
                                     else -> "已联机"
-                                } else "王阿姨家 · 3人",
+                                } else "尚未登录 · 连接家庭",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = if (state.loggedIn) FSage700 else FInk,
@@ -232,32 +231,25 @@ internal fun FamilyDesignHome(
                     }
 
                     Spacer(modifier = Modifier.height(18.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "妈妈在 杭州·西湖区",
-                            fontSize = 14.sp,
-                            color = FInkMute
-                        )
-                        Text(
-                            text = "☀ 22° 晴转多云 · 宜散步",
-                            fontSize = 14.sp,
-                            color = FInkSoft
-                        )
+                    HomeWeatherCard("${state.userId}:$family:$subjectId")
+                    if (subjects.size > 1) {
+                        subjects.forEach { (id, name) ->
+                            TextButton(onClick = { selectedSubject = id }) {
+                                Text(if (id == subjectId) "✓ $name" else name)
+                            }
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "下午好，$childName",
+                        text = "您好，$childName",
                         fontFamily = FontFamily.Serif,
                         fontWeight = FontWeight.Bold,
                         fontSize = 30.sp,
                         color = FInk
                     )
                     Text(
-                        text = "妈妈今天上午散了步，精神头很不错。",
+                        text = "家人的近况，以实际留言和提醒反馈为准。",
                         fontSize = 15.sp,
                         color = FInkSoft
                     )
@@ -300,11 +292,7 @@ internal fun FamilyDesignHome(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Surface(shape = CircleShape, color = FSage700) {
                                         Text(
-                                            text = when {
-                                                state.offline -> "● 当前离线 · 等待重新连接"
-                                                state.error.isNotBlank() || family.isBlank() -> "● 连接或授权待确认"
-                                                else -> "● 已联机 · 正在守护家人"
-                                            },
+                                            text = homeConnectionLabel(state),
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Medium,
                                             color = Color.White,
@@ -313,21 +301,21 @@ internal fun FamilyDesignHome(
                                     }
                                     Spacer(modifier = Modifier.height(10.dp))
                                     Text(
-                                        text = "妈妈 · 王阿姨",
+                                        text = subjectName,
                                         fontFamily = FontFamily.Serif,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 25.sp,
                                         color = FInk
                                     )
                                     Text(
-                                        text = "小念 AI 温和陪伴中 · 今日无异常关注信号",
+                                        text = "小念是 AI 助手 · 家人通知需单独查看",
                                         fontSize = 14.sp,
                                         color = FInkSoft
                                     )
                                 }
 
                                 Box(modifier = Modifier.offset(x = 6.dp, y = (-6).dp)) {
-                                    PersimmonCompanionOrb(size = 94.dp, listening = false)
+                                    PersimmonCompanionOrb(size = 94.dp)
                                 }
                             }
 
@@ -341,7 +329,7 @@ internal fun FamilyDesignHome(
                                 listOf(
                                     Triple("今日提醒", "${momReminders.count { it.done }} / ${momReminders.size}",
                                         if (state.offline || remindersState.offline) "离线隐藏" else "反馈为准"),
-                                    Triple("小念陪伴", "18 分钟", "聊了桂花糕"),
+                                    Triple("家庭记忆", "${backendMemories.count { it.status == "CONFIRMED" }} 条", "已人工确认"),
                                     Triple("下次提醒", momReminders.firstOrNull { it.isNext }?.time ?: "--:--",
                                         momReminders.firstOrNull { it.isNext }?.title?.take(5) ?: "暂无提醒")
                                 ).forEach { (label, main, sub) ->
@@ -380,14 +368,14 @@ internal fun FamilyDesignHome(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = "✦ 小念今日交流摘要（脱敏·无逐字稿）",
+                                            text = "✦ 交流回顾（脱敏·无逐字稿）",
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = FPersimmon700,
                                             maxLines = 1
                                         )
                                         Text(
-                                            text = "妈妈已授权",
+                                            text = "按本人授权读取",
                                             fontSize = 11.5.sp,
                                             color = FInkMute,
                                             maxLines = 1,
@@ -396,7 +384,9 @@ internal fun FamilyDesignHome(
                                     }
                                     Spacer(modifier = Modifier.height(6.dp))
                                     Text(
-                                        text = if (toolsState.family == family && toolsState.summary.isNotBlank()) toolsState.summary else "“上午妈妈主动和小念聊起周末想给朵朵蒸桂花糕，询问了糯米粉配比；上午散步回来后精神饱满。”",
+                                        text = if (!state.offline && state.error.isBlank() && family.isNotBlank() &&
+                                            toolsState.family == family && toolsState.owner == subjectId && toolsState.summary.isNotBlank())
+                                            toolsState.summary else "尚未读取获准的会话摘要。打开交流回顾后，可按会话查看；暂无数据不代表没有异常。",
                                         fontFamily = FontFamily.Serif,
                                         fontSize = 16.5.sp,
                                         lineHeight = 25.sp,
@@ -428,7 +418,8 @@ internal fun FamilyDesignHome(
                                 }
 
                                 Button(
-                                    onClick = { toast = "正在为您发起与「妈妈 · 王阿姨」的视频通话…" },
+                                    onClick = {},
+                                    enabled = false,
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = FInk,
                                         contentColor = FPaper
@@ -441,7 +432,7 @@ internal fun FamilyDesignHome(
                                 ) {
                                     Icon(imageVector = NianNianIcons.Video, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text(text = "视频通话", fontSize = 15.5.sp, fontWeight = FontWeight.Medium, maxLines = 1, softWrap = false)
+                                    Text(text = "视频未接入", fontSize = 15.5.sp, fontWeight = FontWeight.Medium, maxLines = 1, softWrap = false)
                                 }
                             }
                         }
@@ -450,131 +441,16 @@ internal fun FamilyDesignHome(
 
                 Spacer(modifier = Modifier.height(30.dp))
 
-                // 3. Mom's Voice Reply Section
-                Column(modifier = Modifier.padding(horizontal = 24.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Bottom
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "妈妈的回音",
-                                fontFamily = FontFamily.Serif,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 22.sp,
-                                color = FInk
-                            )
-                            Text(
-                                text = "您寄出的照片，妈妈刚看过了",
-                                fontSize = 13.5.sp,
-                                color = FInkSoft,
-                                maxLines = 1
-                            )
-                        }
-                        Surface(shape = CircleShape, color = FPersimmon50) {
-                            Text(
-                                text = "♥ 妈妈已点「看到啦」",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = FPersimmon700,
-                                maxLines = 1,
-                                softWrap = false,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                            )
-                        }
+                Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("视频通话尚未接入，当前可发送文字留言。", color = FInkMute, fontSize = 14.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { feature = HomeFeature.CONVERSATION }) { Text("交流回顾") }
+                        TextButton(onClick = { feature = HomeFeature.REPORTS }) { Text("统计周报") }
+                        TextButton(onClick = { feature = HomeFeature.NOTIFICATIONS }) { Text("家人通知") }
                     }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Surface(
-                    shape = RoundedCornerShape(28.dp),
-                    color = FPaperCard,
-                    shadowElevation = 2.dp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Image(
-                                painter = painterResource(id = R.drawable.family_photo),
-                                contentDescription = "小雨分享的照片",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .width(88.dp)
-                                    .height(66.dp)
-                                    .clip(RoundedCornerShape(16.dp))
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(text = "您 1 小时前寄出的明信片", fontSize = 12.5.sp, color = FInkMute)
-                                Text(
-                                    text = "“妈，带朵朵去公园了，她非要摘柿子给外婆看…”",
-                                    fontFamily = FontFamily.Serif,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    color = FInk
-                                )
-                                Text(
-                                    text = "♥ 妈妈在 15 分钟前点了「看到啦」并回了语音",
-                                    fontSize = 12.5.sp,
-                                    color = FSage700,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Surface(
-                            shape = RoundedCornerShape(20.dp),
-                            color = FSage50,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        text = "🎙️ 妈妈通过小念发来的原声回复",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = FSage700
-                                    )
-                                    Text(text = "0:11", fontFamily = FontFamily.Serif, fontSize = 13.sp, color = FSage700)
-                                }
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = "“小雨呀，照片我看到啦，朵朵举着大柿子真精神！周六早点回来，妈给你们炖排骨玉米汤！”",
-                                    fontFamily = FontFamily.Serif,
-                                    fontSize = 16.5.sp,
-                                    lineHeight = 25.sp,
-                                    color = FInk
-                                )
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Button(
-                                    onClick = { toast = "正在播放妈妈的原声语音回复…" },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = FSage700,
-                                        contentColor = Color.White
-                                    ),
-                                    shape = CircleShape,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(44.dp)
-                                ) {
-                                    Icon(imageVector = NianNianIcons.Play, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(text = "播放妈妈的原声语音 (11秒)", fontSize = 14.5.sp, fontWeight = FontWeight.Medium)
-                                }
-                            }
-                        }
-                    }
+                    HomeMessagesSection(state, models.messages,
+                        onOpen = { feature = HomeFeature.MESSAGES },
+                        onPhotos = { feature = HomeFeature.MEMORIES })
                 }
 
                 Spacer(modifier = Modifier.height(30.dp))
@@ -589,7 +465,7 @@ internal fun FamilyDesignHome(
                 ) {
                     Column {
                         Text(
-                            text = "妈妈的今日提醒",
+                            text = "长辈的今日提醒",
                             fontFamily = FontFamily.Serif,
                             fontWeight = FontWeight.Bold,
                             fontSize = 22.sp,
@@ -834,8 +710,7 @@ internal fun FamilyDesignHome(
                                             scope.launch { scrollState.animateScrollTo(0) }
                                         }
                                         FamilyNavTab.MEMORIES -> {
-                                            activeTab = tab
-                                            scope.launch { scrollState.animateScrollTo(scrollState.maxValue) }
+                                            feature = HomeFeature.MEMORIES
                                         }
                                     }
                                 }
@@ -906,7 +781,7 @@ internal fun FamilyDesignHome(
                 ) {
                     Column(modifier = Modifier.padding(24.dp)) {
                         Text(
-                            text = "帮妈妈添加生活提醒",
+                            text = "为$subjectName 添加生活提醒",
                             fontFamily = FontFamily.Serif,
                             fontWeight = FontWeight.Bold,
                             fontSize = 22.sp,
@@ -929,14 +804,15 @@ internal fun FamilyDesignHome(
                         Spacer(modifier = Modifier.height(14.dp))
                         Button(
                             onClick = {
-                                val t = newRemTitle.ifBlank { "傍晚阳台收衣服" }
+                                val t = newRemTitle.trim()
                                 when {
+                                    t.isBlank() -> toast = "请填写提醒事项。"
                                     family.isBlank() || subjectId.isBlank() -> toast = "请先登录并选择已加入家庭的长辈。"
                                     state.offline || state.error.isNotBlank() || state.pendingWrite -> toast = "请恢复连接并核对授权后重试。"
                                     runCatching { LocalTime.parse(newRemTime) }.isFailure -> toast = "请按 HH:mm 填写有效时间。"
                                     else -> scope.launch {
                                         var saved = false
-                                        models.reminders.save(subjectId, t, "小雨添加的贴心提醒", LocalDate.now().toString(),
+                                        models.reminders.save(subjectId, t, "${state.userName}添加的生活提醒", LocalDate.now().toString(),
                                             newRemTime, "Asia/Shanghai", "CALENDAR", true, false,
                                             onSaved = { saved = true })?.join()
                                         val result = models.reminders.state.value
@@ -956,7 +832,7 @@ internal fun FamilyDesignHome(
                             contentPadding = PaddingValues(vertical = 14.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(text = "保存并同步至妈妈手机", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text(text = "保存并同步至长辈提醒", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -990,7 +866,7 @@ internal fun FamilyDesignHome(
                         Spacer(modifier = Modifier.height(12.dp))
                         Surface(shape = RoundedCornerShape(20.dp), color = FSage50, modifier = Modifier.fillMaxWidth()) {
                             Text(
-                                text = "王阿姨已本人授权开启：家庭记忆共创、健康与用药提醒、脱敏交流摘要与异常关注提示。为保护长辈尊严，系统不保存亦不提供原始对话录音或逐字稿。",
+                                text = "记忆、提醒、交流摘要与家人通知均以长辈本人的当前授权为准，可在完整家庭设置中查看或撤回。系统不提供陪伴对话的原始录音或逐字稿。",
                                 fontSize = 14.sp,
                                 lineHeight = 22.sp,
                                 color = FInkSoft,
@@ -998,7 +874,7 @@ internal fun FamilyDesignHome(
                             )
                         }
                         Spacer(modifier = Modifier.height(12.dp))
-                        if (!state.loggedIn && model != null) {
+                        if (!state.loggedIn) {
                             Button(
                                 onClick = {
                                     model.login("http://127.0.0.1:8000")
@@ -1037,7 +913,8 @@ internal fun FamilyDesignHome(
                                             HomeFeature.MEMORIES to "记忆与照片",
                                             HomeFeature.MESSAGES to "家人留言",
                                             HomeFeature.NOTIFICATIONS to "家人通知",
-                                            HomeFeature.CONVERSATION to "交流回顾"
+                                            HomeFeature.CONVERSATION to "交流回顾",
+                                            HomeFeature.REPORTS to "统计与周报"
                                         ).forEach { (feat, label) ->
                                             Surface(
                                                 shape = CircleShape,
