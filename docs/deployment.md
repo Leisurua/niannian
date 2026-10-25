@@ -1,5 +1,27 @@
 # 运行与部署
 
+## 账户生命周期运维
+
+升级 API/worker 前，在 `backend/` 运行 `python -m alembic upgrade head`（新增 `20261025_account_lifecycle`），随后重启二者。当前入口是 REST API，字段和凭证找回方式见 [OpenAPI](openapi.yaml)；Android/Windows 尚未增加账户管理界面。导出文件含本人资料，客户端应通过系统文件保存器交由本人选择位置；删除前先保存独立回执凭证，受理后按已有退出流程清理本地会话和缓存。
+
+可配置 `BACKUP_RETENTION_DAYS=30`、`AUDIT_RETENTION_DAYS=90`、`TASK_RETENTION_DAYS=7`、`ACCOUNT_EXPORT_MAX_BYTES=104857600`。`BACKUP_DIRECTORY` 默认为空；只有显式指定的私有目录会启用自动备份期限清理。备份文件须命名为 `niannian-backup-YYYYMMDDTHHMMSSZ.dump`、`.sql.gz`、`.tar.gz` 或 `.zip`，时间为备份快照的 UTC 时间，不因复制而改写；写入完成后才使用该名称。清理不递归、不跟随符号链接/目录联接、不删除其他文件；目录必须仅由可信运维账号写入。此功能不自动创建备份。
+
+Linux Compose 的 `BACKUP_DIRECTORY` 是容器内路径；启用时需通过本地 Compose override 为 worker 挂载对应私有备份目录并授予删除权限，不能只填写主机路径。默认不挂载备份，也不启用自动目录清理；可以先用下面的运维 CLI 在备份所在主机预览和清理。
+
+```sh
+# 在 backend/ 执行；先预览，--apply 才物理删除指定目录里的到期备份
+python -m app.modules.account.admin prune-backups --directory /srv/niannian/backups
+python -m app.modules.account.admin prune-backups --directory /srv/niannian/backups --apply
+python -m app.modules.account.admin pending
+# 核实全部备份/供应商副本后，用真实报告/工单文件的摘要确认对应范围
+python -m app.modules.account.admin confirm-copy <deletion-id> backup --operator <operator-ref> --evidence-file <verified-report>
+python -m app.modules.account.admin confirm-copy <deletion-id> provider --provider <exact-provider-from-pending> --operator <operator-ref> --evidence-file <verified-report>
+```
+
+确认命令只能在有数据库访问权限的运维环境执行，无公网管理员绕过接口。应核查服务账号、发送时间范围、供应商备份/日志及合同留存；没有完成凭据时保持待处理。升级前的 LEGACY_UNVERIFIED 必须核查历史供应商，而不是直接按当前 Mock 设置确认；若核实从未外发，也需对应库存/配置核验记录。设备系统语音服务无法核实时保留待处理。命令只保存操作人引用与证据的摘要，不保存报告中的个人正文。备份清理成功、期限到期、供应商受理工单、单条 API 记录消失均不能替代全范围核验。
+
+MinIO/S3 服务身份另需对象版本枚举和删除权限；账号文件清理失败会重试，回执保持未完成。云快照、异地复制和非管理目录备份必须另行配置相同或更短期限并核验。恢复旧备份前须停止 API/worker 外部访问，保存并比对当前删除记录，在恢复库重新执行已删除账户的清理和文件删除，再合并现有回执/供应商核验记录，确认已删除账户仍不可登录后才能开放；当前未提供自动跨备份重放工具，不能直接把旧快照当作可上线恢复结果。完整边界仅在 [security](security.md#账户级生命周期) 维护。
+
 ## 本地后端
 
 需要 CPython 3.12、Docker Compose v2；Android 构建另需 JDK 17、SDK 35 / Build Tools 35.0.0。从仓库根目录（以下 Python 环境命令使用 PowerShell）：

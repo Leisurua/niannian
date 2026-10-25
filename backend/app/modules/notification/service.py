@@ -158,6 +158,10 @@ async def prepare(db, task_id, token, notification_id):
         await aggregate(db, row.signal_event_id)
         return None
     db.add(NotificationAttempt(notification_id=row.id, attempt_no=task.attempts, provider=row.provider, status='STARTED'))
+    if row.provider != 'mock' and row.channel != 'IN_APP':
+        from app.modules.account.service import note_possible_copy
+        for uid in sorted({row.recipient_user_id, locked_source['owner_user_id']}):
+            await note_possible_copy(db, uid, 'NOTIFICATION:' + row.provider)
     await db.flush()
     return (locked_source, pref.version, row.channel, task.attempts, row.provider)
 
@@ -253,6 +257,11 @@ async def dispatch_external(factory, task_id, token, notification_id, prepared):
                 row.status, row.sent_at, row.error_code = 'SENT', utcnow(), None
                 apply_receipt(row, receipt.status)
                 attempt.provider_message_id = receipt.message_id
+                from app.modules.account.service import note_provider_resource
+                for uid in sorted({row.recipient_user_id, source['owner_user_id']}):
+                    await note_provider_resource(db, uid, 'NOTIFICATION:' + row.provider,
+                        dict(channel=row.channel, resource_id=receipt.message_id,
+                            service_account=settings.twilio_account_sid if row.provider == 'twilio' else settings.ntfy_base_url))
                 attempt.status = 'SUCCEEDED'
             except (DeliveryFailure, AppError) as exc:
                 row.status, row.error_code = 'FAILED', exc.code

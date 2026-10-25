@@ -57,3 +57,19 @@ class S3Storage:
 
     async def delete(self, key):
         await self._call('delete_object', Key=key)
+
+    async def delete_all_versions(self, key):
+        # A plain DELETE in a versioned bucket only adds a delete marker.
+        # After signed PUT expiry, remove the live object, versions and markers.
+        await self.delete(key)
+        while True:
+            result = await self._call('list_object_versions', Prefix=key)
+            versions = [item for item in result.get('Versions', []) + result.get('DeleteMarkers', [])
+                if item['Key'] == key]
+            if not versions:
+                break
+            for item in versions:
+                await self._call('delete_object', Key=key, VersionId=item['VersionId'])
+            # Restart at the first page: a version marker just deleted cannot
+            # safely be used as the next pagination cursor. Exact key versions
+            # sort before all longer keys sharing this prefix.
