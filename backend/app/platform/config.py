@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     ws_max_frame_bytes: int = Field(default=16384, ge=1024, le=65536)
     ws_max_text_chars: int = Field(default=2000, ge=1, le=10000)
     ws_messages_per_second: int = Field(default=20, ge=1, le=100)
+    backup_retention_days: int = Field(default=30, ge=1, le=365)
+    backup_directory: str | None = None
+    audit_retention_days: int = Field(default=90, ge=7, le=365)
+    task_retention_days: int = Field(default=7, ge=1, le=30)
+    account_export_max_bytes: int = Field(default=104857600, ge=1048576, le=1073741824)
 
     model_config = SettingsConfigDict(extra="ignore", case_sensitive=False, hide_input_in_errors=True)
 

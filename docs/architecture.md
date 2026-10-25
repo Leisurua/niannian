@@ -11,6 +11,7 @@ Android / Windows → FastAPI REST / WebSocket → PostgreSQL + pgvector / 私�
 | --- | --- |
 | `backend/app/main.py`、`__main__.py` | API 路由、脱敏错误、请求编号；Windows 兼容的启动入口 |
 | `backend/app/modules/auth`、`family`、`consent` | 登录会话、家庭与成员、分项授权及撤回 |
+| `backend/app/modules/account` | 本人 ZIP 导出、账户删除回执、worker 文件清理、备份期限和供应商副本核验 |
 | `backend/app/modules/memory` | 候选/确认、照片、检索、索引失效与清理 |
 | `backend/app/modules/conversation` | 本人文字会话、WSS、受控摘要与主动邀请 |
 | `backend/app/modules/reminder` | 周期/时区、执行记录、在线与离线反馈 |

@@ -4,7 +4,7 @@ info:
   version: 1.0.0
   description: Current REST operations implemented by NianNian. Public DTOs are not ORM entities. Authentication is Demo-only;
     conversation input is TEXT with explicit Mock or configured real LLM mode. Family device registration, human text messages
-    and recipient receipts are implemented. Weather, consented interaction statistics and on-demand weekly reports are implemented. Emergency, export and account-deletion APIs are not available;
+    and recipient receipts are implemented. Weather, consented interaction statistics, account ZIP export and account deletion with authenticated receipts are implemented. External-copy completion requires verified operator evidence;
     see roadmap.md. GET /health, /docs and /openapi.json are unversioned runtime endpoints. Provider metadata, vectors, raw
     audio and transcripts are not exposed as public resource content.
 servers:
@@ -48,6 +48,85 @@ x-websocket-channels:
       and interrupt acknowledgements. The initial ready, unsolicited invitations and protocol rejection errors may omit it.
       Clients validate server sequence continuity before discarding events older than the latest input or interrupt.
 paths:
+  /me/export:
+    get:
+      tags: [Account]
+      summary: Export the authenticated account's data and safe photos
+      operationId: exportAccount
+      description: No-store ZIP with account.json and photos/{file_id}; explicit own-data fields, no credentials, provider internals or other subjects' content. Removed/expired content is excluded. Default 100 MiB and 10000 rows per collection limit; storage failure aborts the whole export.
+      responses:
+        '200':
+          description: Complete in-memory ZIP, not retained on the server
+          content:
+            application/zip:
+              schema: {type: string, format: binary}
+        '401': {description: Session invalid}
+        '413': {description: Account exceeds export limit; operator assistance required}
+        '503': {description: Storage or database unavailable; no partial export}
+  /me/deletion:
+    post:
+      tags: [Account]
+      summary: Delete the authenticated account and revoke all sessions
+      operationId: deleteAccount
+      description: Only self; explicit confirmation required. Save a cryptographically random receipt_token (at least 32 random bytes encoded as URL-safe text) BEFORE sending. All sessions become invalid when accepted. Database content is erased atomically; private objects are retried by worker. A nameless user tombstone preserves other subjects' references and prevents fixed Demo credentials resurrecting the account. No blanket deletion claim for unverified backups, providers or offline devices.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [confirmation, receipt_token]
+              properties:
+                confirmation: {type: string, const: DELETE_MY_ACCOUNT}
+                receipt_token: {type: string, minLength: 43, maxLength: 128, writeOnly: true}
+      responses:
+        '202':
+          description: Accepted; no-store deletion receipt. local_status=PENDING/RETRY/ERASED; status stays PENDING until local erasure and verified backup/provider confirmations. Contains id, requested_at, local_erased_at, last_error_code, backup (status, due_at, overdue), providers (provider, status), retained and device_notice.
+        '401': {description: Session invalid; use the receipt lookup after a lost response}
+        '409': {description: Receipt credential already used; generate an independent random credential}
+        '422': {description: Explicit confirmation or valid receipt credential missing}
+  /account-deletions/{deletion_id}:
+    get:
+      tags: [Account]
+      summary: Read a deletion receipt after logout
+      operationId: getAccountDeletion
+      security: []
+      description: Rate-limited; requires the separate X-Deletion-Token secret, never a query parameter. Returns no account profile or content. Same 404 for absent receipts and wrong secrets; no-store on success.
+      parameters:
+      - name: deletion_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: X-Deletion-Token
+        in: header
+        required: true
+        schema: {type: string, minLength: 43, maxLength: 128}
+      responses:
+        '200': {description: Same receipt as POST /me/deletion; COMPLETED covers managed server and verified external-copy work, with retained/device boundaries explicitly listed}
+        '404': {description: Receipt absent or credential invalid}
+        '429': {description: Rate limited}
+  /account-deletions/lookup:
+    post:
+      tags: [Account]
+      summary: Recover a deletion receipt after a lost response
+      operationId: lookupAccountDeletion
+      security: []
+      description: Rate-limited secret-based lookup; identical receipt response and privacy rules. No active account login is needed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [receipt_token]
+              properties:
+                receipt_token: {type: string, minLength: 43, maxLength: 128, writeOnly: true}
+      responses:
+        '200': {description: No-store deletion receipt}
+        '404': {description: Receipt absent or credential invalid}
+        '429': {description: Rate limited}
   /statistics:
     get:
       tags:

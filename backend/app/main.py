@@ -27,6 +27,8 @@ from app.modules.conversation.api import router as conversation_router
 from app.modules.conversation.proactive_api import router as proactive_router
 app.state.domain_models = DOMAIN_MODELS
 app.include_router(auth_router)
+from app.modules.account.api import router as account_router
+app.include_router(account_router)
 app.include_router(family_router)
 app.include_router(consent_router)
 app.include_router(memory_router)

@@ -6,7 +6,7 @@ The smoke test uploads a unique, synthetic text probe and confirms it exists usi
 
 PostgreSQL's init script enables pgvector on first initialization of an empty volume. It does not run business migrations. `docker compose -f infra/docker-compose.yml down` stops the local services while preserving data volumes; adding `--volumes` destroys their contents and is not part of the normal smoke workflow. The checked-in credentials are public, local development defaults; these services are not a production deployment.
 
-The bucket has no fixed expiration policy: the data-retention durations are still an open privacy decision (DB §20, D-011). The future FileAsset cleanup flow must delete objects according to authorized `retention_until` and revoke/delete state. No upload or signed URL implementation is part of this infrastructure task.
+The private bucket uses application-driven resource cleanup. Account deletion additionally removes all object versions and delete markers after upload URLs expire; the backend identity needs ListBucketVersions and DeleteObjectVersion permissions. Bucket replication, snapshots and offsite backups need separate operator verification. Retention and deletion boundaries are maintained in [security](../../docs/security.md); setup and copy-confirmation commands are in [deployment](../../docs/deployment.md#账户生命周期运维).
 
 # Reproducible local MinIO images
 

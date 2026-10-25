@@ -22,10 +22,22 @@ async def run_cycle():
     from app.modules.signal import service as signals
     from app.modules.notification import service as notifications
     from app.modules.report import metrics
+    from app.modules.account import service as accounts
     settings = get_settings()
     logger = logging.getLogger('nianian.worker')
     try:
+        if settings.backup_directory:
+            from app.modules.account.backups import prune
+            try:
+                await asyncio.to_thread(prune, settings.backup_directory, settings.backup_retention_days, apply=True)
+            except Exception:
+                log_event(logger, logging.ERROR, 'BACKUP_RETENTION_FAILED', error_code='BACKUP_DIRECTORY_UNAVAILABLE')
+        storage = S3Storage(settings) if settings.s3_access_key and settings.s3_secret_key else None
+        for _ in range(5):
+            if not await accounts.process_one(session_factory, storage, settings):
+                break
         async with session_factory() as db:
+            await accounts.maintenance(db, settings)
             await tick(db, settings)
             next_memory_scan = await maintenance(db, _memory_scan_after)
             await schedule_cleanup(db)
@@ -36,7 +48,6 @@ async def run_cycle():
             await metrics.maintenance(db)
             await db.commit()
             _memory_scan_after = next_memory_scan
-        storage = S3Storage(settings) if settings.s3_access_key and settings.s3_secret_key else None
         for _ in range(20):
             if not await run_one(session_factory, storage):
                 break

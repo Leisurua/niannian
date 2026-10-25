@@ -54,7 +54,9 @@ async def set_display_name(db: AsyncSession, user_id: UUID, name: str) -> None:
 async def active_user(db: AsyncSession, user_id: UUID, *, lock: bool = True) -> User:
     query = select(User).where(User.id == user_id)
     if lock:
-        query = query.with_for_update()
+        # Serialize authentication/status changes without blocking FK checks on
+        # durable provider-copy inserts made under a family lock.
+        query = query.with_for_update(key_share=True)
     user = await db.scalar(query.execution_options(populate_existing=True))
     if not user or user.global_status != "ACTIVE" or user.deleted_at:
         raise AppError("AUTH_SESSION_REVOKED", "当前登录已失效，请重新登录。", 401)

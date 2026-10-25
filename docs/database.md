@@ -699,7 +699,15 @@ UNIQUE `(message_id, recipient_member_id)`，索引 `(recipient_member_id, messa
 
 保留现有全部 Alembic 历史，当前迁移头为 `20261023_attention_contacts`。从 backend/ 运行 `python -m alembic upgrade head`；修改数据库时新增兼容迁移，不因为文档整理重写旧迁移或删除已有数据。普通功能修改不要求空库回退演练。
 
-撤权/删除先隐藏，后台清理向量、对象和通知；已删除行、外部字节和副本的清理是不同步骤。保留期和隐私规则只在 [security](security.md) 维护。真实账户删除/导出和备份期限尚未完成，见 [roadmap](roadmap.md)。
+撤权/删除先隐藏，后台清理向量、对象和通知；已删除行、外部字节和副本的清理是不同步骤。账户删除/导出和保留期规则见 [security](security.md)，未覆盖的外部副本和端侧入口见 [roadmap](roadmap.md)。
+
+## 账户生命周期（20261025_account_lifecycle）
+
+`account_deletion`：`id` UUID 主键、`user_id` 唯一外键、`receipt_hash` 唯一 SHA-256 摘要；`local_status` 限 PENDING/RETRY/ERASED，`requested_at`、`local_erased_at`、`retry_at`、`last_error_code` 记录本地处理；`backup_due_at`、`backup_confirmed_at`、`backup_evidence_hash` 记录备份期限和核验。不存导出文件或个人正文。worker 使用行锁及 SKIP LOCKED，每次只处理一个账户；进程失败释放锁，持久请求可重试。
+
+`provider_copy`：`id` UUID 主键，`user_id` 外键，`(user_id, provider)` 唯一；保存 `first_possible_send_at`、`last_possible_send_at`、`confirmed_at`、`evidence_hash`；`resource_refs` JSONB 数组只保留供应商资源 ID、渠道、服务账号引用，用于删除办理，确认后清空。真实发送前提交可能副本记录，同一供应商后续使用更新最后时间并清除先前确认。迁移为所有现有用户插入 LEGACY_UNVERIFIED，要求运维核对升级前历史。删除状态由这些真实行汇总，不能靠期限或当前 provider 配置推断成功。存在删除/副本记录时迁移拒绝降级丢失记录。
+
+本人正文、附件行、会话、凭证和关联审计/任务物理删除；`user` 保留无姓名占位供其他主体记录引用并防止 Demo 固定身份复活。占位、删除回执及核验摘要的保留边界见安全文档。
 
 当前向量类型为 vector(8)，使用获准子集内的距离查询，没有独立向量服务或已实现的通用语义模型。换模型/维度需修改相应实现和迁移，不能只改文档。
 

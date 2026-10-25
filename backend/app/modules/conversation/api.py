@@ -38,9 +38,27 @@ async def generate_turn(factory, bearer, settings, orchestrator, conversation_id
             records = await rag.retrieve(db, actor, row.family_id, row.owner_user_id, text_input, request_id)
         except Exception:
             records = ()
+        if getattr(orchestrator.llm, 'provider', settings.llm_provider) != 'mock':
+            from app.modules.account.service import note_possible_copy, llm_copy_provider
+            await note_possible_copy(db, actor.user_id, llm_copy_provider(settings))
         await db.commit()
-    result = await orchestrator.handle(request_id=request_id, conversation_id=conversation_id, text=text_input,
-        memory_records=records, recent_turns=[turn for turn, _ in history])
+    if getattr(orchestrator.llm, 'provider', settings.llm_provider) != 'mock':
+        # Keep in-flight sends visible to account erasure, without holding user
+        # or family row locks that would block consent revocation/interrupts.
+        from app.modules.account.service import send_gate
+        async with factory() as gate:
+            await send_gate(gate, actor.user_id, shared=True)
+            async with factory() as db:
+                actor = await authenticate(db, bearer[7:], settings)
+                await service.access(db, actor, conversation_id, owner_only=True, active=True)
+                if not await rag.revalidate(db, actor, (*records, *history_records)):
+                    records, history, history_records = (), (), ()
+                await db.commit()
+            result = await orchestrator.handle(request_id=request_id, conversation_id=conversation_id, text=text_input,
+                memory_records=records, recent_turns=[turn for turn, _ in history])
+    else:
+        result = await orchestrator.handle(request_id=request_id, conversation_id=conversation_id, text=text_input,
+            memory_records=records, recent_turns=[turn for turn, _ in history])
     dependencies = {(r.id, r.version): r for r in (*result.memory_records, *history_records)}
     return replace(result, memory_records=tuple(dependencies.values()))
 
