@@ -10,6 +10,7 @@
 | LLM | `backend/app/integrations/openai_compatible.py` | DeepSeek 官方 HTTPS 服务、关闭深度思考、非流式 JSON 回复；未配置时使用 Mock |
 | Embedding | `backend/app/integrations/mock/adapters.py` | 仍为 8 维 Mock，不能作为通用语义准确率证据 |
 | Android ASR / TTS | `android/shared/.../conversation/AndroidConversationVoice.kt` | 系统 SpeechRecognizer 收音识别，TextToSpeech 中文朗读；依赖已安装的服务，可能联网 |
+| Android 基础数字人 | `android/shared/.../conversation/PersimmonCompanionOrb.kt` | Compose Canvas 2D 柿子形象；待机、听您说话、思考中、正在回答；口型随设备实际播放启停 |
 | 后端 ASR / TTS / Avatar | `backend/app/integrations/mock/adapters.py` | 仍为 Mock 占位，不解码/返回音频；Android 语音不调用它们 |
 | Push | 同上，MockPush | 仅模拟派发，不声明设备送达 |
 | 摘要 | `backend/app/modules/conversation/summary.py` | 从受控主题生成最多四条回顾，不存逐字稿 |
@@ -45,6 +46,10 @@ WSS 保持本人文字/状态通道。Android 点击说话后由系统 ASR 收�
 
 重播重新请求服务器复验记忆权限，不直接朗读缓存回答；主动邀请不自动播音。语音实现遵循 Android [SpeechRecognizer](https://developer.android.com/reference/android/speech/SpeechRecognizer) 和 [TextToSpeech](https://developer.android.com/reference/android/speech/tts/TextToSpeech) 生命周期。具体协议在 [openapi.yaml](openapi.yaml)，传输与留存边界见 [security](security.md)。
 
+老人首页和聊天入口共用 `ConversationPanel`，移除了聊天页固定示例回复和持续“正在听”的模拟状态。`ConversationState.companionPhase` 由本地录音、识别、请求等待、待播和实际播音派生；服务端 `LISTENING` / `SPEAKING` 不能单独让形象显示收音或动嘴。TTS `onStart` 才标记实际播音，`onDone`、`onStop`、失败、按钮打断、切后台、断线和 VOICE 撤权立即清除待播/播音标记并丢弃旧回调。ASR 自动结束收音后进入识别等待。基础口型是播放期间的开合循环，不是音素对齐或音量分析。
+
+聊天页持续显示“念念 AI 陪伴”、当前状态和停止按钮；点击形象复用麦克风权限与语音授权检查，保留文字输入。当前为代码与构建验证，真机语音和动画观感仍待验证。
+
 回顾采用固定主题，生成需要本人的 CONVERSATION_SUMMARY 显式授权。家属读取还需指定家属的该 scope、SUMMARY_READ 和访问理由。主题最多四条，失败不回退为全文；保留期和撤权处理只在安全文档维护。
 
 主动邀请默认关闭，由家属提议、老人确认共同版本，受时间窗、免打扰、每日 0～3 次、最近交互和“今天少打扰”约束。只给活跃本人会话发送 Mock 文字邀请，不后台唤醒或播音；保留/展示前重查当前偏好，未成功保留不能消耗额度。
@@ -60,3 +65,14 @@ WSS 保持本人文字/状态通道。Android 点击说话后由系统 ASR 收�
 记录 request/conversation id、provider/model、prompt/rule version、状态、延迟和候选计数，禁止输入全文、原始音频、完整健康/家庭记忆与模型思考过程。完整数据保护规则见 [security](security.md)。
 
 改动编排/RAG 时运行关联 conversation、embedding、summary、safety 测试；涉及授权、索引失效或任务写回时补对应集成测试。测试路径见 [测试说明](../tests/README.md)，不另建分周 AI 评估报告。
+
+
+## 互动统计与固定模板周报
+
+`modules/report` 在 WSS 成功完成文字轮次时记录最小指标，默认关闭，需独立本人 `INTERACTION_STATS` 授权；无需另启 LLM 或 Embedding 服务。失败、打断、重播、ping 不记新轮次。保存范围与撤回删除规则见 [security](security.md)。统计同时支持真实 LLM 和 Mock，并单列 Mock 轮数。
+
+`GET /v1/statistics` 接收 family_id、owner_user_id、start、end（不含）、timezone；允许最近 35 天内开始、长度 1—31 天的范围。`GET /v1/reports/weekly` 接收同一家庭/主体及可选 week_start（星期一，默认本周）、timezone（默认 Asia/Shanghai），按当前记录生成固定模板，返回 current、previous、comparison、text。上周或本周无互动记录时变化值为 null，不输出虚假的增长率。当前周标注未完成，客户端提供最近四周选择。每次查询复验授权，不写报告快照，也不调用模型编造叙述。
+
+口径：有成功轮次的不同会话计一次交流；同一会话跨日只在周总次数中计一次。轮次按服务端完成时间和所选 IANA 时区归属，汇总每日首末互动、24 小时时段及夜间（22:00—06:00）轮数。活跃时长为每轮回复耗时与同会话内不超过五分钟的相邻轮次间隔，每轮最多五分钟；它是估计，不是录音时长。提醒按计划执行时点计数，展示 DONE/LATER/SKIPPED/PENDING/NO_RESPONSE 和已反馈记录的平均响应秒数，不将未反馈解释为未服药。关注提示仅聚合当前仍可访问的事件，注明七天保留导致的缺失。
+
+情绪类别为开心、难过、孤独、担忧、思念家人；仅识别有限的第一人称明确表达，过滤否定、提问、引语和转述。主题使用固定词组/同义词分类（如包饺子、种花种菜、工作往事），按不同会话去重并列出至少两次的主题。这是真实输入上的有限本地规则，尚不是需求中完整的 embedding 语义聚类；未分类不代表没有相关内容。周报始终标注“交流观察线索”、方法、授权/保留/数据缺失及 Mock，不推断健康、睡眠、心理或认知结论。

@@ -47,8 +47,23 @@ class MessageModelTest {
         assertEquals(1, model.state.value.items.size)
         gateway.fail = true; model.refresh(); yield()
         assertTrue(model.state.value.items.isEmpty())
+        assertFalse(model.state.value.loaded)
+        assertTrue(model.state.value.error.isNotBlank())
         gateway.fail = false; model.refresh(); yield()
         assertEquals(1, model.state.value.items.size)
+        assertTrue(model.state.value.loaded)
+        assertEquals("", model.state.value.error)
+        model.clear()
+    }
+
+    @Test fun homeAndComposerShareOneBindingWithoutResettingDeliveryOrSendState() = runBlocking {
+        val gateway = Gateway(); val model = MessageModel(gateway, false, this)
+        model.bind("family", "child"); yield(); yield()
+        model.send("真实发送测试"); yield()
+        val loaded = model.state.value
+        model.bind("family", "child"); yield()
+        assertEquals(loaded, model.state.value)
+        assertEquals(listOf(false), gateway.receipts)
         model.clear()
     }
 

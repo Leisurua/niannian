@@ -32,7 +32,7 @@ class AndroidConversationVoice(context: Context) : ConversationVoice {
     private val attributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
 
-    override fun listen(partial: (String) -> Unit, final: (String) -> Unit, failed: (String) -> Unit) {
+    override fun listen(partial: (String) -> Unit, final: (String) -> Unit, failed: (String) -> Unit, captured: () -> Unit) {
         stop()
         if (closed) return
         val stamp = epoch
@@ -53,7 +53,7 @@ class AndroidConversationVoice(context: Context) : ConversationVoice {
                 override fun onBeginningOfSpeech() = Unit
                 override fun onRmsChanged(rmsdB: Float) = Unit
                 override fun onBufferReceived(buffer: ByteArray?) = Unit
-                override fun onEndOfSpeech() = Unit
+                override fun onEndOfSpeech() { if (stamp == epoch && !closed) captured() }
                 override fun onEvent(eventType: Int, params: Bundle?) = Unit
                 override fun onPartialResults(partialResults: Bundle?) {
                     if (stamp == epoch && !closed) partial(

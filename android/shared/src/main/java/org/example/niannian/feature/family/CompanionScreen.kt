@@ -37,7 +37,7 @@ import org.example.niannian.feature.message.MessageModel
 
 private val scopeLabels = linkedMapOf("VOICE" to "语音处理", "PORTRAIT" to "数字人形象", "FAMILY_MEMORY" to "家庭记忆",
     "HEALTH_MEDICATION" to "健康与用药信息", "CONVERSATION_SUMMARY" to "交流摘要", "CAMERA_PROXIMITY" to "摄像头存在检测",
-    "NOTIFICATION_TO_FAMILY" to "向家人发送关注提示")
+    "NOTIFICATION_TO_FAMILY" to "向家人发送关注提示", "INTERACTION_STATS" to "互动统计与周报")
 
 private data class ConsentChange(val familyId: String, val scope: String, val revokeId: String? = null, val self: Boolean = false)
 
@@ -85,7 +85,10 @@ fun CompanionScreen(model: CompanionModel, environmentLabel: String,
             val revoking = target.revokeId != null
             AlertDialog(onDismissRequest = { consentChange = null },
                 title = { Text(if (revoking) "撤回$label" else "允许$label") },
-                text = { Text(if (target.self && target.scope == "CONVERSATION_SUMMARY")
+                text = { Text(if (target.self && target.scope == "INTERACTION_STATS")
+                    if (revoking) "停止记录并删除已有互动统计；基础聊天仍可用。"
+                    else "允许记录互动时间、活跃交流时长以及有限规则识别的情绪和主题标签，最长保留 35 天，不保存逐字稿。用于生成交流观察周报；分享给家人需另行授权，可随时撤回并删除。"
+                    else if (target.self && target.scope == "CONVERSATION_SUMMARY")
                     if (revoking) "停止生成并隐藏已有会话回顾，随后清理；基础聊天仍可用。"
                     else "允许生成我的会话回顾。仅保存脱敏主题，最长 24 小时；不保存逐字稿。分享给家人和通知分别授权。"
                     else if (target.self && target.scope == "VOICE")
@@ -182,11 +185,12 @@ fun CompanionScreen(model: CompanionModel, environmentLabel: String,
                     } else {
                         Text("用于我与念念的交流", fontSize = 22.sp)
                         Text("默认关闭；拒绝不影响基础聊天，与分享给家人的授权分别设置。")
-                        listOf("VOICE", "FAMILY_MEMORY", "HEALTH_MEDICATION", "CONVERSATION_SUMMARY").forEach { scope ->
+                        listOf("VOICE", "FAMILY_MEMORY", "HEALTH_MEDICATION", "CONVERSATION_SUMMARY", "INTERACTION_STATS").forEach { scope ->
                             val permission = state.selfPermissions.find { it.scope == scope }
                             val granted = permission?.let { permissionLabel(it) == "已授权" } == true
                             Text("${scopeLabels[scope]}：${permission?.let(::permissionLabel) ?: "未授权"}")
-                            Action(if (scope == "CONVERSATION_SUMMARY") if (granted) "停止生成我的会话回顾" else "允许生成我的会话回顾"
+                            Action(if (scope == "INTERACTION_STATS") if (granted) "停止并删除我的互动统计" else "开启我的互动统计"
+                                else if (scope == "CONVERSATION_SUMMARY") if (granted) "停止生成我的会话回顾" else "允许生成我的会话回顾"
                                 else if (granted) "停止在交流中使用${scopeLabels[scope]}" else "允许在交流中使用${scopeLabels[scope]}", mutationUnavailable) {
                                 consentChange = ConsentChange(selected.id, scope, if (granted) permission!!.id else null, self = true)
                             }

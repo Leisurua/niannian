@@ -21,6 +21,7 @@ async def run_cycle():
     from app.modules.conversation import summary, proactive
     from app.modules.signal import service as signals
     from app.modules.notification import service as notifications
+    from app.modules.report import metrics
     settings = get_settings()
     logger = logging.getLogger('nianian.worker')
     try:
@@ -32,6 +33,7 @@ async def run_cycle():
             await proactive.tick(db, settings)
             await signals.maintenance(db)
             await notifications.maintenance(db)
+            await metrics.maintenance(db)
             await db.commit()
             _memory_scan_after = next_memory_scan
         storage = S3Storage(settings) if settings.s3_access_key and settings.s3_secret_key else None

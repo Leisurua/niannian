@@ -15,7 +15,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -52,7 +51,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -74,8 +72,6 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -84,10 +80,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.example.niannian.shared.R
+import org.example.niannian.feature.conversation.PersimmonCompanionOrb
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -134,16 +129,6 @@ private data class HomeReminderItem(
     val done: Boolean
 )
 
-private data class ChatBubbleMessage(
-    val fromAi: Boolean,
-    val text: String
-)
-
-private val VOICE_WAVE_BARS = listOf(
-    6, 12, 18, 10, 22, 16, 26, 14, 20, 9, 17, 24,
-    12, 19, 8, 15, 22, 11, 16, 7, 13, 18, 10, 6
-)
-
 private val CN_MONTHS = arrayOf("正", "二", "三", "四", "五", "六", "七", "八", "九", "十", "冬", "腊")
 private val CN_DAYS = arrayOf(
     "初一", "初二", "初三", "初四", "初五", "初六", "初七", "初八", "初九", "初十",
@@ -156,7 +141,7 @@ private fun currentLunarString(): String = runCatching {
     val m = cal.get(ChineseCalendar.MONTH).coerceIn(0, 11)
     val d = (cal.get(ChineseCalendar.DAY_OF_MONTH) - 1).coerceIn(0, 29)
     "农历${CN_MONTHS[m]}月${CN_DAYS[d]}"
-}.getOrDefault("农历九月十一")
+}.getOrDefault("农历暂不可用")
 
 private fun greetingForHour(hour: Int): String = when {
     hour < 5 -> "夜深了"
@@ -201,11 +186,9 @@ internal fun ElderDesignHome(
         HomeReminderItem(card.key, shortTime, card.title, card.content, kind, card.status == "DONE")
     }
 
-    var chatOpen by remember { mutableStateOf(false) }
+    var startWithVoice by remember { mutableStateOf(false) }
     var chatTopic by remember { mutableStateOf<String?>(null) }
-    var chatReplyTo by remember { mutableStateOf<String?>(null) }
     var settingsOpen by remember { mutableStateOf(false) }
-    var drawingPreviewOpen by remember { mutableStateOf(false) }
 
     var toastMessage by remember { mutableStateOf<String?>(null) }
     var now by remember { mutableStateOf(LocalDateTime.now()) }
@@ -224,7 +207,7 @@ internal fun ElderDesignHome(
         }
     }
 
-    val elderDisplayName = state.userName.takeIf { it.isNotBlank() && it != "演示老人" } ?: "王阿姨"
+    val elderDisplayName = state.userName.ifBlank { "您好" }
 
     Box(
         modifier = Modifier
@@ -249,6 +232,10 @@ internal fun ElderDesignHome(
                     }
                 )
 
+                Column(Modifier.padding(horizontal = 24.dp, vertical = 12.dp)) {
+                    HomeWeatherCard("${state.userId}:${homeFamily(state)}:${state.userId}", textScale)
+                }
+
                 Spacer(modifier = Modifier.height(26.dp))
 
                 // 2. AI Companion Hero Card
@@ -256,8 +243,8 @@ internal fun ElderDesignHome(
                     scale = textScale,
                     onStartChat = { topic ->
                         chatTopic = topic
-                        chatReplyTo = null
-                        chatOpen = true
+                        startWithVoice = topic == null
+                        feature = HomeFeature.CHAT
                     },
                     onOpenIdentityInfo = {
                         settingsOpen = true
@@ -288,17 +275,11 @@ internal fun ElderDesignHome(
 
                 Spacer(modifier = Modifier.height(36.dp))
 
-                // 4. Family Moments Feed (Featured Photo + Voice Note + Asymmetric Pair)
-                ElderFamilyFeed(
-                    scale = textScale,
-                    onReply = { feature = HomeFeature.MESSAGES },
-                    onOpenMessages = { feature = HomeFeature.MESSAGES },
-                    onToast = { msg -> toastMessage = msg },
-                    onOpenDrawing = {
-                        toastMessage = "朵朵的画已放进「家人记忆」"
-                        drawingPreviewOpen = true
-                    }
-                )
+                Column(Modifier.padding(horizontal = 16.dp)) {
+                    HomeMessagesSection(state, models.messages, textScale,
+                        onOpen = { feature = HomeFeature.MESSAGES },
+                        onPhotos = { feature = HomeFeature.MEMORIES })
+                }
 
                 // Editorial Footer
                 Spacer(modifier = Modifier.height(42.dp))
@@ -331,8 +312,8 @@ internal fun ElderDesignHome(
                     when (tab) {
                         HomeNavTab.CHAT -> {
                             chatTopic = null
-                            chatReplyTo = null
-                            chatOpen = true
+                            startWithVoice = false
+                            feature = HomeFeature.CHAT
                         }
                         HomeNavTab.SETTINGS -> {
                             settingsOpen = true
@@ -376,39 +357,6 @@ internal fun ElderDesignHome(
             }
         }
 
-        // Full-Screen Chat Sheet Overlay
-        AnimatedVisibility(
-            visible = chatOpen,
-            enter = slideInVertically(
-                initialOffsetY = { it },
-                animationSpec = tween(420, easing = FastOutSlowInEasing)
-            ) + fadeIn(),
-            exit = slideOutVertically(
-                targetOffsetY = { it },
-                animationSpec = tween(360, easing = FastOutSlowInEasing)
-            ) + fadeOut()
-        ) {
-            ElderChatSheet(
-                elderName = elderDisplayName,
-                topic = chatTopic,
-                replyTo = chatReplyTo,
-                scale = textScale,
-                conversation = models.conversation,
-                familyId = homeFamily(state),
-                userId = state.userId,
-                online = !state.offline && state.error.isBlank(),
-                onClose = {
-                    models.conversation?.let { conv ->
-                        if (conv.state.value.id.isNotBlank()) {
-                            recapId = conv.state.value.recapId.ifEmpty { conv.state.value.id }
-                            conv.end()
-                        }
-                    }
-                    chatOpen = false
-                }
-            )
-        }
-
         // Bottom Settings & AI Transparency Sheet
         if (settingsOpen) {
             ElderSettingsSheet(
@@ -432,108 +380,12 @@ internal fun ElderDesignHome(
         }
 
         feature?.let { target ->
-            HomeFeatureSheet(target, state, models, subjects, true, chatTopic, recapId) {
+            HomeFeatureSheet(target, state, models, subjects, true, chatTopic, recapId, startWithVoice) {
                 if (target == HomeFeature.CHAT) recapId = models.conversation?.state?.value?.recapId.orEmpty()
                 feature = null
             }
         }
 
-        // Full-screen Drawing Preview Dialog
-        if (drawingPreviewOpen) {
-            Dialog(onDismissRequest = { drawingPreviewOpen = false }) {
-                Surface(
-                    shape = RoundedCornerShape(28.dp),
-                    color = PaperCard,
-                    tonalElevation = 8.dp
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = "朵朵的画 · 真人留言",
-                                    fontFamily = FontFamily.Serif,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 20f.spScaled(textScale),
-                                    color = Ink
-                                )
-                                Text(
-                                    text = "外孙女 · 今天上午",
-                                    fontSize = 13f.spScaled(textScale),
-                                    color = InkMute
-                                )
-                            }
-                            Surface(
-                                shape = CircleShape,
-                                color = PaperDeep,
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clickable { drawingPreviewOpen = false }
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = NianNianIcons.Close,
-                                        contentDescription = "关闭",
-                                        tint = Ink,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Image(
-                            painter = painterResource(id = R.drawable.kid_drawing),
-                            contentDescription = "朵朵画的外婆和她手牵手",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(1f)
-                                .clip(RoundedCornerShape(20.dp))
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "朵朵在美术课上画了外婆家的柿子树，说周六要亲手贴在客厅墙上。",
-                            fontFamily = FontFamily.Serif,
-                            fontSize = 16.5f.spScaled(textScale),
-                            lineHeight = 25f.spScaled(textScale),
-                            color = Ink
-                        )
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Button(
-                            onClick = {
-                                drawingPreviewOpen = false
-                                chatTopic = null
-                                chatReplyTo = "朵朵"
-                                chatOpen = true
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Persimmon600,
-                                contentColor = Color.White
-                            ),
-                            shape = CircleShape,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(50.dp)
-                        ) {
-                            Icon(
-                                imageVector = NianNianIcons.Mic,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "给朵朵回段语音",
-                                fontSize = 16f.spScaled(textScale),
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -555,17 +407,6 @@ private fun ElderWelcomeHeader(
     }
     val lunarStr = remember(now.toLocalDate()) { currentLunarString() }
     val isLarge = scale > 1.0f
-
-    val infiniteTransition = rememberInfiniteTransition(label = "sunSpin")
-    val sunRotation by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(24_000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "sunRotation"
-    )
 
     Column(
         modifier = Modifier
@@ -658,57 +499,6 @@ private fun ElderWelcomeHeader(
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        // Weather Row
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(SunWarmBg),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = NianNianIcons.Sun,
-                    contentDescription = null,
-                    tint = SunWarmIcon,
-                    modifier = Modifier
-                        .size(26.dp)
-                        .rotate(sunRotation)
-                )
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column {
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(
-                        text = "22°",
-                        fontFamily = FontFamily.Serif,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 22f.spScaled(scale),
-                        color = Ink
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "晴转多云",
-                        fontSize = 17f.spScaled(scale),
-                        color = Ink
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "15° / 24°",
-                        fontSize = 16f.spScaled(scale),
-                        color = InkMute
-                    )
-                }
-                Text(
-                    text = "午后阳光正好，适合到楼下走走",
-                    fontSize = 15f.spScaled(scale),
-                    color = InkSoft
-                )
-            }
-        }
     }
 }
 
@@ -785,7 +575,7 @@ private fun ElderCompanionCard(
                                 }
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "陪伴助手",
+                                    text = "念念 AI 陪伴",
                                     fontSize = 13f.spScaled(scale),
                                     fontWeight = FontWeight.Medium,
                                     color = Paper
@@ -813,7 +603,9 @@ private fun ElderCompanionCard(
                         modifier = Modifier
                             .offset(x = 8.dp, y = (-10).dp)
                     ) {
-                        PersimmonCompanionOrb(size = 148.dp, listening = false)
+                        PersimmonCompanionOrb(size = 148.dp, modifier = Modifier.clickable(
+                            onClickLabel = "和念念说话", role = androidx.compose.ui.semantics.Role.Button
+                        ) { onStartChat(null) })
                     }
                 }
 
@@ -829,7 +621,7 @@ private fun ElderCompanionCard(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "昨天您说想再做一次桂花糕，今天要不要接着聊聊步骤？",
+                        text = "我是念念 AI 陪伴。点我的形象或开始聊天，可以说话，也可以打字。",
                         fontFamily = FontFamily.Serif,
                         fontSize = 19f.spScaled(scale),
                         lineHeight = 30f.spScaled(scale),
@@ -967,197 +759,6 @@ private fun ElderCompanionCard(
                     )
                 }
             }
-        }
-    }
-}
-
-/**
- * 小念 —— 以“柿子（柿柿如意）”为原型的圆润抽象陪伴形象。
- */
-@Composable
-fun PersimmonCompanionOrb(
-    size: Dp = 148.dp,
-    listening: Boolean = false
-) {
-    val transition = rememberInfiniteTransition(label = "orbTransition")
-    val breatheScale by transition.animateFloat(
-        initialValue = 1.0f,
-        targetValue = 1.045f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(if (listening) 1200 else 2500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "breatheScale"
-    )
-    val rippleProgress by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(if (listening) 2200 else 3600, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "rippleProgress"
-    )
-
-    Box(
-        modifier = Modifier.size(size),
-        contentAlignment = Alignment.Center
-    ) {
-        Canvas(
-            modifier = Modifier
-                .fillMaxSize()
-                .scale(breatheScale)
-        ) {
-            val w = this.size.width
-            val h = this.size.height
-            val center = Offset(w / 2f, h / 2f)
-            val baseRadius = w * 0.31f
-
-            // Concentric halo ripples
-            listOf(0f, 0.33f, 0.66f).forEach { phaseOffset ->
-                val p = (rippleProgress + phaseOffset) % 1f
-                val r = baseRadius * (0.95f + p * 0.85f)
-                val alpha = (1f - p) * 0.45f
-                drawCircle(
-                    color = Persimmon300.copy(alpha = alpha),
-                    radius = r,
-                    center = center,
-                    style = Stroke(width = 1.8.dp.toPx())
-                )
-            }
-
-            // Persimmon coordinate space (120 x 120 virtual viewport)
-            val s = (w * 0.78f) / 120f
-            val ox = (w - 120f * s) / 2f
-            val oy = (h - 120f * s) / 2f
-
-            fun vx(x: Float) = ox + x * s
-            fun vy(y: Float) = oy + y * s
-
-            // Drop shadow under persimmon
-            drawOval(
-                color = Color(0x388F4224),
-                topLeft = Offset(vx(22f), vy(96f)),
-                size = Size(76f * s, 16f * s)
-            )
-
-            // Main Persimmon Body Path
-            val bodyPath = Path().apply {
-                moveTo(vx(60f), vy(26f))
-                cubicTo(vx(87f), vy(26f), vx(106f), vy(41f), vx(106f), vy(67f))
-                cubicTo(vx(106f), vy(91f), vx(86f), vy(108f), vx(60f), vy(108f))
-                cubicTo(vx(34f), vy(108f), vx(14f), vy(91f), vx(14f), vy(67f))
-                cubicTo(vx(14f), vy(41f), vx(33f), vy(26f), vx(60f), vy(26f))
-                close()
-            }
-            drawPath(
-                path = bodyPath,
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        Color(0xFFF8C39C),
-                        Color(0xFFE58A5C),
-                        Color(0xFFB9542C)
-                    ),
-                    center = Offset(vx(46f), vy(44f)),
-                    radius = 68f * s
-                )
-            )
-
-            // Subtle segment line
-            val creasePath = Path().apply {
-                moveTo(vx(60f), vy(32f))
-                cubicTo(vx(54f), vy(50f), vx(54f), vy(84f), vx(60f), vy(106f))
-            }
-            drawPath(
-                path = creasePath,
-                color = Color(0x24A9472A),
-                style = Stroke(width = 2f * s, cap = StrokeCap.Round)
-            )
-
-            // Top-left soft shine
-            rotate(degrees = -24f, pivot = Offset(vx(42f), vy(48f))) {
-                drawOval(
-                    brush = Brush.radialGradient(
-                        colors = listOf(Color.White.copy(alpha = 0.72f), Color.Transparent),
-                        center = Offset(vx(42f), vy(48f)),
-                        radius = 14f * s
-                    ),
-                    topLeft = Offset(vx(29f), vy(40f)),
-                    size = Size(26f * s, 16f * s)
-                )
-            }
-
-            // Sage green calyx leaves at top (60, 28)
-            val leftLeaf = Path().apply {
-                moveTo(vx(60f), vy(28f))
-                cubicTo(vx(54f), vy(20f), vx(43f), vy(19f), vx(38f), vy(24f))
-                cubicTo(vx(45f), vy(25f), vx(51f), vy(28f), vx(60f), vy(28f))
-                close()
-            }
-            drawPath(leftLeaf, color = Color(0xFF6F7F62))
-
-            val rightLeaf = Path().apply {
-                moveTo(vx(60f), vy(28f))
-                cubicTo(vx(66f), vy(20f), vx(77f), vy(19f), vx(82f), vy(24f))
-                cubicTo(vx(75f), vy(25f), vx(69f), vy(28f), vx(60f), vy(28f))
-                close()
-            }
-            drawPath(rightLeaf, color = Color(0xFF7E8E70))
-
-            val stemPath = Path().apply {
-                moveTo(vx(60f), vy(28f))
-                cubicTo(vx(57f), vy(22f), vx(58f), vy(16f), vx(62f), vy(13f))
-                cubicTo(vx(63f), vy(19f), vx(63f), vy(23f), vx(60f), vy(28f))
-                close()
-            }
-            drawPath(stemPath, color = Color(0xFF5E6E53))
-            drawCircle(
-                color = Color(0xFF4C5A42),
-                radius = 3.4f * s,
-                center = Offset(vx(60f), vy(28f))
-            )
-
-            // Eyes
-            val eyeColor = Color(0xFF4A2416)
-            if (listening) {
-                drawCircle(eyeColor, radius = 3.6f * s, center = Offset(vx(47f), vy(68f)))
-                drawCircle(eyeColor, radius = 3.6f * s, center = Offset(vx(73f), vy(68f)))
-            } else {
-                val leftEye = Path().apply {
-                    moveTo(vx(42f), vy(68f))
-                    quadraticTo(vx(47f), vy(63f), vx(52f), vy(68f))
-                }
-                val rightEye = Path().apply {
-                    moveTo(vx(68f), vy(68f))
-                    quadraticTo(vx(73f), vy(63f), vx(78f), vy(68f))
-                }
-                drawPath(leftEye, eyeColor, style = Stroke(width = 3f * s, cap = StrokeCap.Round))
-                drawPath(rightEye, eyeColor, style = Stroke(width = 3f * s, cap = StrokeCap.Round))
-            }
-
-            // Rosy cheeks
-            drawOval(
-                color = Color(0xCCF3A07C),
-                topLeft = Offset(vx(32f), vy(74.6f)),
-                size = Size(12f * s, 6.8f * s)
-            )
-            drawOval(
-                color = Color(0xCCF3A07C),
-                topLeft = Offset(vx(76f), vy(74.6f)),
-                size = Size(12f * s, 6.8f * s)
-            )
-
-            // Gentle Smile
-            val smilePath = Path().apply {
-                if (listening) {
-                    moveTo(vx(54f), vy(80f))
-                    quadraticTo(vx(60f), vy(86f), vx(66f), vy(80f))
-                } else {
-                    moveTo(vx(55f), vy(80f))
-                    quadraticTo(vx(60f), vy(84f), vx(65f), vy(80f))
-                }
-            }
-            drawPath(smilePath, eyeColor, style = Stroke(width = 2.6f * s, cap = StrokeCap.Round))
         }
     }
 }
@@ -1437,469 +1038,6 @@ private fun ElderRemindersTimeline(
 }
 
 // ============================================================================
-// 4. Family Moments Feed — Featured Daughter Photo + Voice Note + Asymmetric Pair
-// ============================================================================
-@Composable
-private fun ElderFamilyFeed(
-    scale: Float,
-    onReply: (String) -> Unit,
-    onOpenMessages: () -> Unit,
-    onToast: (String) -> Unit,
-    onOpenDrawing: () -> Unit
-) {
-    var loved by remember { mutableStateOf(false) }
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-        // Section Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "家人动态",
-                fontFamily = FontFamily.Serif,
-                fontWeight = FontWeight.Bold,
-                fontSize = 24f.spScaled(scale),
-                color = Ink
-            )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .clickable(onClick = onOpenMessages)
-                    .padding(horizontal = 8.dp, vertical = 6.dp)
-            ) {
-                Text(
-                    text = "全部",
-                    fontSize = 15f.spScaled(scale),
-                    color = InkSoft
-                )
-                Icon(
-                    imageVector = NianNianIcons.ChevronRight,
-                    contentDescription = null,
-                    tint = InkSoft,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Featured Card: Daughter Xiaoyu's Photo & Voice Letter
-        Surface(
-            shape = RoundedCornerShape(32.dp),
-            color = PaperCard,
-            shadowElevation = 3.dp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-        ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    Image(
-                        painter = painterResource(id = R.drawable.family_photo),
-                        contentDescription = "小雨和朵朵在公园，朵朵举着一枝柿子",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(4f / 3f)
-                    )
-                    Surface(
-                        shape = CircleShape,
-                        color = Color.Black.copy(alpha = 0.48f),
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .align(Alignment.TopStart)
-                    ) {
-                        Text(
-                            text = "小雨分享了照片",
-                            fontSize = 13f.spScaled(scale),
-                            color = Color.White,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
-                        )
-                    }
-                }
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 18.dp)
-                ) {
-                    // Sender Avatar & Metadata
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        FamilyInitialAvatar(initial = "雨", bg = Sage100, fg = Sage700, scale = scale)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Row(verticalAlignment = Alignment.Bottom) {
-                                Text(
-                                    text = "小雨",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 17f.spScaled(scale),
-                                    color = Ink
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "女儿 · 真人留言",
-                                    fontSize = 14f.spScaled(scale),
-                                    color = InkMute
-                                )
-                            }
-                            Text(
-                                text = "1 小时前",
-                                fontSize = 14f.spScaled(scale),
-                                color = InkMute
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Text(
-                        text = "妈，带朵朵去公园了，她非要摘柿子给外婆看。周末我们回来吃饭！",
-                        fontFamily = FontFamily.Serif,
-                        fontSize = 19f.spScaled(scale),
-                        lineHeight = 31f.spScaled(scale),
-                        color = Ink
-                    )
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // 24-Bar Waveform Voice Note Player
-                    FamilyVoiceNotePlayer(seconds = 18, scale = scale)
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Action Buttons Row: 回个话 & 看到啦
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Button(
-                            onClick = { onReply("小雨") },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Ink,
-                                contentColor = Paper
-                            ),
-                            shape = CircleShape,
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(56.dp)
-                        ) {
-                            Icon(
-                                imageVector = NianNianIcons.Mic,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "回个话",
-                                fontSize = 17f.spScaled(scale),
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-
-                        Surface(
-                            shape = CircleShape,
-                            color = if (loved) Persimmon50 else Color.Transparent,
-                            border = BorderStroke(
-                                width = 2.dp,
-                                color = if (loved) Persimmon500 else LineColor
-                            ),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(56.dp)
-                                .clip(CircleShape)
-                                .clickable {
-                                    val next = !loved
-                                    loved = next
-                                    if (next) onToast("已告诉小雨：妈妈看到啦")
-                                }
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxSize(),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = if (loved) NianNianIcons.HeartFilled else NianNianIcons.HeartOutline,
-                                    contentDescription = null,
-                                    tint = if (loved) Persimmon500 else Ink,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = if (loved) "已收到" else "看到啦",
-                                    fontSize = 17f.spScaled(scale),
-                                    fontWeight = FontWeight.Medium,
-                                    color = if (loved) Persimmon700 else Ink
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Secondary Asymmetric Pair: Duoduo's Drawing (Left) + Son Jianguo & Weekly Count (Right)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // Left: Granddaughter Duoduo's Crayon Drawing
-            Surface(
-                shape = RoundedCornerShape(28.dp),
-                color = PaperCard,
-                shadowElevation = 2.dp,
-                modifier = Modifier
-                    .weight(1.08f)
-                    .clip(RoundedCornerShape(28.dp))
-                    .clickable { onOpenDrawing() }
-            ) {
-                Column {
-                    Image(
-                        painter = painterResource(id = R.drawable.kid_drawing),
-                        contentDescription = "朵朵画的外婆和她手牵手",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1f)
-                    )
-                    Column(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.Bottom) {
-                            Text(
-                                text = "朵朵",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15f.spScaled(scale),
-                                color = Ink
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "· 今天上午",
-                                fontSize = 13.5f.spScaled(scale),
-                                color = InkMute
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "给外婆画了一幅画",
-                            fontSize = 15f.spScaled(scale),
-                            color = InkSoft
-                        )
-                    }
-                }
-            }
-
-            // Right Column: Son Jianguo's Note + Weekly Letters Summary
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(28.dp),
-                    color = Sage50,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(28.dp))
-                        .clickable { onReply("建国") }
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            FamilyInitialAvatar(
-                                initial = "国",
-                                bg = Persimmon100,
-                                fg = Persimmon700,
-                                scale = scale,
-                                size = 38.dp
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
-                                Text(
-                                    text = "建国",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15f.spScaled(scale),
-                                    color = Ink
-                                )
-                                Text(
-                                    text = "儿子 · 昨天",
-                                    fontSize = 13f.spScaled(scale),
-                                    color = InkMute
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = "“降压药我网上买好了，周四到”",
-                            fontFamily = FontFamily.Serif,
-                            fontSize = 16.5f.spScaled(scale),
-                            lineHeight = 25f.spScaled(scale),
-                            color = Ink
-                        )
-                    }
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(28.dp),
-                    color = PaperDeep,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "本周家人来信",
-                            fontSize = 13f.spScaled(scale),
-                            color = InkMute
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(verticalAlignment = Alignment.Bottom) {
-                            Text(
-                                text = "12",
-                                fontFamily = FontFamily.Serif,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 28f.spScaled(scale),
-                                color = Ink
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "条",
-                                fontSize = 15f.spScaled(scale),
-                                color = InkSoft
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy((-6).dp)) {
-                            FamilyInitialAvatar("雨", Sage100, Sage700, scale, 32.dp)
-                            FamilyInitialAvatar("国", Persimmon100, Persimmon700, scale, 32.dp)
-                            FamilyInitialAvatar("朵", SunWarmBg, Color(0xFF9A6418), scale, 32.dp)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun FamilyInitialAvatar(
-    initial: String,
-    bg: Color,
-    fg: Color,
-    scale: Float,
-    size: Dp = 44.dp
-) {
-    Box(
-        modifier = Modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(bg)
-            .border(1.5.dp, Paper, CircleShape),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = initial,
-            fontFamily = FontFamily.Serif,
-            fontWeight = FontWeight.Bold,
-            fontSize = (if (size < 36.dp) 13f else 17f).spScaled(scale),
-            color = fg
-        )
-    }
-}
-
-@Composable
-private fun FamilyVoiceNotePlayer(
-    seconds: Int,
-    scale: Float
-) {
-    var playing by remember { mutableStateOf(false) }
-    var elapsedMillis by remember { mutableIntStateOf(0) }
-    val totalMillis = seconds * 1000
-
-    LaunchedEffect(playing) {
-        while (playing) {
-            delay(80)
-            elapsedMillis += 80
-            if (elapsedMillis >= totalMillis) {
-                elapsedMillis = 0
-                playing = false
-            }
-        }
-    }
-
-    val progress = elapsedMillis.toFloat() / totalMillis.toFloat()
-    val remainSec = ceil((totalMillis - elapsedMillis) / 1000.0).toInt().coerceAtLeast(0)
-
-    Surface(
-        shape = CircleShape,
-        color = Sage50,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp)
-            .clip(CircleShape)
-            .clickable { playing = !playing }
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(start = 6.dp, end = 20.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(Sage700),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = if (playing) NianNianIcons.Pause else NianNianIcons.Play,
-                    contentDescription = if (playing) "暂停语音" else "播放小雨的语音",
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(28.dp),
-                horizontalArrangement = Arrangement.spacedBy(3.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                VOICE_WAVE_BARS.forEachIndexed { index, barHeight ->
-                    val filled = index.toFloat() / VOICE_WAVE_BARS.size < progress
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(barHeight.dp)
-                            .clip(CircleShape)
-                            .background(if (filled) Sage700 else Sage100)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Text(
-                text = "0:${remainSec.toString().padStart(2, '0')}",
-                fontFamily = FontFamily.Serif,
-                fontSize = 15f.spScaled(scale),
-                color = Sage700
-            )
-        }
-    }
-}
-
-// ============================================================================
-// 5. Material 3 Senior-Friendly Bottom Navigation Bar
 // ============================================================================
 @Composable
 private fun ElderBottomNavBar(
@@ -1965,321 +1103,6 @@ private fun ElderBottomNavBar(
                         )
                     }
                 }
-            }
-        }
-    }
-}
-
-// ============================================================================
-// 6. Full-Screen Slide-Up AI Chat Sheet
-// ============================================================================
-@Composable
-private fun ElderChatSheet(
-    elderName: String,
-    topic: String?,
-    replyTo: String?,
-    scale: Float,
-    conversation: org.example.niannian.feature.conversation.ConversationModel? = null,
-    familyId: String = "",
-    userId: String = "",
-    online: Boolean = false,
-    onClose: () -> Unit
-) {
-    val chatState = conversation?.state?.collectAsState()?.value
-    LaunchedEffect(familyId, userId, online) {
-        if (conversation != null && familyId.isNotBlank() && userId.isNotBlank() && online) {
-            conversation.bind(familyId, userId)
-            conversation.start()
-        }
-    }
-    LaunchedEffect(chatState?.connected, topic) {
-        if (chatState?.connected == true && !topic.isNullOrBlank() && online) {
-            conversation.input(topic)
-        }
-    }
-    val initialMessages = remember(topic, replyTo, elderName) {
-        when {
-            replyTo != null -> listOf(
-                ChatBubbleMessage(
-                    fromAi = true,
-                    text = "好的，我来帮您给${replyTo}录一段语音。您想说什么，直接说就行，说完我念给您听一遍再发送。"
-                )
-            )
-            topic == "讲讲桂花糕" -> listOf(
-                ChatBubbleMessage(fromAi = false, text = "讲讲桂花糕"),
-                ChatBubbleMessage(
-                    fromAi = true,
-                    text = "好呀！上次说到糯米粉和粘米粉按 7 比 3 调。今天咱们从蒸的火候讲起，您家里的干桂花还有吗？"
-                )
-            )
-            topic != null -> listOf(
-                ChatBubbleMessage(fromAi = false, text = topic),
-                ChatBubbleMessage(fromAi = true, text = "好嘞，我在呢。您慢慢说，我听着。")
-            )
-            else -> listOf(
-                ChatBubbleMessage(
-                    fromAi = true,
-                    text = "${elderName}，下午好呀。我是小念，您的 AI 陪伴助手。今天想聊点什么？"
-                )
-            )
-        }
-    }
-
-    val messages = remember(initialMessages) {
-        mutableStateListOf<ChatBubbleMessage>()
-    }
-
-    LaunchedEffect(initialMessages) {
-        messages.clear()
-        initialMessages.forEachIndexed { index, msg ->
-            delay(if (index == 0) 350L else 900L)
-            messages.add(msg)
-        }
-    }
-
-    LaunchedEffect(chatState?.reply) {
-        val reply = chatState?.reply.orEmpty()
-        if (reply.isNotBlank() && messages.lastOrNull()?.text != reply) {
-            messages.add(ChatBubbleMessage(fromAi = true, text = reply))
-        }
-    }
-
-    val waveTransition = rememberInfiniteTransition(label = "chatWave")
-    val wavePhase by waveTransition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(550, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "wavePhase"
-    )
-
-    Surface(
-        color = Paper,
-        modifier = Modifier.fillMaxSize()
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = 14.dp, bottom = 28.dp)
-        ) {
-            // Top AI & Privacy Bar
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(shape = CircleShape, color = Ink) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(5.dp))
-                                .background(Persimmon300)
-                                .padding(horizontal = 5.dp, vertical = 1.dp)
-                        ) {
-                            Text(
-                                text = "AI",
-                                fontSize = 11f.spScaled(scale),
-                                fontWeight = FontWeight.Bold,
-                                color = Ink
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "正在与小念聊天",
-                            fontSize = 13f.spScaled(scale),
-                            color = Paper
-                        )
-                    }
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = NianNianIcons.ShieldCheck,
-                        contentDescription = null,
-                        tint = Sage700,
-                        modifier = Modifier.size(15.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "对话仅您和家人授权可见",
-                        fontSize = 13f.spScaled(scale),
-                        color = InkMute
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Center Orb & Acoustic Waveform
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                PersimmonCompanionOrb(size = 190.dp, listening = true)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = if (replyTo != null) "请说，我在录" else "我在听，您慢慢说",
-                    fontFamily = FontFamily.Serif,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 24f.spScaled(scale),
-                    color = Ink
-                )
-                Spacer(modifier = Modifier.height(14.dp))
-                Row(
-                    modifier = Modifier.height(32.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    for (i in 0 until 9) {
-                        val factor = if (i % 2 == 0) wavePhase else (1.35f - wavePhase)
-                        val opacity = (1f - abs(4 - i) * 0.15f).coerceAtLeast(0.3f)
-                        Box(
-                            modifier = Modifier
-                                .width(6.dp)
-                                .height((32f * factor).dp)
-                                .clip(CircleShape)
-                                .background(Persimmon500.copy(alpha = opacity))
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // Message Stream
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                messages.forEach { m ->
-                    if (m.fromAi) {
-                        Column(modifier = Modifier.fillMaxWidth(0.88f)) {
-                            Text(
-                                text = "小念 · AI",
-                                fontSize = 13f.spScaled(scale),
-                                color = InkMute
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Surface(
-                                shape = RoundedCornerShape(
-                                    topStart = 6.dp,
-                                    topEnd = 22.dp,
-                                    bottomEnd = 22.dp,
-                                    bottomStart = 22.dp
-                                ),
-                                color = PaperCard,
-                                shadowElevation = 2.dp
-                            ) {
-                                Text(
-                                    text = m.text,
-                                    fontFamily = FontFamily.Serif,
-                                    fontSize = 18f.spScaled(scale),
-                                    lineHeight = 29f.spScaled(scale),
-                                    color = Ink,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-                                )
-                            }
-                        }
-                    } else {
-                        Box(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentAlignment = Alignment.CenterEnd
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(
-                                    topStart = 22.dp,
-                                    topEnd = 6.dp,
-                                    bottomEnd = 22.dp,
-                                    bottomStart = 22.dp
-                                ),
-                                color = Persimmon600
-                            ) {
-                                Text(
-                                    text = m.text,
-                                    fontSize = 17f.spScaled(scale),
-                                    color = Color.White,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Bottom Action Row
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    shape = CircleShape,
-                    color = PaperDeep,
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(CircleShape)
-                        .clickable {
-                            val userText = "家里还有一罐今年的新桂花"
-                            messages.add(ChatBubbleMessage(fromAi = false, text = userText))
-                            if (chatState?.connected == true && conversation != null) {
-                                conversation.input(userText)
-                            } else {
-                                messages.add(
-                                    ChatBubbleMessage(
-                                        fromAi = true,
-                                        text = "太好了！新打的干桂花最香了，周末小雨带朵朵回来正好一起蒸一笼。"
-                                    )
-                                )
-                            }
-                        }
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = NianNianIcons.Keyboard,
-                            contentDescription = "改用打字",
-                            tint = Ink,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-
-                Button(
-                    onClick = onClose,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Ink,
-                        contentColor = Paper
-                    ),
-                    shape = CircleShape,
-                    contentPadding = PaddingValues(horizontal = 32.dp),
-                    modifier = Modifier.height(72.dp)
-                ) {
-                    Icon(
-                        imageVector = NianNianIcons.Close,
-                        contentDescription = null,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "结束",
-                        fontSize = 19f.spScaled(scale),
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Spacer(modifier = Modifier.size(56.dp))
             }
         }
     }
@@ -2475,7 +1298,8 @@ private fun ElderSettingsSheet(
                                     HomeFeature.REMINDERS to "生活提醒",
                                     HomeFeature.MEMORIES to "家庭记忆",
                                     HomeFeature.MESSAGES to "家人留言",
-                                    HomeFeature.CONVERSATION to "陪伴设置"
+                                    HomeFeature.CONVERSATION to "陪伴设置",
+                                    HomeFeature.REPORTS to "我的周报"
                                 ).forEach { (feat, label) ->
                                     Surface(
                                         shape = CircleShape,

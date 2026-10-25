@@ -13,11 +13,12 @@ from app.modules.conversation.proactive_models import ProactivePreference, Proac
 from app.modules.signal.models import SignalEvent
 from app.modules.notification.models import FamilyContact, Notification, NotificationAttempt, NotificationPreference
 from app.platform.tasks import Task
+from app.modules.report.models import InteractionMetric
 
 DOMAIN_MODELS = (
     User, Family, AuditLog, FamilyMember, FamilyInvitation, Consent, DeviceBinding,
     DeviceSession, Memory, FileAsset, Reminder, ReminderExecution, Conversation,
     MemoryChunk, MemoryEmbedding, Task, ProactivePreference, ProactiveDailyCounter,
     SignalEvent, Notification, NotificationAttempt, NotificationPreference, FamilyContact,
-    FamilyMessage, MessageDelivery,
+    FamilyMessage, MessageDelivery, InteractionMetric,
 )

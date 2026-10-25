@@ -95,10 +95,12 @@ class ApiClient:
         body: dict[str, Any] | None = None,
         auth: bool = True,
         idempotency_key: str | None = None,
+        access_reason: str | None = None,
     ) -> dict[str, Any]:
+        extra = {'access_reason': access_reason} if access_reason is not None else {}
         with self._request_lock:
             try:
-                return self._exchange(method, path, body=body, auth=auth, idempotency_key=idempotency_key)
+                return self._exchange(method, path, body=body, auth=auth, idempotency_key=idempotency_key, **extra)
             except ApiError as exc:
                 if not auth or exc.status != 401:
                     raise
@@ -113,13 +115,13 @@ class ApiClient:
                     self.clear_session()
                     raise ClientError('登录续期未能确认，请重新登录。') from refresh_error
                 try:
-                    return self._exchange(method, path, body=body, auth=auth, idempotency_key=idempotency_key)
+                    return self._exchange(method, path, body=body, auth=auth, idempotency_key=idempotency_key, **extra)
                 except ApiError as retry_error:
                     if retry_error.status == 401:
                         self.clear_session()
                     raise
 
-    def _exchange(self, method, path, *, body=None, auth=True, idempotency_key=None):
+    def _exchange(self, method, path, *, body=None, auth=True, idempotency_key=None, access_reason=None):
         self._check_optional_api(path)
         headers = {"Accept": "application/json", "User-Agent": f"NianNian-Windows/{APP_VERSION}"}
         data = None
@@ -132,6 +134,10 @@ class ApiClient:
             headers["Authorization"] = "Bearer " + self.access_token
         if idempotency_key:
             headers["Idempotency-Key"] = idempotency_key
+        if access_reason is not None:
+            if access_reason not in ('FAMILY_CHECK_IN', 'FOLLOW_UP'):
+                raise ClientError('请选择有效的查看理由。')
+            headers['X-Access-Reason'] = access_reason
         request = Request(self.base_url + path, data=data, headers=headers, method=method)
         try:
             with urlopen(request, timeout=self.timeout) as response:
@@ -154,6 +160,31 @@ class ApiClient:
 
     def health(self) -> dict[str, Any]:
         return self._request("GET", "/health", auth=False)
+
+    def weather_cities(self, name: str) -> list[dict[str, Any]]:
+        return self._request('GET', '/v1/weather/cities?' + urlencode({'q': name.strip()})).get('items', [])
+
+    def weather_current(self, city_id: int) -> dict[str, Any]:
+        return self._request('GET', '/v1/weather/current?' + urlencode({'city_id': city_id}))
+
+    def report_subjects(self, family_id: str) -> list[dict[str, Any]]:
+        if self.login_kind == 'elder':
+            return [self.user] if self.user else []
+        items, cursor = [], None
+        while True:
+            result = self._request('GET', f'/v1/families/{quote(family_id)}/members?limit=100' + ('&cursor=' + quote(cursor) if cursor else ''))
+            items.extend(dict(id=row['user_id'], display_name=row.get('display_name') or '长辈')
+                for row in result.get('items', []) if row['role'] == 'ELDER' and row['status'] == 'ACTIVE')
+            if not result.get('page', {}).get('has_more'):
+                return items
+            next_cursor = result['page'].get('next_cursor')
+            if not next_cursor or next_cursor == cursor:
+                raise NetworkError('成员分页未向前推进。')
+            cursor = next_cursor
+
+    def weekly_report(self, family_id: str, owner: str, week: str, reason: str | None = None) -> dict[str, Any]:
+        return self._request('GET', '/v1/reports/weekly?' + urlencode(dict(family_id=family_id,
+            owner_user_id=owner, week_start=week, timezone='Asia/Shanghai')), access_reason=reason)
 
     def backend_features(self) -> dict[str, bool]:
         """Inspect the running FastAPI server without modifying any data."""

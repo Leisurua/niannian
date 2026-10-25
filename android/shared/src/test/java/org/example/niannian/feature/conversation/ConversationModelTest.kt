@@ -19,11 +19,12 @@ class ConversationModelTest {
         var failure: (String) -> Unit = {}
         var started: () -> Unit = {}
         var finished: () -> Unit = {}
+        var captured: () -> Unit = {}
         val spoken = mutableListOf<String>()
         var stops = 0
         var finishes = 0
-        override fun listen(partial: (String) -> Unit, final: (String) -> Unit, failed: (String) -> Unit) {
-            this.partial = partial; this.final = final; failure = failed
+        override fun listen(partial: (String) -> Unit, final: (String) -> Unit, failed: (String) -> Unit, captured: () -> Unit) {
+            this.partial = partial; this.final = final; failure = failed; this.captured = captured
         }
         override fun finishListening() { finishes++ }
         override fun speak(text: String, slow: Boolean, started: () -> Unit, finished: () -> Unit, failed: (String) -> Unit) {
@@ -254,9 +255,11 @@ class ConversationModelTest {
         gateway.listener(frame(1)); yield()
         model.voiceEntry()
         assertTrue(model.state.value.recording)
+        assertEquals(CompanionPhase.LISTENING, model.state.value.companionPhase)
         voice.partial("我喜欢"); assertEquals("我喜欢", model.state.value.partialTranscript)
         model.finishListening()
         assertEquals(1, voice.finishes); assertTrue(model.state.value.recognizing)
+        assertEquals(CompanionPhase.THINKING, model.state.value.companionPhase)
         voice.final("我喜欢种花")
         val request = gateway.sent.last().getLong("sequence")
         assertEquals("text.input", gateway.sent.last().getString("type"))
@@ -264,10 +267,15 @@ class ConversationModelTest {
         assertFalse(model.state.value.recording); assertFalse(model.state.value.recognizing)
         gateway.listener(frame(2, "assistant.text", JSONObject().put("text", "喜欢什么花？"), request)); yield()
         gateway.listener(frame(3, "assistant.state", JSONObject().put("state", "IDLE"), request)); yield()
+        assertFalse(model.state.value.speaking)
+        assertTrue(model.state.value.speechPending)
+        assertEquals(CompanionPhase.THINKING, model.state.value.companionPhase)
         voice.started()
         assertEquals(listOf("喜欢什么花？"), voice.spoken)
         assertEquals("SPEAKING", model.state.value.state); assertTrue(model.state.value.speaking)
+        assertEquals(CompanionPhase.SPEAKING, model.state.value.companionPhase)
         voice.finished(); assertFalse(model.state.value.speaking); assertEquals("IDLE", model.state.value.state)
+        assertEquals(CompanionPhase.IDLE, model.state.value.companionPhase)
         model.clear()
     }
 
@@ -377,10 +385,63 @@ class ConversationModelTest {
         val request = gateway.sent.last().getLong("sequence")
         gateway.listener(frame(5, "assistant.text", JSONObject().put("text", "你好"), request)); yield()
         gateway.listener(frame(6, "assistant.state", JSONObject().put("state", "IDLE"), request)); yield()
+        voice.started()
         assertTrue(model.state.value.speaking)
         gateway.listener(frame(7, "voice.permission", JSONObject().put("allowed", false))); yield()
         assertFalse(model.state.value.speaking); assertFalse(model.state.value.voiceEnabled)
         assertTrue(model.input("仍可打字"))
         model.clear()
+    }
+
+    @Test fun serverPhasesAloneDoNotAnimateListeningOrSpeech() = runBlocking {
+        val gateway = Gateway(); val model = ConversationModel(gateway, this)
+        model.bind("family", "elder"); model.start(); yield()
+        gateway.listener(frame(1)); yield()
+        assertEquals(CompanionPhase.IDLE, model.state.value.companionPhase)
+        model.input("文字输入")
+        assertEquals(CompanionPhase.THINKING, model.state.value.companionPhase)
+        gateway.listener(frame(2, "assistant.state", JSONObject().put("state", "SPEAKING"), gateway.sent.last().getLong("sequence"))); yield()
+        assertEquals(CompanionPhase.THINKING, model.state.value.companionPhase)
+        gateway.listener(frame(3, "assistant.text", JSONObject().put("text", "文字回答"), gateway.sent.last().getLong("sequence"))); yield()
+        assertEquals(CompanionPhase.IDLE, model.state.value.companionPhase)
+        model.clear()
+    }
+
+    @Test fun automaticCaptureEndShowsThinkingAndFailureReturnsToIdle() = runBlocking {
+        val gateway = Gateway(); val voice = Voice(); val model = ConversationModel(gateway, this)
+        model.attachVoice(voice); model.bind("family", "elder"); model.start(); yield()
+        gateway.listener(frame(1)); yield()
+        model.voiceEntry(); voice.captured()
+        assertFalse(model.state.value.recording)
+        assertEquals(CompanionPhase.THINKING, model.state.value.companionPhase)
+        voice.failure("识别失败")
+        assertEquals(CompanionPhase.IDLE, model.state.value.companionPhase)
+        assertTrue(model.input("可以继续文字聊天"))
+        model.clear()
+    }
+
+    @Test fun allExitPathsCancelPendingOrPlayingMouthAndRejectLateCallbacks() = runBlocking {
+        for (playing in listOf(false, true)) for (exit in listOf("interrupt", "disconnect", "background", "revoke", "failure", "serverError")) {
+            val gateway = Gateway(); val voice = Voice(); val model = ConversationModel(gateway, this)
+            model.attachVoice(voice); model.bind("family", "elder"); model.start(); yield()
+            gateway.listener(frame(1)); yield()
+            model.voiceEntry(); voice.final("你好")
+            val request = gateway.sent.last().getLong("sequence")
+            gateway.listener(frame(2, "assistant.text", JSONObject().put("text", "您好"), request)); yield()
+            if (playing) voice.started()
+            val lateStart = voice.started; val lateFinish = voice.finished
+            when (exit) {
+                "interrupt" -> model.interrupt()
+                "disconnect" -> { gateway.onClose(0); yield() }
+                "background" -> model.clear()
+                "revoke" -> { gateway.listener(frame(3, "voice.permission", JSONObject().put("allowed", false))); yield() }
+                "failure" -> voice.failure("播放失败")
+                else -> { gateway.listener(frame(3, "error", JSONObject(), request)); yield() }
+            }
+            lateStart(); lateFinish()
+            assertEquals("$exit / playing=$playing", CompanionPhase.IDLE, model.state.value.companionPhase)
+            assertFalse(model.state.value.voiceActive)
+            model.clear()
+        }
     }
 }
