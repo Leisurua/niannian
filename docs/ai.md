@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | 文字编排 | `backend/app/ai/conversation.py` | 透明 AI 身份、结构化回复校验、规则警告优先、失败兜底、授权记忆复验 |
 | LLM | `backend/app/integrations/openai_compatible.py` | DeepSeek 官方 HTTPS 服务、关闭深度思考、非流式 JSON 回复；未配置时使用 Mock |
-| Embedding | `backend/app/integrations/mock/adapters.py` | 仍为 8 维 Mock，不能作为通用语义准确率证据 |
+| Embedding | `backend/app/integrations/embedding.py` | 可启用本地 BGE 中文模型、512 维真实语义向量；离线推理、不外发记忆；未启用时为明确标记的 8 维 Mock |
 | Android ASR / TTS | `android/shared/.../conversation/AndroidConversationVoice.kt` | 系统 SpeechRecognizer 收音识别，TextToSpeech 中文朗读；依赖已安装的服务，可能联网 |
 | Android 基础数字人 | `android/shared/.../conversation/PersimmonCompanionOrb.kt` | Compose Canvas 2D 柿子形象；待机、听您说话、思考中、正在回答；口型随设备实际播放启停 |
 | THA3 自定义形象 | `modules/avatar`、`integrations/avatar_preprocess.py` / `tha3_renderer.py`、Android `AvatarGenerationModel` / `AvatarModel` / `CompanionAvatar` | 手机照片经千问/豆包生成立绘，服务端抠图与构图后由真实 THA3 生成四态包，下载预览并手动确认启用；也支持离线 ZIP 导入 |
@@ -38,6 +38,10 @@ Mock 编排超时 8 秒，真实 LLM 默认 20 秒（`LLM_TIMEOUT_SECONDS`，上
 5. 生成后、重复回答和任务写回再次验证引用。撤权或源变化使旧向量/候选失效，不能在迟到回复中继续发布。
 
 记忆内容作为数据，不能充当指令。缺少授权依据、冲突或未知事实明确说不确定，不编造家人信息。
+
+本地检索使用 `BAAI/bge-small-zh-v1.5`（FastEmbed / ONNX CPU），查询加检索指令；正文按 320 字、64 字重叠分块，并将标题前 96 字加入向量输入。每条记忆最多返回一个最佳片段，总计最多 5 条；默认余弦相似度门槛 0.5，可通过 `EMBEDDING_MIN_RELEVANCE` 调整。该门槛已在虚构陪诊、散步和喜好记录上验证，不代表通用准确率或时间推理能力。原始片段用于引用，不把模型自由回答当作家庭事实。[模型说明](https://huggingface.co/BAAI/bge-small-zh-v1.5)、[本地推理实现](https://qdrant.tech/documentation/embeddings/fastembed/)。
+
+模型权重、分词器和输入格式的 SHA-256 构成 `model_version`；检索及维护均检查 provider/model/version/dimension。切换 Mock 或模型后，worker 分批补建当前获准记忆，旧向量在补建完成前不参与排名；不需修改现有不限维度的 `VECTOR` 列。模型文件更新后重启 API/worker。推理在后台线程执行，期间不持有家庭锁；返回向量后再次检查授权，源版本变化、撤回或删除都不能通过旧索引继续引用。配置和模型下载见 [部署说明](deployment.md#本地家庭记忆语义检索)。
 
 ## 会话、回顾与主动邀请
 

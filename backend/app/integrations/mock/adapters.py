@@ -123,6 +123,7 @@ class MockLLM:
 
 class MockEmbedding:
     DIMENSION = 8
+    dimension = DIMENSION
 
     def capabilities(self) -> ProviderCapabilities:
         return _capabilities("mock-embedding-v1", embedding=True)

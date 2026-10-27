@@ -1,24 +1,42 @@
 import asyncio
 from dataclasses import dataclass
 import hashlib
-import math
+import logging
 from types import SimpleNamespace
+from uuid import UUID
 
 from sqlalchemy import Float, Integer, delete, literal, or_, select, tuple_, update
 
-from app.integrations.contracts import EmbeddingRequest, EmbeddingResult
-from app.integrations.mock import MockEmbedding
+from app.integrations.contracts import EmbeddingRequest
+from app.integrations.embedding import configured_embedding, validate_result
 from app.modules.audit import service as audit
 from app.modules.consent import service as consent
 from app.modules.memory.index_models import MemoryChunk, MemoryEmbedding, Vector
 from app.modules.memory.models import FileAsset, Memory
 from app.platform.errors import AppError
+from app.platform.config import get_settings
 from app.platform.identifiers import utcnow, uuid7
+from app.platform.logging import log_event
 from app.platform.resource_access import authorize
 from app.platform import tasks
 
-PROVIDER = MockEmbedding()
-VERSION = PROVIDER.capabilities().version
+def get_provider():
+    return configured_embedding(get_settings())
+
+
+@dataclass(frozen=True)
+class PreparedIndex:
+    family_id: UUID
+    subject_user_id: UUID
+    grant: UUID
+    chunks: tuple[str, ...]
+    texts: tuple[str, ...]
+
+
+def identity_filters(provider):
+    caps = provider.capabilities()
+    return (MemoryEmbedding.provider == caps.provider, MemoryEmbedding.model == caps.model,
+        MemoryEmbedding.model_version == caps.version, MemoryEmbedding.dimension == provider.dimension)
 
 
 @dataclass(frozen=True)
@@ -82,11 +100,22 @@ async def consent_changed(db, family_id, subject, scope, epoch):
 async def reconcile_index(db, row):
     grant = await eligible(db, row, SimpleNamespace(user_id=row.subject_user_id))
     if grant:
+        try:
+            provider = get_provider()
+        except OSError:
+            # Missing model files must not roll back unrelated reminder and
+            # notification work in the shared worker cycle.
+            log_event(logging.getLogger('nianian.worker'), logging.ERROR,
+                'MEMORY_MODEL_UNAVAILABLE', error_code='EMBEDDING_MODEL_UNAVAILABLE')
+            return
         present = await db.scalar(select(MemoryEmbedding.id).join(MemoryChunk).where(
             MemoryChunk.memory_id == row.id, MemoryChunk.status == 'ACTIVE', MemoryEmbedding.status == 'ACTIVE',
+            MemoryChunk.deleted_at.is_(None), MemoryEmbedding.invalidated_at.is_(None), *identity_filters(provider),
             MemoryEmbedding.metadata_redacted['source_version'].astext.cast(Integer) == row.version).limit(1))
         if not present:
-            await tasks.enqueue(db, 'MEMORY_INDEX', row.family_id, row.id, row.version, str(grant), rearm=True)
+            caps = provider.capabilities()
+            profile = hashlib.sha256(f'{caps.provider}:{caps.model}:{caps.version}:{provider.dimension}'.encode()).hexdigest()[:16]
+            await tasks.enqueue(db, 'MEMORY_INDEX', row.family_id, row.id, row.version, f'{grant}:{profile}', rearm=True)
     else:
         await invalidate(db, row.id)
         await tasks.enqueue(db, 'MEMORY_CLEANUP', row.family_id, row.id, row.version, 'ineligible')
@@ -105,34 +134,33 @@ async def maintenance(db, after=None, limit=100):
 
 
 async def prepare_index(db, resource_id, version):
-    row = await db.get(Memory, resource_id)
+    row = await db.get(Memory, resource_id, populate_existing=True)
     if not row or row.version != version:
         return None
     grant = await eligible(db, row, SimpleNamespace(user_id=row.subject_user_id))
     if not grant:
         return None
-    chunks = [row.content[i:i + 2000] for i in range(0, len(row.content), 2000)] or [row.title]
-    return row.family_id, grant, chunks
+    real = get_provider().capabilities().provider != 'mock'
+    size, stride = (320, 256) if real else (2000, 2000)
+    chunks = tuple(row.content[i:i + size] for i in range(0, len(row.content), stride)) or (row.title,)
+    texts = tuple(f'{row.title[:96]}\n{chunk}' for chunk in chunks) if real else chunks
+    return PreparedIndex(row.family_id, row.subject_user_id, grant, chunks, texts)
 
 
-async def embed(texts, request_id):
-    async with asyncio.timeout(5):
-        result = EmbeddingResult.model_validate(await PROVIDER.embed(EmbeddingRequest(request_id=request_id, texts=texts)))
-    if (result.provider != 'mock' or result.model != 'mock-embedding-v1' or result.model_version != VERSION
-            or result.dimension != 8 or len(result.vectors) != len(texts)):
-        raise ValueError('Invalid embedding identity')
-    for vector in result.vectors:
-        if len(vector) != 8 or any(not math.isfinite(x) for x in vector) or sum(x * x for x in vector) == 0:
-            raise ValueError('Invalid vector')
-    return result
+async def embed(texts, request_id, *, provider=None, purpose='document'):
+    provider = provider or get_provider()
+    async with asyncio.timeout(get_settings().embedding_timeout_seconds):
+        result = await provider.embed(EmbeddingRequest(request_id=request_id, texts=list(texts), purpose=purpose))
+    return validate_result(result, provider, len(texts))
 
 
 async def apply_index(db, resource_id, version, prepared, result):
     current = await prepare_index(db, resource_id, version)
     if current is None or current != prepared:
         return
+    validate_result(result, get_provider(), len(prepared.chunks))
     await db.execute(delete(MemoryChunk).where(MemoryChunk.memory_id == resource_id))
-    for ordinal, (content, vector) in enumerate(zip(prepared[2], result.vectors, strict=True)):
+    for ordinal, (content, vector) in enumerate(zip(prepared.chunks, result.vectors, strict=True)):
         chunk = MemoryChunk(id=uuid7(), memory_id=resource_id, ordinal=ordinal, content=content,
             content_hash=hashlib.sha256(content.encode()).hexdigest())
         db.add(chunk)
@@ -146,8 +174,7 @@ async def cleanup(db, resource_id):
     await db.execute(delete(MemoryChunk).where(MemoryChunk.memory_id == resource_id, MemoryChunk.status != 'ACTIVE'))
 
 
-async def retrieve(db, actor, family_id, subject, query, request_id):
-    """Exact distance over a materialized authorized subset; never global ranking."""
+async def authorized_scopes(db, actor, family_id, subject):
     scopes = []
     for scope in ('FAMILY_MEMORY', 'HEALTH_MEDICATION', 'PORTRAIT', 'VOICE', 'CONVERSATION_SUMMARY', 'CAMERA_PROXIMITY', 'NOTIFICATION_TO_FAMILY'):
         try:
@@ -157,9 +184,24 @@ async def retrieve(db, actor, family_id, subject, query, request_id):
         except AppError as error:
             if error.status_code not in (403, 404):
                 raise
+    return scopes
+
+
+async def retrieve(db, actor, family_id, subject, query, request_id):
+    """Rank only the materialized authorized subset.
+
+    Local inference runs between read transactions so revoke is not blocked.
+    Callers must not pass unrelated uncommitted writes to this read operation.
+    """
+    if not await authorized_scopes(db, actor, family_id, subject):
+        return ()
+    provider = get_provider()
+    real = provider.capabilities().provider != 'mock'
+    await db.commit()
+    vector = (await embed([query], request_id, provider=provider, purpose='query')).vectors[0]
+    scopes = await authorized_scopes(db, actor, family_id, subject)
     if not scopes:
         return ()
-    vector = (await embed([query], request_id)).vectors[0]
     allowed = select(Memory.id, Memory.family_id, Memory.subject_user_id, Memory.version, Memory.type,
         MemoryChunk.content, MemoryEmbedding.embedding).join(MemoryChunk, MemoryChunk.memory_id == Memory.id).join(
         MemoryEmbedding, MemoryEmbedding.memory_chunk_id == MemoryChunk.id).where(
@@ -168,13 +210,15 @@ async def retrieve(db, actor, family_id, subject, query, request_id):
         Memory.revoked_at.is_(None), or_(Memory.expires_at.is_(None), Memory.expires_at > utcnow()),
         or_(Memory.visibility != 'OWNER_ONLY', Memory.subject_user_id == actor.user_id),
         MemoryChunk.status == 'ACTIVE', MemoryChunk.deleted_at.is_(None), MemoryEmbedding.status == 'ACTIVE',
-        MemoryEmbedding.invalidated_at.is_(None), MemoryEmbedding.provider == 'mock', MemoryEmbedding.model == 'mock-embedding-v1',
-        MemoryEmbedding.model_version == VERSION, MemoryEmbedding.dimension == 8,
+        MemoryEmbedding.invalidated_at.is_(None), *identity_filters(provider),
         MemoryEmbedding.metadata_redacted['source_version'].astext.cast(Integer) == Memory.version,
     ).cte('authorized_memory').prefix_with('MATERIALIZED')
     distance = allowed.c.embedding.op('<=>', return_type=Float)(literal(vector, type_=Vector()))
-    rows = (await db.execute(select(allowed, distance.label('distance')).where(distance <= 0.2)
-        .order_by(distance, allowed.c.id).limit(5))).mappings().all()
+    minimum = get_settings().embedding_min_relevance if real else 0.8
+    # One best chunk per memory leaves room for other relevant records.
+    best = select(allowed, distance.label('distance')).where(distance <= 1 - minimum).distinct(
+        allowed.c.id).order_by(allowed.c.id, distance).subquery()
+    rows = (await db.execute(select(best).order_by(best.c.distance, best.c.id).limit(5))).mappings().all()
     await audit.record(db, actor.user_id, 'MEMORY_RAG_READ', 'MEMORY', family_id=family_id, request_id=request_id)
     return tuple(RetrievedMemory(row['id'], row['family_id'], row['subject_user_id'], row['version'],
         row['content'], row['type'], 1 - row['distance']) for row in rows)

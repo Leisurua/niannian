@@ -29,7 +29,11 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = Field(default=20, gt=0, le=20)
     asr_api_key: str | None = Field(default=None, repr=False)
     tts_api_key: str | None = Field(default=None, repr=False)
-    embedding_api_key: str | None = Field(default=None, repr=False)
+    embedding_provider: Literal['mock', 'local'] = 'mock'
+    embedding_model_path: str | None = None
+    embedding_threads: int = Field(default=2, ge=1, le=16)
+    embedding_timeout_seconds: float = Field(default=8, gt=0, le=10)
+    embedding_min_relevance: float = Field(default=0.5, ge=0, le=1)
     push_api_key: str | None = Field(default=None, repr=False)
     notification_external_enabled: bool = False
     notification_push_provider: Literal['mock', 'ntfy'] = 'mock'
@@ -101,6 +105,11 @@ class Settings(BaseSettings):
             raise ValueError("demo requires fictional data and mock providers")
         if self.app_env == "test" and self.provider_mode != "mock":
             raise ValueError("test requires mock providers")
+        if self.embedding_provider != 'mock':
+            if self.app_env == 'demo':
+                raise ValueError('demo requires Mock Embedding')
+            if not self.embedding_model_path or not self.embedding_model_path.strip():
+                raise ValueError('local Embedding requires EMBEDDING_MODEL_PATH')
         if self.llm_provider != "mock":
             if self.app_env != "dev":
                 raise ValueError("real LLM requires APP_ENV=dev")

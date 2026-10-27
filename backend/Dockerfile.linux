@@ -4,6 +4,8 @@ WORKDIR /srv/niannian/backend
 COPY requirements.lock /tmp/requirements.lock
 RUN python -m pip install -r /tmp/requirements.lock && groupadd --system niannian && useradd --system --gid niannian niannian
 COPY . .
+ARG PRELOAD_EMBEDDING_MODEL=false
+RUN if [ "$PRELOAD_EMBEDDING_MODEL" = "true" ]; then python -m app.integrations.embedding --download /srv/niannian/models/bge-small-zh-v1.5; fi
 RUN chown -R niannian:niannian /srv/niannian/backend
 USER niannian
 EXPOSE 8000

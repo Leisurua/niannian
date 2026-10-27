@@ -15,6 +15,8 @@ python scripts/verify.py integration backend/tests/integration/test_messages.py
 
 照片测试默认使用明确标记的 Mock 对象存储。真实 MinIO 检查 `test_photo_storage.py` 另需 `TEST_STORAGE_CONFIG` 指向本地 JSON：`endpoint` 为 `http://127.0.0.1:59003`，`bucket` 为独立的 `niannian-test`，以及测试专用 `access_key`、`secret_key`。凭据文件不得提交；没有这些依赖时真实存储检查会跳过，不能视为通过。
 
+真实语义检索检查 `test_semantic_memory.py` 另需 `TEST_EMBEDDING_MODEL_PATH` 指向已下载的 BGE 模型目录；模型准备见 [部署说明](../docs/deployment.md#本地家庭记忆语义检索)。该测试使用实际 CPU 推理和 pgvector，检查医院陪同同义问法、无匹配、Mock/旧模型索引补建、推理中撤权及家庭隔离。未提供模型时明确跳过，不用 Mock 向量代替通过结果。
+
 APK 隐私检查按需执行：构建两个 Demo Debug APK 后设置 `NIANNIAN_REQUIRE_APKS=1`，运行 `python -m unittest discover -s tests/security -p test_artifact_scan.py`。不要求全部变体，不在每次 Python 测试中扫描旧 APK 或整个 Git 历史。
 
 ## Android 核心业务实机验证（2026-10-20）

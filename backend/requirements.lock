@@ -47,3 +47,20 @@ tzlocal==5.4.4
 python-dateutil==2.9.0.post0
 urllib3==2.8.0
 six==1.17.0
+fastembed==0.9.1
+numpy==2.5.4
+onnxruntime==1.31.1
+tokenizers==0.23.3
+huggingface-hub==1.33.0
+hf-xet==1.7.0
+filelock==4.2.4
+fsspec==2026.9.0
+loguru==0.7.3
+mmh3==5.3.1
+py-rust-stemmers==0.1.8
+requests==2.34.2
+charset-normalizer==3.5.2
+protobuf==7.36.2
+flatbuffers==25.12.19
+tqdm==4.70.1
+win32-setctime==1.2.1; sys_platform == 'win32'

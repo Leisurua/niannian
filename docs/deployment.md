@@ -57,7 +57,7 @@ python -m app.worker.main --serve
 
 API 根地址 `http://127.0.0.1:8000`；`/docs`、`/openapi.json` 查看当前运行接口。`/health` 只检查 API 活性，不证明数据库、存储或 worker 正常。摘要、通知和索引需要 worker 实际运行，`--once` 可执行一次周期。Demo 登录支持 demo-child、demo-elder、demo-caregiver、demo-other；通过正常客户端/API 建家并授权，不运行依赖未实现表的 seed。
 
-APP_ENV 从进程环境选择 dev/test/demo，应用读取 `backend/config/<环境>.env`，再加载忽略提交的根 `.env`；环境变量优先。demo 要求 demo_data=true 且 provider_mode=mock，test 也只允许 Mock。填入供应商密钥不会自动启用真实 AI。
+APP_ENV 从进程环境选择 dev/test/demo，应用读取 `backend/config/<环境>.env`，再加载忽略提交的根 `.env`；环境变量优先。demo 要求 demo_data=true 且 provider_mode=mock、Embedding 为 Mock；test 禁止真实外部 LLM，但允许显式启用本地 Embedding 做离线验证。填入供应商密钥不会自动启用真实 AI。
 
 ## 真实 LLM 文字联调
 
@@ -82,6 +82,24 @@ LLM_TIMEOUT_SECONDS=20
 Android 以 demo-elder 登录并加入家庭，点击“开始聊天”，输入文字后发送。连接后的聊天卡片显示“AI 对话”或“Mock 演示”；成功回复后可继续第二轮，停止会取消等待，失败可重新编辑上一条。断线不会自动重发，重连后需重新说明话题；回顾仍需单独授权。
 
 语音在老人端使用手机已安装的中文语音识别与 TTS 服务，无须配置后端 ASR/TTS 密钥。在“用于我与念念的交流”中允许语音处理（与授予家属分开），再点“点击说话”并允许麦克风，说完等自动识别或点“说完了”，识别文字自动提交现有 LLM，回复显示并朗读。“停止”取消当前识别、请求或播放；“打断并说话”停播后开始新输入。支持“再说一遍”“说慢一点”“关闭朗读”，音量使用手机音量键。当前为按钮打断，无自动人声打断或后台唤醒。设备没有识别服务、中文语音数据或麦克风权限时会提示并保留文字入口；语音服务可能联网，数据边界见 [安全说明](security.md)。真机收音、扬声器输出和设备引擎兼容性尚待验证。
+
+## 本地家庭记忆语义检索
+
+使用 [BGE 中文模型](https://huggingface.co/BAAI/bge-small-zh-v1.5)和 FastEmbed CPU 推理，无需 API 密钥。先在项目根目录安装依赖并下载固定版本的公开 ONNX 权重和分词器（约 100 MB）；此命令只下载公共模型，不上传项目数据：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r backend/requirements.lock
+$env:PYTHONPATH = "backend"
+.\.venv\Scripts\python.exe -m app.integrations.embedding --download artifacts/embedding/bge-small-zh-v1.5
+```
+
+根 `.env` 设置 `EMBEDDING_PROVIDER=local`、`EMBEDDING_MODEL_PATH=模型目录的绝对路径`，重启 API 和 worker。两者必须读取相同文件；运行时 `local_files_only=True`，不下载、不外发输入。模型缺失、超时或非法向量会失败，不回退为 Mock；会话沿用无可用记忆兜底，索引任务按现有 outbox 重试/DEAD 处理。可设置 `EMBEDDING_THREADS=2`、`EMBEDDING_TIMEOUT_SECONDS=8`（上限 10 秒）、`EMBEDDING_MIN_RELEVANCE=0.5`。默认演示配置仍为 Mock，`LLM_PROVIDER` 与向量模式独立。
+
+首次启用后，worker 每 15 秒扫描一批最多 100 条源记忆，自动补建获准的当前模型索引；未补建完成的旧 Mock 向量不参与新检索。每轮最多执行 20 项后台任务，大库需要多个周期；可用 `python -m app.worker.main --once` 执行一次。只读查询不改变记忆确认状态，也不会自动为老人授权；必须有本人对自己的相应 scope 显式授权。
+
+Linux Compose 在 `infra/linux/.env` 增加 `APP_ENV=dev`、`EMBEDDING_PROVIDER=local`、`PRELOAD_EMBEDDING_MODEL=true`，再执行现有部署脚本重建镜像；构建时下载模型，API/worker 共同读取镜像中的 `/srv/niannian/models/bge-small-zh-v1.5`，运行时可离线。模型文件不进入 Git，更新后必须重启进程。
+
+真实模型验证设置 `TEST_EMBEDDING_MODEL_PATH` 为本地目录，并沿用独立 `TEST_DATABASE_URL` 执行 `python scripts/verify.py integration backend/tests/integration/test_semantic_memory.py`。该测试覆盖三种医院陪同问法、无匹配、旧索引重建、查询/索引推理中撤权以及会话重播失效；不设置模型目录时明确跳过。
 
 ## THA3 自定义陪伴形象
 
