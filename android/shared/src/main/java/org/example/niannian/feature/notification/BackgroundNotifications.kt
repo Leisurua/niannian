@@ -1,18 +1,14 @@
 package org.example.niannian.feature.notification
 
-import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.app.job.JobInfo
 import android.app.job.JobParameters
 import android.app.job.JobScheduler
 import android.app.job.JobService
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -24,13 +20,14 @@ import java.util.UUID
 
 interface NotificationRepositoryOwner {
     val notificationRepository: FamilyRepository
+    fun scheduleNotificationSync(): Boolean
 }
 
 /** System-scheduled inbox delivery; never claims a provider or human receipt. */
 object BackgroundNotifications {
     const val NOTICE_ID = "niannian.notification.id"
     const val RECIPIENT = "niannian.notification.recipient"
-    private const val JOB_ID = 7301
+    const val JOB_ID = 7301
     private const val CHANNEL = "family-attention"
     private const val RESTORED_CHANNEL = "family-attention-restored"
     private val mutex = Mutex()
@@ -49,12 +46,7 @@ object BackgroundNotifications {
 
     fun schedule(context: Context): Boolean {
         if (!enabled(context)) return false
-        if (context.checkSelfPermission(Manifest.permission.RECEIVE_BOOT_COMPLETED) != PackageManager.PERMISSION_GRANTED) return false
-        val scheduler = context.getSystemService(JobScheduler::class.java)
-        if (scheduler.getPendingJob(JOB_ID) != null) return true
-        return scheduler.schedule(JobInfo.Builder(JOB_ID, ComponentName(context, NotificationSyncService::class.java))
-            .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
-            .setPeriodic(15 * 60 * 1000L).setPersisted(true).build()) == JobScheduler.RESULT_SUCCESS
+        return (context.applicationContext as? NotificationRepositoryOwner)?.scheduleNotificationSync() == true
     }
 
     @Synchronized fun hide(context: Context) {
