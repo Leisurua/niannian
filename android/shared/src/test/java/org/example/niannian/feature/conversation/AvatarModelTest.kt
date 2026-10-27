@@ -41,9 +41,9 @@ class AvatarModelTest {
         val store = Store()
         val model = AvatarModel(gateway, store, scope)
         suspend fun ready() = withTimeout(5000) { while (!model.state.value.allowed) delay(10) }
-        suspend fun importAvatar() {
-            model.importPack { avatarFixture() }!!.join()
-            assertNotNull(model.state.value.pack)
+        suspend fun importAvatar(bytes: ByteArray = avatarFixture()) {
+            model.importPack { bytes }!!.join()
+            assertNotNull("The avatar must be imported before its consent expires", model.state.value.pack)
         }
     }
     private fun scenario(work: suspend Rig.() -> Unit) = runBlocking {
@@ -116,11 +116,12 @@ class AvatarModelTest {
     }
 
     @Test fun consentExpiryStopsDisplayWithoutWaitingForNextPoll() = scenario {
+        val bytes = avatarFixture()
         gateway.value = PortraitGrant("short-grant", Instant.now().plusMillis(1500))
-        model.bind("family", "elder"); ready(); importAvatar()
+        model.bind("family", "elder"); ready(); importAvatar(bytes)
         withTimeout(4000) { while (model.state.value.pack != null) delay(20) }
         assertFalse(model.state.value.allowed)
         assertNull(model.state.value.pack)
-        assertNull(store.bytes)
+        assertNull("Consent expiry must erase the cached portrait", store.bytes)
     }
 }

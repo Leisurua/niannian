@@ -100,7 +100,7 @@ class AvatarModel(private val gateway: PortraitGateway, private val store: Avata
                     importGeneration++; importing?.cancel()
                     current.value = current.value.copy(pack = null, grantId = "", busy = false,
                         message = "形象授权需要重新核对，暂时使用默认形象。")
-                    if (grant.expiresAt?.isAfter(Instant.now()) == false) store.invalidate()
+                    if (grant.expiresAt == until || grant.expiresAt?.isAfter(Instant.now()) == false) store.invalidate()
                 }
             }
         } catch (cancelled: CancellationException) {
