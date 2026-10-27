@@ -15,7 +15,7 @@ import androidx.lifecycle.LifecycleEventObserver
 
 @Composable
 fun NotificationPanel(model: NotificationModel, family: String, user: String, subjects: List<Pair<String, String>>,
-    unavailable: Boolean, authorizationKey: String) {
+    unavailable: Boolean, authorizationKey: String, elder: Boolean = false, initialNotificationId: String = "") {
     var selected by remember(family, subjects) { mutableStateOf(subjects.firstOrNull()?.first.orEmpty()) }
     val state by model.state.collectAsState()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -25,7 +25,11 @@ fun NotificationPanel(model: NotificationModel, family: String, user: String, su
     DisposableEffect(lifecycle, family, selected, user, unavailable, authorizationKey) {
         fun activate() {
             model.clear()
-            if (!unavailable && selected.isNotBlank()) { model.bind(family, selected, user); model.startPolling() }
+            if (!unavailable && selected.isNotBlank()) {
+                model.bind(family, selected, user)
+                if (initialNotificationId.isNotBlank()) model.openNotification(initialNotificationId)
+                model.startPolling()
+            }
         }
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) model.clear()
@@ -45,16 +49,16 @@ fun NotificationPanel(model: NotificationModel, family: String, user: String, su
     var quietEnd by remember(state.quietEnd) { mutableStateOf(state.quietEnd) }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("家人关注事件", fontSize = 24.sp)
+            Text(if (elder) "家人的处理进度" else "家人关注事件", fontSize = 24.sp)
             Text("前台每 30 秒同步。识别提示不代表事实，处理结果由家属核实。")
-            subjects.forEach { (id, name) -> OutlinedButton(onClick = { selected = id }, enabled = !state.busy) { Text(name) } }
+            if (!elder) subjects.forEach { (id, name) -> OutlinedButton(onClick = { selected = id }, enabled = !state.busy) { Text(name) } }
             Text(state.message)
             Button(onClick = { model.refresh() }, enabled = !state.busy) { Text("刷新关注事件") }
             if (state.loaded && state.items.isEmpty() && state.detail.isEmpty()) Text("当前没有可查看的关注事件。")
             state.items.forEach { item ->
                 Text(item.explanation, fontSize = 20.sp)
                 Text("处理状态：${signalStatusLabel(item.eventStatus)}")
-                if (item.deliveries.isEmpty()) Text("暂无已发布的通知，可直接处理事件")
+                if (!elder && item.deliveries.isEmpty()) Text("暂无已发布的通知，可直接处理事件")
                 item.deliveries.forEach { Text(it) }
                 Button(onClick = { model.read(item) }, enabled = !state.busy) { Text("查看事件") }
             }
@@ -88,10 +92,10 @@ fun NotificationPanel(model: NotificationModel, family: String, user: String, su
                 if ("CONTACT" in event.actions) Button(onClick = { confirmation = "CONTACT" }, enabled = !state.busy) { Text("记录已联系") }
                 if ("RESOLVE" in event.actions) Button(onClick = { confirmation = "RESOLVE" }, enabled = !state.busy) { Text("标记解决") }
                 if ("FALSE_POSITIVE" in event.actions) OutlinedButton(onClick = { confirmation = "FALSE_POSITIVE" }, enabled = !state.busy) { Text("标记误报") }
-                if (!event.canHandle) Text("当前仅可查看，处理需要家庭创建者或获授关注事件处理权限的家属。")
+                if (!elder && !event.canHandle) Text("当前仅可查看，处理需要家庭创建者或获授关注事件处理权限的家属。")
             }
             if (contactNotice.isNotBlank()) Text(contactNotice)
-            if (state.loaded) {
+            if (state.loaded && !elder) {
                 Text("我的通知偏好", fontSize = 20.sp)
                 Text("选择渠道不会开启长辈授权。短信/电话使用本人登记号码；关闭所有渠道可停止新通知。外部服务可能计费。")
                 Row { Checkbox(inApp, { inApp = it }, enabled = !state.busy); Text("应用内") }
@@ -117,7 +121,7 @@ fun NotificationPanel(model: NotificationModel, family: String, user: String, su
     }
 }
 
-private fun signalStatusLabel(status: String) = when (status) {
+fun signalStatusLabel(status: String) = when (status) {
     "ACKNOWLEDGED" -> "已确认关注"
     "CONTACTED" -> "已联系（人工记录）"
     "RESOLVED" -> "已解决（人工确认）"

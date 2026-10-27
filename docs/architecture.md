@@ -26,7 +26,7 @@ Android / Windows → FastAPI REST / WebSocket → PostgreSQL + pgvector / 私�
 
 ## 客户端和交互
 
-Android 采用 Kotlin、Compose、ViewModel/StateFlow。只保留 `app-elder`、`app-family`、`shared` 三个 Gradle 模块。共享库按 `data`、`core` 和各 `feature` 分包，网络、登录刷新和业务 Gateway 共用；设备权限、本地提醒调度由老人端拥有。
+Android 采用 Kotlin、Compose、ViewModel/StateFlow。只保留 `app-elder`、`app-family`、`shared` 三个 Gradle 模块。共享库按 `data`、`core` 和各 `feature` 分包，网络、登录刷新和业务 Gateway 共用；老人端拥有本地提醒调度，家属端声明后台收件与通知权限。
 
 | 客户端 | 当前界面/交互 |
 | --- | --- |
@@ -37,7 +37,7 @@ Android 采用 Kotlin、Compose、ViewModel/StateFlow。只保留 `app-elder`、
 
 老人端以大字、明显按钮和语音/文字输入组织对话。设备 ASR 识别后复用文字 WSS，设备 TTS 朗读回复，提供按钮打断、重播、慢速朗读和文字降级。LLM 模式由服务器握手返回；设备语音服务与 LLM 配置独立。放大文字仅改变字号，实际录音/播放状态由客户端管理，详见 [AI 说明](ai.md)。
 
-老人端基础数字人使用共享 Compose Canvas 柿子形象，四种展示状态直接派生自 `ConversationModel`；首页和设置中的聊天入口共用同一真实会话界面。家属端 `NotificationModel` 同步授权事件及通知，详情可确认、记录联系和解决；后端 `signal` service 使用家庭锁、当前授权、独立处理权限和幂等审计完成状态更新，复用现有数据库字段。
+老人端基础数字人使用共享 Compose Canvas 柿子形象，四种展示状态直接派生自 `ConversationModel`；首页和设置中的聊天入口共用同一真实会话界面。双端 `NotificationModel` 同步事件状态及处理历史，家属详情可确认、记录联系和解决，老人仅查看本人进度。家属本机后台通知使用持久 JobScheduler 任务读取最小路由收件箱，再创建通用系统通知；前后台共用 Application 内的 Repository，点击经认证打开独立事件面板。后端 `signal` service 使用家庭锁、当前授权、独立处理权限和幂等审计完成状态更新，复用现有数据库字段。调度时效与设备限制见 [部署说明](deployment.md#android)。
 
 THA3 自定义形象支持手机选照片并授权，后端调用千问/豆包生成立绘，GPU worker 整理透明背景和面部位置后预生成四态角色包。任务保存到 `avatar_job`，照片、预览和角色包复用私有 `file_asset`；普通 worker 不领取生成任务。Android 的 `AvatarGenerationModel` 读取进度、下载预览、接受本人确认，`AvatarPack` 校验格式，`AvatarModel` 复验 PORTRAIT 授权，`AvatarStorage` 在本机加密保存，`CompanionAvatar` 按真实会话四态绘制图块。也保留离线制作脚本和本机 ZIP 导入；默认形象可独立使用。部署方式见 [THA3 接入](deployment.md#tha3-自定义陪伴形象)。
 

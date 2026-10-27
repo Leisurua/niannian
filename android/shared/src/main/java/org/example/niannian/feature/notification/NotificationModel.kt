@@ -45,9 +45,10 @@ class NotificationModel(private val gateway: NotificationGateway, private val sc
     private var job: Job? = null
     private var polling: Job? = null
     private var expiry: Job? = null
+    private var openedEvent: String? = null
     fun clear() {
         generation++; job?.cancel(); polling?.cancel(); expiry?.cancel()
-        polling = null; current.value = NotificationState()
+        polling = null; openedEvent = null; current.value = NotificationState()
     }
     fun bind(family: String, owner: String, user: String) {
         if (current.value.family == family && current.value.owner == owner && current.value.user == user) return
@@ -89,10 +90,11 @@ class NotificationModel(private val gateway: NotificationGateway, private val sc
     }
     fun refresh() = action { stamp ->
         val family = current.value.family; val owner = current.value.owner
-        val preference = gateway.call(path())
-        val capabilities = gateway.call("/v1/notification-capabilities").optJSONObject("channels")
+        val elder = owner == current.value.user
+        val preference = if (elder) null else gateway.call(path())
+        val capabilities = if (elder) null else gateway.call("/v1/notification-capabilities").optJSONObject("channels")
         val values = mutableListOf<InboxItem>()
-        val notices = gateway.list()
+        val notices = if (elder) emptyList() else gateway.list()
         for (event in gateway.events(family)) {
             if (stamp != generation) return@action
             val eventId = event.getString("id")
@@ -125,10 +127,14 @@ class NotificationModel(private val gateway: NotificationGateway, private val sc
                 item?.getString("channel").orEmpty(), summary, explanation, event.getString("status"), deliveries))
         }
         if (stamp == generation) {
-            setting(preference)
-            current.value = current.value.copy(items = values, message = "已同步 · 事件识别为 Mock；各渠道结果以发送记录为准。",
+            if (preference != null) setting(preference)
+            current.value = current.value.copy(items = values, loaded = true, message = if (elder) "已同步家人处理进度。提示识别为 Mock；处理记录由家人提交。" else "已同步 · 事件识别为 Mock；各渠道结果以发送记录为准。",
                 pushMode = capabilities?.optString("PUSH", "DISABLED") ?: "MOCK",
                 smsAvailable = capabilities?.optString("SMS") == "AVAILABLE", phoneAvailable = capabilities?.optString("PHONE") == "AVAILABLE")
+            openedEvent?.let { id ->
+                val detail = gateway.call("/v1/signal-events/$id")
+                if (stamp == generation) showEvent(detail, id)
+            }
             expire(stamp)
         }
     }
@@ -148,8 +154,24 @@ class NotificationModel(private val gateway: NotificationGateway, private val sc
         }
         val detail = gateway.call("/v1/signal-events/${item.eventId}")
         if (stamp != generation) return@action
+        openedEvent = item.eventId
         showEvent(detail, item.eventId)
         current.value = current.value.copy(message = "已查看 · 查看通知不等于确认关注或解决。")
+        expire(stamp)
+    }
+    fun openNotification(id: String) = action { stamp ->
+        require(UUID.fromString(id).toString() == id)
+        val notice = gateway.call("/v1/notifications/$id")
+        require(notice.getString("id") == id)
+        require(notice.getString("family_id") == current.value.family && notice.getString("owner_user_id") == current.value.owner)
+        val eventId = notice.getString("signal_event_id")
+        val detail = gateway.call("/v1/signal-events/$eventId")
+        if (stamp != generation) return@action
+        if (notice.getString("status") != "FAILED") gateway.read(id, UUID.randomUUID().toString())
+        if (stamp != generation) return@action
+        openedEvent = eventId
+        showEvent(detail, eventId)
+        current.value = current.value.copy(message = "已打开通知，请核实后处理。查看不等于确认关注。")
         expire(stamp)
     }
     private fun showEvent(detail: JSONObject, id: String) {

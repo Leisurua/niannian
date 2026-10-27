@@ -1913,6 +1913,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NotificationPage'
+  /notifications/mobile-inbox:
+    get:
+      tags:
+      - Notifications
+      operationId: getMobileNotificationInbox
+      description: No-store routing IDs for Android system notifications. Only the recipient's unread published IN_APP records for unhandled events are included. Rechecks current family membership, source, consent, channel preference and quiet hours on every page. Fetching does not mark read, delivered or acknowledged.
+      parameters:
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Authorized routes without event content or contact information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MobileNotificationPage'
   /notifications/{notification_id}:
     parameters:
     - $ref: '#/components/parameters/NotificationId'
@@ -4231,6 +4247,7 @@ components:
         expected_status:
           $ref: '#/components/schemas/SignalStatus'
     SignalEventDetailResponse:
+      description: The elder owner can read their own minimal event status, action times and family action history. Owner responses omit family-only reasons, conversation identifiers and contact numbers, and always set can_handle to false. Current source and membership remain required.
       allOf:
       - $ref: '#/components/schemas/SignalEventResponse'
       - type: object
@@ -4376,6 +4393,12 @@ components:
       - created_at
       properties:
         id:
+          $ref: '#/components/schemas/Id'
+        family_id:
+          description: Returned by detail and mark-read for authenticated in-app routing.
+          $ref: '#/components/schemas/Id'
+        owner_user_id:
+          description: Returned by detail and mark-read for authenticated in-app routing.
           $ref: '#/components/schemas/Id'
         signal_event_id:
           $ref: '#/components/schemas/Id'
@@ -4579,6 +4602,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/NotificationResponse'
+    MobileNotificationPage:
+      allOf:
+      - $ref: '#/components/schemas/Page'
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, signal_event_id, family_id, owner_user_id]
+            properties:
+              id:
+                $ref: '#/components/schemas/Id'
+              signal_event_id:
+                $ref: '#/components/schemas/Id'
+              family_id:
+                $ref: '#/components/schemas/Id'
+              owner_user_id:
+                $ref: '#/components/schemas/Id'
     FamilyContactInput:
       type: object
       additionalProperties: false

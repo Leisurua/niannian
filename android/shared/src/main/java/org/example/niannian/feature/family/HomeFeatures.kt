@@ -43,7 +43,8 @@ internal class HomeModels(
     val conversation: ConversationModel? = null,
     val notifications: NotificationModel? = null,
     val onNotifications: () -> Unit = {},
-    val messages: MessageModel? = null
+    val messages: MessageModel? = null,
+    val notificationSettings: @Composable () -> Unit = {}
 )
 
 internal fun homeFamily(state: CompanionState): String =
@@ -309,7 +310,7 @@ internal fun HomeFeatureSheet(feature: HomeFeature, state: CompanionState, model
                     }
                     HomeFeature.NOTIFICATIONS -> models.notifications?.let {
                         NotificationPanel(it, family, state.userId, subjects, unavailable,
-                            state.permissions.toString() + state.members.toString())
+                            state.permissions.toString() + state.members.toString(), elder = elder)
                     }
                 }
             }

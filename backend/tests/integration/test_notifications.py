@@ -72,6 +72,90 @@ def setup_event(system, channels=None, utterance=UTTERANCE):
     return home, cid, consent_id, result
 
 
+def test_mobile_inbox_contains_only_unread_authorized_routes(system):
+    client, engine, factory, _ = system
+    home, _, _, events = setup_event(system, channels=['IN_APP', 'PUSH'])
+    path = '/v1/notifications/mobile-inbox'
+    assert client.get(path, headers=home[2]).json()['items'] == []
+    drain(factory)
+    response = client.get(path, headers=home[2])
+    assert response.status_code == 200 and response.headers['cache-control'] == 'no-store'
+    route, = response.json()['items']
+    assert route == dict(id=route['id'], signal_event_id=events[0]['signal_event_id'],
+        family_id=home[0], owner_user_id=home[3])
+    assert client.get(path, headers=home[4]).json()['items'] == []
+    _, outsider = login(client, 'demo-other')
+    assert client.get(path, headers=outsider).json()['items'] == []
+    assert client.get('/v1/notifications/' + route['id'], headers=outsider).status_code == 404
+    detail = client.get('/v1/notifications/' + route['id'], headers=home[2]).json()
+    assert detail['family_id'] == home[0] and detail['owner_user_id'] == home[3]
+    assert detail['status'] == 'SENT'
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM notification WHERE read_at IS NOT NULL OR delivered_at IS NOT NULL")).scalar() == 0
+    assert post(client, '/v1/notifications/' + route['id'] + '/read', home[2]).status_code == 200
+    assert client.get(path, headers=home[2]).json()['items'] == []
+    assert client.get('/v1/signal-events/' + route['signal_event_id'], headers=home[2]).json()['status'] == 'NOTIFIED'
+
+
+@pytest.mark.parametrize('change', ['revoke', 'channel', 'quiet', 'handled', 'source', 'member', 'expired'])
+def test_mobile_inbox_rechecks_published_notifications(system, change):
+    client, engine, factory, _ = system
+    home, _, consent_id, events = setup_event(system)
+    drain(factory)
+    path = '/v1/notifications/mobile-inbox'
+    route, = client.get(path, headers=home[2]).json()['items']
+    if change == 'revoke':
+        assert post(client, '/v1/consents/' + consent_id + '/revoke', home[4]).status_code == 201
+    elif change == 'channel':
+        pref(client, home, channels=[])
+    elif change == 'quiet':
+        now = utcnow()
+        pref(client, home, timezone='UTC', quiet_hours_start=(now - timedelta(minutes=1)).strftime('%H:%M'),
+            quiet_hours_end=(now + timedelta(minutes=10)).strftime('%H:%M'))
+    elif change == 'handled':
+        assert post(client, '/v1/signal-events/' + events[0]['signal_event_id'] + '/actions', home[2],
+            {'action': 'ACKNOWLEDGE', 'expected_status': 'NOTIFIED'}).status_code == 200
+    else:
+        with engine.begin() as conn:
+            if change == 'source':
+                conn.execute(text('UPDATE conversation SET deleted_at=now()'))
+            elif change == 'expired':
+                conn.execute(text("UPDATE notification SET retention_until=now()-interval '1 second', created_at=now()-interval '2 seconds'"))
+            else:
+                conn.execute(text("UPDATE family_member SET status='REVOKED' WHERE user_id=:id"), {'id': home[1]})
+    assert client.get(path, headers=home[2]).json()['items'] == []
+    if change in ('revoke', 'source', 'member', 'expired'):
+        assert client.get('/v1/notifications/' + route['id'], headers=home[2]).status_code == 404
+
+
+@pytest.mark.parametrize('utterance', [UTTERANCE, '我胸口有点不舒服。'])
+def test_elder_sees_actual_family_progress_without_family_only_details(system, utterance):
+    client, engine, factory, _ = system
+    home = household(client)
+    grant(client, home, 'NOTIFICATION_TO_FAMILY')
+    grant(client, home, 'HEALTH_MEDICATION')
+    pref(client, home)
+    event, = emit(factory, home, start(client, home), utterance)
+    drain(factory)
+    path = '/v1/signal-events/' + event['signal_event_id']
+    for action, before, after in [('ACKNOWLEDGE', 'NOTIFIED', 'ACKNOWLEDGED'),
+        ('CONTACT', 'ACKNOWLEDGED', 'CONTACTED'), ('RESOLVE', 'CONTACTED', 'RESOLVED')]:
+        handled = post(client, path + '/actions', home[2], {'action': action, 'expected_status': before})
+        assert handled.status_code == 200
+        progress = client.get(path, headers=home[4]).json()
+        assert progress['status'] == after and progress['can_handle'] is False
+        assert progress['actioned_at'] == handled.json()['actioned_at']
+        assert progress['history'][-1]['action'] == action
+        assert not {'reason', 'source_conversation_id', 'contacts', 'last_action_by'} & progress.keys()
+        listing = client.get('/v1/signal-events', params={'family_id': home[0]}, headers=home[4]).json()['items']
+        assert listing[0]['status'] == after
+    assert progress['resolved_at'] == handled.json()['resolved_at']
+    assert post(client, path + '/actions', home[4], {'action': 'RESOLVE', 'expected_status': 'RESOLVED'}).status_code == 404
+    with engine.begin() as conn:
+        conn.execute(text('UPDATE conversation SET deleted_at=now()'))
+    assert client.get(path, headers=home[4]).status_code == 404
+
+
 @pytest.mark.parametrize('scope', ['CONVERSATION_SUMMARY','NOTIFICATION_TO_FAMILY'])
 def test_summary_and_notification_grants_are_independent(system, scope):
     client, engine, factory, _ = system

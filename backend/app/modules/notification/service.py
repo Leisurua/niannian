@@ -61,7 +61,8 @@ def view(row):
 
 async def detail(db, actor, notification_id, request_id, *, read_key=None, settings=None):
     row = await db.get(Notification, notification_id)
-    if not row or row.recipient_user_id != actor.user_id or not await context(db, row, for_delivery=False):
+    source = await context(db, row, for_delivery=False) if row and row.recipient_user_id == actor.user_id else None
+    if not source:
         raise AppError('NOTIFICATION_NOT_FOUND', '通知不存在或无权查看。', 404)
     await db.refresh(row)
     if row.deleted_at or row.status not in ('SENT','DELIVERED','READ','FAILED'):
@@ -77,7 +78,36 @@ async def detail(db, actor, notification_id, request_id, *, read_key=None, setti
                 request_id=request_id, metadata=idem.metadata)
     else:
         await audit.record(db, actor.user_id, 'NOTIFICATION_DETAIL', 'NOTIFICATION', row.id, request_id=request_id)
-    return view(row)
+    return view(row) | dict(family_id=str(source['family_id']), owner_user_id=str(source['owner_user_id']))
+
+
+async def mobile_inbox(db, actor, limit, cursor, settings, request_id):
+    """Only routing IDs leave the API for local Android notifications.
+
+    Recheck consent, source, channel and quiet hours on every synchronization,
+    including notifications that the worker has already published.
+    """
+    from app.modules.signal.models import SignalEvent
+    eligible = []
+    now = utcnow()
+    for event_id in await signals.visible_ids(db, actor):
+        event = await db.get(SignalEvent, event_id)
+        if event.status not in ('VALIDATED', 'NOTIFIED', 'NOTIFICATION_FAILED'):
+            continue
+        pref = await preferences.current(db, event.family_id, event.owner_user_id, actor.user_id)
+        if 'IN_APP' in pref.channels and preferences.ready_at(pref, now) == now:
+            eligible.append(event_id)
+    query = select(Notification).where(Notification.recipient_user_id == actor.user_id,
+        Notification.signal_event_id.in_(eligible), Notification.channel == 'IN_APP',
+        Notification.status.in_(('SENT', 'DELIVERED')), Notification.deleted_at.is_(None),
+        Notification.retention_until > now)
+    rows, page = await page_rows(db, query, Notification, codec(settings), f'mobile-inbox:{actor.user_id}', limit, cursor)
+    items = []
+    for row in rows:
+        event = await db.get(SignalEvent, row.signal_event_id)
+        items.append(dict(id=str(row.id), signal_event_id=str(row.signal_event_id),
+            family_id=str(event.family_id), owner_user_id=str(event.owner_user_id)))
+    return dict(items=items, page=page, request_id=request_id)
 
 
 async def listing(db, actor, status, channel, limit, cursor, settings, request_id):

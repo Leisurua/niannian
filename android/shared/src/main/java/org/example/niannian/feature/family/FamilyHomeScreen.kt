@@ -232,6 +232,7 @@ internal fun FamilyDesignHome(
 
                     Spacer(modifier = Modifier.height(18.dp))
                     HomeWeatherCard("${state.userId}:$family:$subjectId")
+                    if (state.loggedIn) models.notificationSettings()
                     if (subjects.size > 1) {
                         subjects.forEach { (id, name) ->
                             TextButton(onClick = { selectedSubject = id }) {
