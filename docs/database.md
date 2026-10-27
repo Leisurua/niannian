@@ -461,7 +461,7 @@ UNIQUE `(message_id, recipient_member_id)`，索引 `(recipient_member_id, messa
 
 ### memory_embedding
 
-当前为 8 维 Mock 向量，metadata 保存源版本，不单独构成可读事实。 模型：[MemoryEmbedding](../backend/app/modules/memory/index_models.py)。
+支持本地 BGE 的 512 维真实向量及演示用 8 维 Mock；provider/model/model_version/dimension 标识向量空间，metadata 保存源版本，不单独构成可读事实。模型：[MemoryEmbedding](../backend/app/modules/memory/index_models.py)。
 
 | 字段 | PostgreSQL 类型 | NULL / 键 | 默认或关联 |
 | --- | --- | --- | --- |
@@ -709,7 +709,7 @@ UNIQUE `(message_id, recipient_member_id)`，索引 `(recipient_member_id, messa
 
 本人正文、附件行、会话、凭证和关联审计/任务物理删除；`user` 保留无姓名占位供其他主体记录引用并防止 Demo 固定身份复活。占位、删除回执及核验摘要的保留边界见安全文档。
 
-当前向量类型为 vector(8)，使用获准子集内的距离查询，没有独立向量服务或已实现的通用语义模型。换模型/维度需修改相应实现和迁移，不能只改文档。
+向量列实际为不限维度的 `VECTOR`，现有约束校验实际维度、非零向量和状态；本次无需数据库迁移。距离计算限定在已物化的当前获准子集，且只包含当前模型指纹、维度和源版本，避免混用 Mock/真实向量。worker 维护扫描按模型指纹补建索引，写回前重新检查授权和源版本；细节见 [AI](ai.md#授权-rag)。
 
 ### avatar_job
 

@@ -4,6 +4,11 @@ x-backend-environment: &backend-environment
   APP_ENV: ${APP_ENV:-demo}
   PROVIDER_MODE: mock
   DEMO_DATA: "true"
+  EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-mock}
+  EMBEDDING_MODEL_PATH: /srv/niannian/models/bge-small-zh-v1.5
+  EMBEDDING_THREADS: ${EMBEDDING_THREADS:-2}
+  EMBEDDING_TIMEOUT_SECONDS: ${EMBEDDING_TIMEOUT_SECONDS:-8}
+  EMBEDDING_MIN_RELEVANCE: ${EMBEDDING_MIN_RELEVANCE:-0.5}
   LOG_LEVEL: INFO
   DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
   AUTH_SIGNING_KEY: ${AUTH_SIGNING_KEY}
@@ -31,6 +36,8 @@ x-backend-service: &backend-service
   build:
     context: ../../backend
     dockerfile: Dockerfile.linux
+    args:
+      PRELOAD_EMBEDDING_MODEL: ${PRELOAD_EMBEDDING_MODEL:-false}
   image: niannian-backend:linux-local
   environment: *backend-environment
   restart: unless-stopped

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -128,6 +128,7 @@ class EmbeddingRequest(AdapterDTO):
     request_id: str = Field(min_length=1)
     texts: list[str] = Field(max_length=64)
     language: str = "zh-CN"
+    purpose: Literal['document', 'query'] = 'document'
 
     @field_validator("texts")
     @classmethod
