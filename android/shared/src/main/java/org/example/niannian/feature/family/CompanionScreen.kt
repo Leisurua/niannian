@@ -32,6 +32,9 @@ import org.example.niannian.feature.reminder.ReminderModel
 import org.example.niannian.feature.memory.MemoryModel
 import org.example.niannian.feature.conversation.ConversationModel
 import org.example.niannian.feature.conversation.ConversationToolsModel
+import org.example.niannian.feature.conversation.AvatarHost
+import org.example.niannian.feature.conversation.AvatarModel
+import org.example.niannian.feature.conversation.AvatarGenerationModel
 import org.example.niannian.feature.notification.NotificationModel
 import org.example.niannian.feature.message.MessageModel
 
@@ -45,7 +48,22 @@ private data class ConsentChange(val familyId: String, val scope: String, val re
 fun CompanionScreen(model: CompanionModel, environmentLabel: String,
     reminders: ReminderModel, memories: MemoryModel, tools: ConversationToolsModel,
     conversation: ConversationModel? = null, notifications: NotificationModel? = null,
-    messages: MessageModel? = null, onNotifications: () -> Unit = {}, offlineContent: @Composable () -> Unit = {}) {
+    messages: MessageModel? = null, onNotifications: () -> Unit = {}, offlineContent: @Composable () -> Unit = {},
+    avatar: AvatarModel? = null, avatarGeneration: AvatarGenerationModel? = null) {
+    val state by model.state.collectAsState()
+    AvatarHost(avatar, homeFamily(state), state.userId,
+        state.loggedIn && !state.offline && state.error.isBlank(), state.busy,
+        state.selfPermissions.filter { it.scope == "PORTRAIT" }.toString(), avatarGeneration) {
+        CompanionScreenContent(model, environmentLabel, reminders, memories, tools, conversation, notifications,
+            messages, onNotifications, offlineContent)
+    }
+}
+
+@Composable
+private fun CompanionScreenContent(model: CompanionModel, environmentLabel: String,
+    reminders: ReminderModel, memories: MemoryModel, tools: ConversationToolsModel,
+    conversation: ConversationModel?, notifications: NotificationModel?, messages: MessageModel?,
+    onNotifications: () -> Unit, offlineContent: @Composable () -> Unit) {
     val state by model.state.collectAsState()
     val mutationUnavailable = state.busy || state.offline || state.pendingWrite
     var address by remember(state.address) { mutableStateOf(state.address) }
@@ -185,7 +203,7 @@ fun CompanionScreen(model: CompanionModel, environmentLabel: String,
                     } else {
                         Text("用于我与念念的交流", fontSize = 22.sp)
                         Text("默认关闭；拒绝不影响基础聊天，与分享给家人的授权分别设置。")
-                        listOf("VOICE", "FAMILY_MEMORY", "HEALTH_MEDICATION", "CONVERSATION_SUMMARY", "INTERACTION_STATS").forEach { scope ->
+                        listOf("VOICE", "PORTRAIT", "FAMILY_MEMORY", "HEALTH_MEDICATION", "CONVERSATION_SUMMARY", "INTERACTION_STATS").forEach { scope ->
                             val permission = state.selfPermissions.find { it.scope == scope }
                             val granted = permission?.let { permissionLabel(it) == "已授权" } == true
                             Text("${scopeLabels[scope]}：${permission?.let(::permissionLabel) ?: "未授权"}")

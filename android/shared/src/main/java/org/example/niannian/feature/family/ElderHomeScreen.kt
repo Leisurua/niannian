@@ -82,7 +82,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.example.niannian.feature.conversation.PersimmonCompanionOrb
+import org.example.niannian.feature.conversation.CompanionAvatar
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -603,7 +603,7 @@ private fun ElderCompanionCard(
                         modifier = Modifier
                             .offset(x = 8.dp, y = (-10).dp)
                     ) {
-                        PersimmonCompanionOrb(size = 148.dp, modifier = Modifier.clickable(
+                        CompanionAvatar(size = 148.dp, modifier = Modifier.clickable(
                             onClickLabel = "和念念说话", role = androidx.compose.ui.semantics.Role.Button
                         ) { onStartChat(null) })
                     }

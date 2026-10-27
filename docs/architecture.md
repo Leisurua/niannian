@@ -11,6 +11,8 @@ Android / Windows → FastAPI REST / WebSocket → PostgreSQL + pgvector / 私�
 | --- | --- |
 | `backend/app/main.py`、`__main__.py` | API 路由、脱敏错误、请求编号；Windows 兼容的启动入口 |
 | `backend/app/modules/auth`、`family`、`consent` | 登录会话、家庭与成员、分项授权及撤回 |
+| `backend/app/modules/account` | 本人 ZIP 导出、账户删除回执、worker 文件清理、备份期限和供应商副本核验 |
+| `backend/app/modules/avatar` | 本人照片制作授权、千问/豆包立绘、抠图构图、THA3 任务、预览确认和资源清理 |
 | `backend/app/modules/memory` | 候选/确认、照片、检索、索引失效与清理 |
 | `backend/app/modules/conversation` | 本人文字会话、WSS、受控摘要与主动邀请 |
 | `backend/app/modules/reminder` | 周期/时区、执行记录、在线与离线反馈 |
@@ -37,6 +39,8 @@ Android 采用 Kotlin、Compose、ViewModel/StateFlow。只保留 `app-elder`、
 
 老人端基础数字人使用共享 Compose Canvas 柿子形象，四种展示状态直接派生自 `ConversationModel`；首页和设置中的聊天入口共用同一真实会话界面。家属端 `NotificationModel` 同步授权事件及通知，详情可确认、记录联系和解决；后端 `signal` service 使用家庭锁、当前授权、独立处理权限和幂等审计完成状态更新，复用现有数据库字段。
 
+THA3 自定义形象支持手机选照片并授权，后端调用千问/豆包生成立绘，GPU worker 整理透明背景和面部位置后预生成四态角色包。任务保存到 `avatar_job`，照片、预览和角色包复用私有 `file_asset`；普通 worker 不领取生成任务。Android 的 `AvatarGenerationModel` 读取进度、下载预览、接受本人确认，`AvatarPack` 校验格式，`AvatarModel` 复验 PORTRAIT 授权，`AvatarStorage` 在本机加密保存，`CompanionAvatar` 按真实会话四态绘制图块。也保留离线制作脚本和本机 ZIP 导入；默认形象可独立使用。部署方式见 [THA3 接入](deployment.md#tha3-自定义陪伴形象)。
+
 双端新首页复用 Activity 中的现有业务模型和 Gateway：长辈首页显示实际提醒并提交幂等反馈，家属首页按所选长辈读取提醒、执行反馈、记忆和应用内通知。首页快捷新增通过现有提醒 API 保存每日生活提醒，仅在服务端确认后提示成功；提醒的时间、内容、完成状态和删除随最新结果更新，不以本地列表追加代替同步。记忆/照片、提醒管理、文字会话、主动陪伴/摘要和通知偏好直接从首页打开；家庭邀请、成员与分项授权在家庭设置中维护。切换家庭、退到后台或授权变化会清除敏感展示，回到前台重新核对；断网时家属首页隐藏提醒及家庭记忆，现有连接状态栏显示实际状态。双端首页家人动态共用 `MessageModel`，读取实际收发箱、接收和已读回执，照片进入现有家庭记忆上传/查看；首页与留言面板共用前台生命周期，不重复注册或重置发送状态。姓名取当前账户/家庭成员，不展示虚构健康结论、时长、原声回复或默认授权。视频按钮禁用并标注尚未接入，原声消息没有播放入口。双端天气使用独立的 Open-Meteo 公共客户端，手动搜索并选择城市，显示来源和数据时间；不获取设备定位或发送登录凭证，失败/过期不回退演示天气。
 
 Windows 用 Tk 和标准库 HTTP；`windows/src/niannian_desktop` 共用登录状态、错误解析、分页、服务器地址设置和工作线程队列。工作线程不读取 Tk 变量，结果在 UI 线程消费。可选 API 以运行服务器 `/openapi.json` 检测，不能用测试服务器的接口宣称主后端已支持。
@@ -59,6 +63,8 @@ Windows 用 Tk 和标准库 HTTP；`windows/src/niannian_desktop` 共用登录�
 ## 后台任务和状态一致性
 
 worker 每 15 秒运行一周期，同进程最多一周期，合并迟到触发；每周期最多处理 20 个任务。task/outbox 的唯一业务键去重，30 秒租约可回收，单任务 20 秒上限，最多 5 次尝试，指数退避最高 300 秒，耗尽进入 DEAD。
+
+照片生成由同一后端的 `--avatar` worker 顺序处理，每 5 秒续租并复验授权。图像请求与本地处理各有独立超时；每任务只尝试一次，避免未知结果或进程重启自动重复付费请求。生成完成保持 READY，只有本人确认后才 ACTIVE；失败和取消复用现有文件清理任务。
 
 API 和 worker 共享事务/领域规则。索引、摘要和通知写回须复验源记录、版本、当前授权和租约；撤回/删除先不可读，再异步清理，旧任务不能恢复内容。通知与事件同事务入队，Mock SENT 不能解释为真实送达。
 

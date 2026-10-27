@@ -57,11 +57,36 @@ class Settings(BaseSettings):
     ws_max_frame_bytes: int = Field(default=16384, ge=1024, le=65536)
     ws_max_text_chars: int = Field(default=2000, ge=1, le=10000)
     ws_messages_per_second: int = Field(default=20, ge=1, le=100)
+    backup_retention_days: int = Field(default=30, ge=1, le=365)
+    backup_directory: str | None = None
+    audit_retention_days: int = Field(default=90, ge=7, le=365)
+    task_retention_days: int = Field(default=7, ge=1, le=30)
+    account_export_max_bytes: int = Field(default=104857600, ge=1048576, le=1073741824)
+    avatar_generation_enabled: bool = False
+    avatar_image_provider: Literal['qwen', 'doubao'] = 'qwen'
+    avatar_image_base_url: str | None = None
+    avatar_image_model: str | None = None
+    avatar_image_api_key: str | None = Field(default=None, repr=False)
+    avatar_image_timeout: int = Field(default=180, ge=10, le=300)
+    avatar_tha3_python: str | None = None
+    avatar_tha3_root: str | None = None
+    avatar_tha3_models: str | None = None
+    avatar_face_cascade: str | None = None
+    avatar_rembg_models: str | None = None
+    avatar_render_timeout: int = Field(default=300, ge=10, le=900)
 
     model_config = SettingsConfigDict(extra="ignore", case_sensitive=False, hide_input_in_errors=True)
 
     @model_validator(mode="after")
     def keep_demo_fictional(self) -> "Settings":
+        if self.avatar_image_base_url:
+            url = urlsplit(self.avatar_image_base_url)
+            if url.scheme != 'https' or not url.hostname or url.username or url.password or url.query or url.fragment:
+                raise ValueError('AVATAR_IMAGE_BASE_URL must be HTTPS without credentials or query')
+        if self.avatar_generation_enabled and not all((self.avatar_image_base_url, self.avatar_image_model,
+                self.avatar_image_api_key, self.avatar_tha3_python, self.avatar_tha3_root, self.avatar_tha3_models,
+                self.avatar_face_cascade, self.avatar_rembg_models)):
+            raise ValueError('Avatar generation requires image API and THA3 worker configuration')
         if self.notification_external_enabled and self.app_env != 'dev':
             raise ValueError('external notifications require APP_ENV=dev')
         if self.ntfy_base_url:

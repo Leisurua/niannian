@@ -98,7 +98,7 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
             val phase = state.companionPhase
             val canSpeak = state.connected && !unavailable && permissionSession == null
             Row(verticalAlignment = Alignment.CenterVertically) {
-                PersimmonCompanionOrb(size = 136.dp, phase = phase, modifier = Modifier
+                CompanionAvatar(size = 136.dp, phase = phase, modifier = Modifier
                     .semantics { contentDescription = "念念 AI 陪伴形象"; stateDescription = phase.label }
                     .clickable(enabled = canSpeak, role = Role.Button, onClickLabel = "开始说话") {
                         if (!state.recording) requestVoice()
@@ -165,6 +165,7 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
                 }
                 Control(if (state.slow) "恢复字号" else "放大文字", !state.busy) { model.slowDown() }
                 Control("结束聊天", state.id.isNotEmpty() && !unavailable) { draft = ""; model.end() }
+                AvatarControls()
             }
         }
     }

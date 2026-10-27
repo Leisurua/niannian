@@ -6,6 +6,46 @@ import org.example.niannian.feature.conversation.ConversationToolsGateway
 import org.example.niannian.feature.notification.NotificationGateway
 import org.json.JSONObject
 import org.example.niannian.feature.message.MessageGateway
+import org.example.niannian.feature.conversation.PortraitGateway
+import org.example.niannian.feature.conversation.PortraitGrant
+import org.example.niannian.core.common.parseApiInstant
+import java.time.Instant
+import java.util.UUID
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import org.example.niannian.feature.conversation.AvatarGenerationGateway
+
+fun FamilyRepository.avatarGenerationGateway(): AvatarGenerationGateway {
+    val repository = this
+    return object : AvatarGenerationGateway {
+        override suspend fun call(path: String, method: String, body: JSONObject?, key: String?) = repository.avatarCall(path, method, body, key)
+        override suspend fun upload(url: String, headers: JSONObject, bytes: ByteArray) = repository.uploadPhoto(url, headers, bytes)
+        override suspend fun download(id: String) = repository.downloadAvatar(id)
+        override suspend fun grant(family: String, user: String): String {
+            repository.portraitGateway().grant(family, user)?.let { return it.id }
+            currentCoroutineContext().ensureActive()
+            return repository.avatarCall("/v1/consents", "POST", JSONObject().put("family_id", family)
+                .put("subject_user_id", user).put("grantee_user_id", user).put("scope", "PORTRAIT").put("source", "SETTINGS"),
+                UUID.randomUUID().toString()).getString("id")
+        }
+    }
+}
+
+fun FamilyRepository.portraitGateway(): PortraitGateway {
+    val repository = this
+    return object : PortraitGateway {
+        override suspend fun grant(family: String, user: String): PortraitGrant? {
+            val rows = repository.readAll("/v1/consents?family_id=$family&subject_user_id=$user&grantee_user_id=$user&scope=PORTRAIT&limit=100")
+            rows.forEach { require(it.getString("family_id") == family && it.getString("subject_user_id") == user
+                && it.getString("grantee_user_id") == user && it.getString("scope") == "PORTRAIT") }
+            val latest = rows.maxByOrNull { it.getLong("version") } ?: return null
+            if (latest.getString("status") != "GRANTED") return null
+            val expiry = if (latest.isNull("expires_at")) null else parseApiInstant(latest.getString("expires_at"))
+            if (expiry?.isAfter(Instant.now()) == false) return null
+            return PortraitGrant(latest.getString("id"), expiry)
+        }
+    }
+}
 
 fun FamilyRepository.messageGateway(deviceId: String, elder: Boolean): MessageGateway {
     val repository = this

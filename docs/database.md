@@ -1,6 +1,6 @@
 # 当前数据库设计
 
-PostgreSQL/pgvector 是唯一事实库，异步 SQLAlchemy 模型注册于 [platform/models.py](../backend/app/platform/models.py)。当前有以下 26 张业务/平台表；Alembic 自带的 alembic_version 不计入。没有 conversation_message、weekly_report、emergency_contact 等规划表；周报按需聚合，不保存易过期的报告副本。
+PostgreSQL/pgvector 是唯一事实库，异步 SQLAlchemy 模型注册于 [platform/models.py](../backend/app/platform/models.py)。业务/平台表见下文，Alembic 自带的 alembic_version 不计入。没有 conversation_message、weekly_report、emergency_contact 等规划表；周报按需聚合，不保存易过期的报告副本。
 
 ## 关系和约定
 
@@ -697,11 +697,27 @@ UNIQUE `(message_id, recipient_member_id)`，索引 `(recipient_member_id, messa
 
 ## 迁移和生命周期
 
-保留现有全部 Alembic 历史，当前迁移头为 `20261023_attention_contacts`。从 backend/ 运行 `python -m alembic upgrade head`；修改数据库时新增兼容迁移，不因为文档整理重写旧迁移或删除已有数据。普通功能修改不要求空库回退演练。
+保留现有全部 Alembic 历史，当前迁移头为 `20261026_avatar_jobs`。从 backend/ 运行 `python -m alembic upgrade head`；修改数据库时新增兼容迁移，不因为文档整理重写旧迁移或删除已有数据。普通功能修改不要求空库回退演练。
 
-撤权/删除先隐藏，后台清理向量、对象和通知；已删除行、外部字节和副本的清理是不同步骤。保留期和隐私规则只在 [security](security.md) 维护。真实账户删除/导出和备份期限尚未完成，见 [roadmap](roadmap.md)。
+撤权/删除先隐藏，后台清理向量、对象和通知；已删除行、外部字节和副本的清理是不同步骤。账户删除/导出和保留期规则见 [security](security.md)，未覆盖的外部副本和端侧入口见 [roadmap](roadmap.md)。
+
+## 账户生命周期（20261025_account_lifecycle）
+
+`account_deletion`：`id` UUID 主键、`user_id` 唯一外键、`receipt_hash` 唯一 SHA-256 摘要；`local_status` 限 PENDING/RETRY/ERASED，`requested_at`、`local_erased_at`、`retry_at`、`last_error_code` 记录本地处理；`backup_due_at`、`backup_confirmed_at`、`backup_evidence_hash` 记录备份期限和核验。不存导出文件或个人正文。worker 使用行锁及 SKIP LOCKED，每次只处理一个账户；进程失败释放锁，持久请求可重试。
+
+`provider_copy`：`id` UUID 主键，`user_id` 外键，`(user_id, provider)` 唯一；保存 `first_possible_send_at`、`last_possible_send_at`、`confirmed_at`、`evidence_hash`；`resource_refs` JSONB 数组只保留供应商资源 ID、渠道、服务账号引用，用于删除办理，确认后清空。真实发送前提交可能副本记录，同一供应商后续使用更新最后时间并清除先前确认。迁移为所有现有用户插入 LEGACY_UNVERIFIED，要求运维核对升级前历史。删除状态由这些真实行汇总，不能靠期限或当前 provider 配置推断成功。存在删除/副本记录时迁移拒绝降级丢失记录。
+
+本人正文、附件行、会话、凭证和关联审计/任务物理删除；`user` 保留无姓名占位供其他主体记录引用并防止 Demo 固定身份复活。占位、删除回执及核验摘要的保留边界见安全文档。
 
 当前向量类型为 vector(8)，使用获准子集内的距离查询，没有独立向量服务或已实现的通用语义模型。换模型/维度需修改相应实现和迁移，不能只改文档。
+
+### avatar_job
+
+迁移 `20261026_avatar_jobs` 新增，模型为 `modules/avatar/models.py`。字段为 UUID 主键 `id`，家庭/本人外键 `family_id`、`owner_user_id`（RESTRICT），明确授权快照 `consent_id`、图像服务指纹 `provider_id`（64 字符），三个可空 FileAsset 外键 `source_id`、`pack_id`、`preview_id`（SET NULL），`status`、正整数 `version`、可空 `error_code`，以及带时区的 `created_at`、`updated_at`、可空 `expires_at`、`confirmed_at`、`deleted_at`。授权快照不使用外键，读取及每阶段写回复验当前授权。
+
+CHECK 限制状态为 UPLOADING、QUEUED、STYLIZING、PREPARING、RENDERING、READY、ACTIVE、FAILED、CANCELLED。索引 `(family_id, owner_user_id, created_at)` 查询本人最近任务；部分唯一索引 `uq_avatar_active` 保证同家庭本人最多一个 ACTIVE。确认时取消旧形象；未确认 24 小时到期，确认后 expires_at 清空。
+
+照片和输出复用 `file_asset`，`memory_id=NULL`，对象键为 `private/{family}/avatars/{job}/{source|pack|preview}`，清理和私有对象版本删除沿用 FILE_CLEANUP；生成后源照片先不可读再异步删除。任务种类新增 AVATAR_GENERATE，业务键复用现有唯一去重，max_attempts=1；只有专用 worker 领取，每 5 秒续租，过期任务进入 DEAD 并标记 WORKER_INTERRUPTED，不重发供应商请求。账户导出/删除包含本人仍可访问的角色任务和资源。隐私边界见 [security](security.md#tha3-本机形象)。
 
 ## 关注处理与联系人（20261023_attention_contacts）
 

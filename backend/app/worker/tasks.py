@@ -16,7 +16,7 @@ async def authorize_index_then_lock_lease(db, task, token):
 
 async def run_one(factory, storage=None, *, push=None):
     async with factory() as db:
-        task = await tasks.claim(db)
+        task = await tasks.claim(db, exclude_kinds=('AVATAR_GENERATE',))
         await db.commit()
         if task is None:
             return False
