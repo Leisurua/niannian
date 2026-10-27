@@ -193,6 +193,12 @@ class FamilyRepository(
             expectedVersion = null, explicitKey = key)
     }
 
+    suspend fun avatarCall(path: String, method: String, body: JSONObject?, key: String?): JSONObject = requestMutex.withLock {
+        require(path == "/v1/consents" || path.startsWith("/v1/avatar-"))
+        key?.let { require(UUID.fromString(it).toString() == it) }
+        executeCall(path, method, body, false, null, key)
+    }
+
     suspend fun registerMessageDevice(body: JSONObject): JSONObject = requestMutex.withLock {
         executeCall("/v1/devices/register", "POST", body, false, null, UUID.randomUUID().toString())
     }
@@ -263,16 +269,25 @@ class FamilyRepository(
     }
 
     suspend fun downloadPhoto(url: String): ByteArray {
+        val supplied = URL(url)
+        require(Regex("/v1/files/[0-9a-fA-F-]{36}/content").matches(supplied.path)) { "照片地址无效。" }
+        require(supplied.query != null && supplied.query.length < 512)
+        return downloadPrivate(supplied.path + "?" + supplied.query, 5 * 1024 * 1024)
+    }
+
+    suspend fun downloadAvatar(id: String): ByteArray {
+        require(UUID.fromString(id).toString() == id)
+        return downloadPrivate("/v1/avatar-jobs/$id/pack", 24 * 1024 * 1024)
+    }
+
+    private suspend fun downloadPrivate(path: String, maximum: Int): ByteArray {
         call("/v1/me") // refresh an expired login before attempting the binary request
         return requestMutex.withLock { withContext(Dispatchers.IO) {
-            val supplied = URL(url)
-            require(Regex("/v1/files/[0-9a-fA-F-]{36}/content").matches(supplied.path)) { "照片地址无效。" }
-            require(supplied.query != null && supplied.query.length < 512)
             val session = store.load()
             // Always send the Bearer to the configured API origin, never an
             // arbitrary host carried in a download response.
             val origin = ConnectionPolicy.origin(session.getString("origin"), debug)
-            val connection = connectionFactory(URL(origin + supplied.path + "?" + supplied.query))
+            val connection = connectionFactory(URL(origin + path))
             try {
                 connection.instanceFollowRedirects = false
                 connection.connectTimeout = 10000
@@ -285,7 +300,7 @@ class FamilyRepository(
                     while (true) {
                         val count = stream.read(buffer)
                         if (count < 0) break
-                        require(output.size() + count <= 5 * 1024 * 1024) { "照片超出显示限制。" }
+                        require(output.size() + count <= maximum) { "资源超出显示限制。" }
                         output.write(buffer, 0, count)
                     }
                 }

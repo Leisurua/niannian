@@ -11,6 +11,7 @@
 | Embedding | `backend/app/integrations/mock/adapters.py` | 仍为 8 维 Mock，不能作为通用语义准确率证据 |
 | Android ASR / TTS | `android/shared/.../conversation/AndroidConversationVoice.kt` | 系统 SpeechRecognizer 收音识别，TextToSpeech 中文朗读；依赖已安装的服务，可能联网 |
 | Android 基础数字人 | `android/shared/.../conversation/PersimmonCompanionOrb.kt` | Compose Canvas 2D 柿子形象；待机、听您说话、思考中、正在回答；口型随设备实际播放启停 |
+| THA3 自定义形象 | `modules/avatar`、`integrations/avatar_preprocess.py` / `tha3_renderer.py`、Android `AvatarGenerationModel` / `AvatarModel` / `CompanionAvatar` | 手机照片经千问/豆包生成立绘，服务端抠图与构图后由真实 THA3 生成四态包，下载预览并手动确认启用；也支持离线 ZIP 导入 |
 | 后端 ASR / TTS / Avatar | `backend/app/integrations/mock/adapters.py` | 仍为 Mock 占位，不解码/返回音频；Android 语音不调用它们 |
 | Push | 同上，MockPush | 仅模拟派发，不声明设备送达 |
 | 摘要 | `backend/app/modules/conversation/summary.py` | 从受控主题生成最多四条回顾，不存逐字稿 |
@@ -49,6 +50,12 @@ WSS 保持本人文字/状态通道。Android 点击说话后由系统 ASR 收�
 老人首页和聊天入口共用 `ConversationPanel`，移除了聊天页固定示例回复和持续“正在听”的模拟状态。`ConversationState.companionPhase` 由本地录音、识别、请求等待、待播和实际播音派生；服务端 `LISTENING` / `SPEAKING` 不能单独让形象显示收音或动嘴。TTS `onStart` 才标记实际播音，`onDone`、`onStop`、失败、按钮打断、切后台、断线和 VOICE 撤权立即清除待播/播音标记并丢弃旧回调。ASR 自动结束收音后进入识别等待。基础口型是播放期间的开合循环，不是音素对齐或音量分析。
 
 聊天页持续显示“念念 AI 陪伴”、当前状态和停止按钮；点击形象复用麦克风权限与语音授权检查，保留文字输入。当前为代码与构建验证，真机语音和动画观感仍待验证。
+
+照片制作需要先显示处理服务和外发说明，由本人确认上传。千问使用多模态图像编辑 API，豆包使用图生图 API；固定提示词要求单人正面、睁眼闭嘴、白色背景的动漫半身立绘。服务端优先检测动漫脸；未检出时使用 OpenCV 自带正面人脸检测，兼容保留老人面部比例的写实动漫风格。检测到多人或仍无清晰脸部则失败，不使用猜测裁剪。随后用 rembg/u2netp 抠图，将脸部居中整理到 512×512 透明 RGBA 画布。图像 API 没有自动付费重试，超时结果记为未知；已用公开老年人肖像验证豆包 Seedream 5.0 pro 的真实图生图、抠图和 THA3 四态生成，千问及手机真机链路仍待验证。
+
+THA3 使用官方 `separable_float` 的五个网络，预生成呼吸/眨眼、倾听、思考、说话共 44 帧。导出头肩范围的 256×256 RGBA 图块，四张 PNG 图集和 `manifest.json` 放在一个 ZIP 中。Android 下载后校验并提供四态无声预览，需再次确认才启用，不运行 PyTorch。服务端 GPU 输入、输出通过子进程内存管道传递，不创建人物临时文件；离线脚本仍接受整理好的立绘。制作、导入和许可见 [部署说明](deployment.md#tha3-自定义陪伴形象)。
+
+`CompanionAvatar` 复用 `ConversationState.companionPhase`：只有设备实际播音时播放说话片段，其余片段保持闭嘴；停止或打断立即切换片段并从闭嘴首帧开始。它是与播音启停一致的多嘴型循环，尚无按音素或音量对齐。导入需要本人对自己的 PORTRAIT 授权，具体缓存、失效及清理边界见 [安全说明](security.md#tha3-本机形象)。
 
 回顾采用固定主题，生成需要本人的 CONVERSATION_SUMMARY 显式授权。家属读取还需指定家属的该 scope、SUMMARY_READ 和访问理由。主题最多四条，失败不回退为全文；保留期和撤权处理只在安全文档维护。
 

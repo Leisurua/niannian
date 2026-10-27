@@ -13,7 +13,7 @@ class Task(Base):
     __tablename__ = 'task_outbox'
     __table_args__ = (
         CheckConstraint('resource_version > 0', name='ck_task_version'),
-        CheckConstraint("kind IN ('MEMORY_INDEX','MEMORY_CLEANUP','FILE_CLEANUP','CONVERSATION_SUMMARY','CONVERSATION_SUMMARY_CLEANUP','NOTIFICATION_DISPATCH','SIGNAL_CLEANUP','NOTIFICATION_CLEANUP')", name='ck_task_kind'),
+        CheckConstraint("kind IN ('MEMORY_INDEX','MEMORY_CLEANUP','FILE_CLEANUP','CONVERSATION_SUMMARY','CONVERSATION_SUMMARY_CLEANUP','NOTIFICATION_DISPATCH','SIGNAL_CLEANUP','NOTIFICATION_CLEANUP','AVATAR_GENERATE')", name='ck_task_kind'),
         CheckConstraint("status IN ('PENDING','RUNNING','RETRY','SUCCEEDED','DEAD')", name='ck_task_status'),
         CheckConstraint('attempts >= 0 AND max_attempts > 0 AND attempts <= max_attempts', name='ck_task_attempts'),
         CheckConstraint("(status = 'RUNNING' AND lease_token IS NOT NULL AND lease_until IS NOT NULL) OR (status <> 'RUNNING' AND lease_token IS NULL AND lease_until IS NULL)", name='ck_task_lease'),
@@ -39,7 +39,8 @@ class Task(Base):
 async def enqueue(db, kind, family_id, resource_id, version, epoch='source', rearm=False):
     key = f'{kind}:{resource_id}:{version}:{epoch}'
     command = insert(Task).values(id=uuid7(), kind=kind, family_id=family_id,
-        resource_id=resource_id, resource_version=version, business_key=key)
+        resource_id=resource_id, resource_version=version, business_key=key,
+        max_attempts=1 if kind == 'AVATAR_GENERATE' else 5)
     if rearm:
         command = command.on_conflict_do_update(index_elements=['business_key'],
             set_={'status': 'PENDING', 'attempts': 0, 'available_at': utcnow(), 'updated_at': utcnow()},
@@ -49,12 +50,17 @@ async def enqueue(db, kind, family_id, resource_id, version, epoch='source', rea
     await db.execute(command)
 
 
-async def claim(db, now=None):
+async def claim(db, now=None, *, kinds=None, exclude_kinds=()):
     now = now or utcnow()
-    rows = (await db.scalars(select(Task).where(
+    query = select(Task).where(
         ((Task.status.in_(('PENDING', 'RETRY'))) & (Task.available_at <= now)) |
         ((Task.status == 'RUNNING') & (Task.lease_until <= now))
-    ).order_by(Task.available_at, Task.id).limit(20).with_for_update(skip_locked=True))).all()
+    )
+    if kinds is not None:
+        query = query.where(Task.kind.in_(kinds))
+    if exclude_kinds:
+        query = query.where(~Task.kind.in_(exclude_kinds))
+    rows = (await db.scalars(query.order_by(Task.available_at, Task.id).limit(20).with_for_update(skip_locked=True))).all()
     for row in rows:
         if row.attempts >= row.max_attempts:
             row.status, row.lease_token, row.lease_until = 'DEAD', None, None

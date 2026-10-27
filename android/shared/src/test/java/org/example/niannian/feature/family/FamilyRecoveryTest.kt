@@ -3,6 +3,7 @@ package org.example.niannian.feature.family
 import org.example.niannian.data.ApiFailure
 import org.example.niannian.data.FamilyRepository
 import org.example.niannian.data.SessionStore
+import org.example.niannian.data.portraitGateway
 
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -90,7 +91,31 @@ private suspend fun CompanionModel.idle() = withTimeout(5000) {
 }
 
 class FamilyRecoveryTest {
-    @Test fun elderCanGrantVoiceForTheirOwnConversation() = runBlocking {
+    @Test fun portraitGatewayUsesLatestSelfGrantAndRejectsOtherOwners() = runBlocking {
+        val api = FakeApi()
+        fun grant(version: Int, status: String = "GRANTED", owner: String = "elder", expiry: String? = null) =
+            JSONObject().put("id", "grant-$version").put("version", version).put("status", status)
+                .put("family_id", "family-a").put("subject_user_id", owner).put("grantee_user_id", "elder")
+                .put("scope", "PORTRAIT").put("expires_at", expiry ?: JSONObject.NULL)
+        var rows = listOf(grant(2, "REVOKED"), grant(1))
+        api.handler = { request ->
+            assertEquals("/v1/consents", request.url.path)
+            assertTrue(request.url.query.contains("scope=PORTRAIT"))
+            page(rows)
+        }
+        val gateway = api.repository.portraitGateway()
+        assertNull(gateway.grant("family-a", "elder"))
+        rows = listOf(grant(1), grant(2, expiry = "2000-01-01T00:00:00Z"))
+        assertNull(gateway.grant("family-a", "elder"))
+        rows = listOf(grant(1), grant(3))
+        assertEquals("grant-3", gateway.grant("family-a", "elder")!!.id)
+        rows = listOf(grant(4, owner = "other-elder"))
+        try { gateway.grant("family-a", "elder"); fail("Expected owner isolation") }
+        catch (_: IllegalArgumentException) { }
+    }
+
+    @Test fun elderCanGrantVoiceAndPortraitForTheirOwnConversation() = runBlocking {
+        for (scope in listOf("VOICE", "PORTRAIT")) {
         val api = FakeApi()
         api.handler = { request ->
             if (request.url.path == "/v1/consents" && request.requestMethod == "POST") Reply()
@@ -98,12 +123,13 @@ class FamilyRecoveryTest {
         }
         val model = CompanionModel(api.repository, true, "device", this)
         model.idle()
-        model.grantSelf("VOICE"); model.idle()
+        model.grantSelf(scope); model.idle()
         val request = api.requests.single { it.url.path == "/v1/consents" && it.requestMethod == "POST" }
         val body = JSONObject(request.sentBody.toString("UTF-8"))
-        assertEquals("VOICE", body.getString("scope"))
+        assertEquals(scope, body.getString("scope"))
         assertEquals(body.getString("subject_user_id"), body.getString("grantee_user_id"))
         assertEquals("", model.state.value.error)
+        }
     }
 
     @Test fun notificationReadUsesIdempotencyWithoutPersistingContentOrPendingAction() = runBlocking {

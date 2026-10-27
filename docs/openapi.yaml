@@ -16,6 +16,7 @@ tags:
 - name: Consents
 - name: Memories
 - name: Files
+- name: Avatars
 - name: Reminders
 - name: Conversations
 - name: SignalEvents
@@ -48,12 +49,236 @@ x-websocket-channels:
       and interrupt acknowledgements. The initial ready, unsolicited invitations and protocol rejection errors may omit it.
       Clients validate server sequence continuity before discarding events older than the latest input or interrupt.
 paths:
+  /avatar-generation:
+    get:
+      tags:
+      - Avatars
+      operationId: getAvatarGenerationCapabilities
+      summary: Configured photo editor and disclosure; real generation is dev-only
+      responses:
+        '200':
+          description: No-store capabilities; available=false when disabled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvatarGenerationCapabilities'
+  /avatar-jobs:
+    post:
+      tags:
+      - Avatars
+      operationId: createAvatarJob
+      summary: Authorize a private photo upload for the elder owner
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AvatarCreate'
+      description: Requires active family membership, ELDER role, current explicit self
+        PORTRAIT consent and photo/provider approval. Returns a signed PUT upload_url
+        and required_headers only while UPLOADING; original upload window is at most
+        300 seconds. Source is at most 5 MiB. Idempotency does not resend image generation.
+      responses:
+        '201':
+          description: Own current job; no-store. READY does not enable the avatar.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvatarJobResponse'
+        '409':
+          description: Authorization/provider changed, duplicate request differs, or
+            another job is in progress
+        '503':
+          description: Generation disabled
+  /avatar-jobs/latest:
+    get:
+      tags:
+      - Avatars
+      operationId: getLatestAvatarJob
+      summary: Resume the newest job under the current self PORTRAIT grant
+      parameters:
+      - name: family_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: No-store; null when absent/expired
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - job
+                properties:
+                  job:
+                    anyOf:
+                    - $ref: '#/components/schemas/AvatarJobResponse'
+                    - type: 'null'
+        '403':
+          description: Membership, role or self PORTRAIT consent missing
+  /avatar-jobs/{job_id}:
+    parameters:
+    - name: job_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      tags:
+      - Avatars
+      operationId: getAvatarJob
+      summary: Read own authorized generation progress
+      responses:
+        '200':
+          description: Own current job; no-store. READY does not enable the avatar.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvatarJobResponse'
+        '404':
+          description: Not owned, revoked, removed or expired
+    delete:
+      tags:
+      - Avatars
+      operationId: deleteAvatarJob
+      summary: Cancel and remove own photo/avatar resources
+      responses:
+        '202':
+          description: Immediately inaccessible; private-object cleanup is asynchronous.
+            Repeat removal is allowed. Account/family membership is still required.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    const: CANCELLED
+  /avatar-jobs/{job_id}/complete-upload:
+    parameters:
+    - name: job_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    post:
+      tags:
+      - Avatars
+      operationId: completeAvatarPhotoUpload
+      summary: Validate and sanitize the uploaded photo, then queue once
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      description: Uses original upload window plus cleanup margin (360 seconds total).
+        Repeated completion does not enqueue another paid operation. The dedicated avatar
+        worker runs STYLIZING -> PREPARING -> RENDERING -> READY; no automatic generation
+        retry.
+      responses:
+        '200':
+          description: Own current job; no-store. READY does not enable the avatar.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvatarJobResponse'
+        '409':
+          description: Upload window closed
+        '422':
+          description: Photo format, bytes or checksum invalid
+  /avatar-jobs/{job_id}/confirm:
+    parameters:
+    - name: job_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    post:
+      tags:
+      - Avatars
+      operationId: confirmAvatarJob
+      summary: Explicitly enable the downloaded and previewed avatar
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AvatarConfirm'
+      description: Requires current grant and exact pack_checksum. Replaces the previous
+        ACTIVE job; only confirmation removes the 24-hour pending expiration.
+      responses:
+        '200':
+          description: Own current job; no-store. READY does not enable the avatar.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvatarJobResponse'
+        '409':
+          description: Not READY/ACTIVE or package SHA-256 does not match
+  /avatar-jobs/{job_id}/pack:
+    parameters:
+    - name: job_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      tags:
+      - Avatars
+      operationId: downloadAvatarPack
+      summary: Download own authorized pack
+      responses:
+        '200':
+          description: Authenticated no-store binary; SHA-256 checked before returning.
+            READY or ACTIVE only.
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Unauthorized or no longer available
+        '409':
+          description: Not READY/ACTIVE
+  /avatar-jobs/{job_id}/preview:
+    parameters:
+    - name: job_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      tags:
+      - Avatars
+      operationId: downloadAvatarPreview
+      summary: Download own authorized preview
+      responses:
+        '200':
+          description: Authenticated no-store binary; SHA-256 checked before returning.
+            READY or ACTIVE only.
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Unauthorized or no longer available
+        '409':
+          description: Not READY/ACTIVE
   /me/export:
     get:
       tags: [Account]
       summary: Export the authenticated account's data and safe photos
       operationId: exportAccount
-      description: No-store ZIP with account.json and photos/{file_id}; explicit own-data fields, no credentials, provider internals or other subjects' content. Removed/expired content is excluded. Default 100 MiB and 10000 rows per collection limit; storage failure aborts the whole export.
+      description: No-store ZIP with account.json, photos/{file_id}, and authorized avatars/{job_id}/{source|pack|preview}; explicit own-data fields, no credentials, provider internals or other subjects' content. Removed/expired content is excluded. Default 100 MiB and 10000 rows per collection limit; storage failure aborts the whole export.
       responses:
         '200':
           description: Complete in-memory ZIP, not retained on the server
@@ -2444,6 +2669,142 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    AvatarGenerationCapabilities:
+      type: object
+      required:
+      - available
+      - provider_id
+      - provider_label
+      - max_photo_bytes
+      - notice
+      properties:
+        available:
+          type: boolean
+        provider_id:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+        provider_label:
+          type: string
+        max_photo_bytes:
+          type: integer
+          maximum: 5242880
+        notice:
+          type: string
+    AvatarCreate:
+      type: object
+      additionalProperties: false
+      required:
+      - family_id
+      - consent_id
+      - provider_id
+      - authorized_photo
+      - mime_type
+      - size_bytes
+      - checksum
+      properties:
+        family_id:
+          type: string
+          format: uuid
+        consent_id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+        authorized_photo:
+          type: boolean
+          const: true
+        mime_type:
+          enum:
+          - image/jpeg
+          - image/png
+          - image/webp
+        size_bytes:
+          type: integer
+          minimum: 1
+          maximum: 5242880
+        checksum:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+    AvatarConfirm:
+      type: object
+      additionalProperties: false
+      required:
+      - pack_checksum
+      properties:
+        pack_checksum:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+    AvatarJobResponse:
+      type: object
+      required:
+      - id
+      - family_id
+      - owner_user_id
+      - consent_id
+      - status
+      - version
+      - created_at
+      - expires_at
+      - confirmed_at
+      - error_code
+      - pack_checksum
+      properties:
+        id:
+          type: string
+          format: uuid
+        family_id:
+          type: string
+          format: uuid
+        owner_user_id:
+          type: string
+          format: uuid
+        consent_id:
+          type: string
+          format: uuid
+        status:
+          enum:
+          - UPLOADING
+          - QUEUED
+          - STYLIZING
+          - PREPARING
+          - RENDERING
+          - READY
+          - ACTIVE
+          - FAILED
+          - CANCELLED
+        version:
+          type: integer
+          minimum: 1
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        confirmed_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        error_code:
+          type:
+          - string
+          - 'null'
+        pack_checksum:
+          anyOf:
+          - type: string
+            pattern: ^[a-f0-9]{64}$
+          - type: 'null'
+        upload_url:
+          type: string
+          format: uri
+        required_headers:
+          type: object
+          additionalProperties:
+            type: string
     DeviceRegister:
       properties:
         device_id:

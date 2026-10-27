@@ -21,6 +21,7 @@ from app.modules.notification.models import FamilyContact, Notification, Notific
 from app.modules.reminder.models import Reminder, ReminderExecution
 from app.modules.report.models import InteractionMetric
 from app.modules.signal.models import SignalEvent
+from app.modules.avatar.models import AvatarJob
 from app.platform.errors import AppError
 from app.platform.identifiers import utcnow, uuid7
 from app.platform.tasks import Task
@@ -109,6 +110,7 @@ async def erase_database(db, uid):
     # cannot retain references or recreate deleted work.
     targets = {uid}
     for query in (memories, conversations, reminders, executions, signals, notifications,
+            select(AvatarJob.id).where(AvatarJob.owner_user_id == uid),
             select(Consent.id).where(consents), select(FileAsset.id).where(file_filter),
             select(FamilyMember.id).where(FamilyMember.user_id == uid),
             select(FamilyInvitation.id).where(FamilyInvitation.created_by_user_id == uid),
@@ -119,6 +121,7 @@ async def erase_database(db, uid):
     await db.execute(delete(AuditLog).where(or_(AuditLog.actor_user_id == uid, AuditLog.target_id.in_(targets))))
     # Account deletion always rechecks even previously soft-deleted files.
     await db.execute(update(FileAsset).where(file_filter).values(status='DELETE_REQUESTED', deleted_at=utcnow(), owner_user_id=uid))
+    await db.execute(delete(AvatarJob).where(AvatarJob.owner_user_id == uid))
     await db.execute(delete(Notification).where(Notification.id.in_(notifications)))
     await db.execute(delete(SignalEvent).where(SignalEvent.owner_user_id == uid))
     await db.execute(delete(InteractionMetric).where(InteractionMetric.owner_user_id == uid))
