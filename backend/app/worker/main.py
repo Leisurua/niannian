@@ -23,6 +23,7 @@ async def run_cycle():
     from app.modules.notification import service as notifications
     from app.modules.report import metrics
     from app.modules.account import service as accounts
+    from app.modules.avatar import service as avatars
     settings = get_settings()
     logger = logging.getLogger('nianian.worker')
     try:
@@ -38,6 +39,7 @@ async def run_cycle():
                 break
         async with session_factory() as db:
             await accounts.maintenance(db, settings)
+            await avatars.maintenance(db)
             await tick(db, settings)
             next_memory_scan = await maintenance(db, _memory_scan_after)
             await schedule_cleanup(db)
@@ -76,12 +78,16 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('--once', action='store_true', help='Run a single database cycle')
     parser.add_argument('--serve', action='store_true', help='Run the 15-second scheduler')
+    parser.add_argument('--avatar', action='store_true', help='Run the dedicated photo/THA3 worker')
     args = parser.parse_args()
     settings = get_settings()
     configure_logging(settings.log_level)
     log_event(logging.getLogger("nianian.worker"), logging.INFO, "WORKER_READY")
     configure_event_loop()
-    if args.once:
+    if args.avatar:
+        from app.modules.avatar.worker import serve as avatar_serve
+        asyncio.run(avatar_serve(once=args.once))
+    elif args.once:
         asyncio.run(run_cycle())
     elif args.serve:
         asyncio.run(serve())

@@ -15,11 +15,12 @@ from app.modules.notification.models import FamilyContact, Notification, Notific
 from app.platform.tasks import Task
 from app.modules.report.models import InteractionMetric
 from app.modules.account.models import AccountDeletion, ProviderCopy
+from app.modules.avatar.models import AvatarJob
 
 DOMAIN_MODELS = (
     User, Family, AuditLog, FamilyMember, FamilyInvitation, Consent, DeviceBinding,
     DeviceSession, Memory, FileAsset, Reminder, ReminderExecution, Conversation,
     MemoryChunk, MemoryEmbedding, Task, ProactivePreference, ProactiveDailyCounter,
     SignalEvent, Notification, NotificationAttempt, NotificationPreference, FamilyContact,
-    FamilyMessage, MessageDelivery, InteractionMetric, AccountDeletion, ProviderCopy,
+    FamilyMessage, MessageDelivery, InteractionMetric, AccountDeletion, ProviderCopy, AvatarJob,
 )

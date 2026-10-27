@@ -2,7 +2,7 @@
 
 ## 账户生命周期运维
 
-升级 API/worker 前，在 `backend/` 运行 `python -m alembic upgrade head`（新增 `20261025_account_lifecycle`），随后重启二者。当前入口是 REST API，字段和凭证找回方式见 [OpenAPI](openapi.yaml)；Android/Windows 尚未增加账户管理界面。导出文件含本人资料，客户端应通过系统文件保存器交由本人选择位置；删除前先保存独立回执凭证，受理后按已有退出流程清理本地会话和缓存。
+升级 API/worker 前，在 `backend/` 运行 `python -m alembic upgrade head`（当前头 `20261026_avatar_jobs`，包含账户生命周期迁移），随后重启二者。当前入口是 REST API，字段和凭证找回方式见 [OpenAPI](openapi.yaml)；Android/Windows 尚未增加账户管理界面。导出文件含本人资料，客户端应通过系统文件保存器交由本人选择位置；删除前先保存独立回执凭证，受理后按已有退出流程清理本地会话和缓存。
 
 可配置 `BACKUP_RETENTION_DAYS=30`、`AUDIT_RETENTION_DAYS=90`、`TASK_RETENTION_DAYS=7`、`ACCOUNT_EXPORT_MAX_BYTES=104857600`。`BACKUP_DIRECTORY` 默认为空；只有显式指定的私有目录会启用自动备份期限清理。备份文件须命名为 `niannian-backup-YYYYMMDDTHHMMSSZ.dump`、`.sql.gz`、`.tar.gz` 或 `.zip`，时间为备份快照的 UTC 时间，不因复制而改写；写入完成后才使用该名称。清理不递归、不跟随符号链接/目录联接、不删除其他文件；目录必须仅由可信运维账号写入。此功能不自动创建备份。
 
@@ -82,6 +82,81 @@ LLM_TIMEOUT_SECONDS=20
 Android 以 demo-elder 登录并加入家庭，点击“开始聊天”，输入文字后发送。连接后的聊天卡片显示“AI 对话”或“Mock 演示”；成功回复后可继续第二轮，停止会取消等待，失败可重新编辑上一条。断线不会自动重发，重连后需重新说明话题；回顾仍需单独授权。
 
 语音在老人端使用手机已安装的中文语音识别与 TTS 服务，无须配置后端 ASR/TTS 密钥。在“用于我与念念的交流”中允许语音处理（与授予家属分开），再点“点击说话”并允许麦克风，说完等自动识别或点“说完了”，识别文字自动提交现有 LLM，回复显示并朗读。“停止”取消当前识别、请求或播放；“打断并说话”停播后开始新输入。支持“再说一遍”“说慢一点”“关闭朗读”，音量使用手机音量键。当前为按钮打断，无自动人声打断或后台唤醒。设备没有识别服务、中文语音数据或麦克风权限时会提示并保留文字入口；语音服务可能联网，数据边界见 [安全说明](security.md)。真机收音、扬声器输出和设备引擎兼容性尚待验证。
+
+## THA3 自定义陪伴形象
+
+手机流程为“选择照片 → 查看处理服务并授权 → 千问/豆包生成动漫立绘 → 服务端抠图、定位脸部并整理尺寸 → GPU THA3 → 下载四态预览 → 确认启用”。默认关闭，未配置时继续使用默认柿子或离线导入；只有 `APP_ENV=dev` 启用真实图像调用。生成模块由同一后端运行，API 不加载 PyTorch；GPU 依赖安装到独立环境。已使用 [THA3 官方项目](https://github.com/pkhungurn/talking-head-anime-3-demo)提交 `8946939ec7b417f443d7b0e3fcd97384313fcdb8`、Python 3.12、PyTorch 2.9.1+cu128 和 RTX 5060 Laptop 完成真实推理，源码和权重放在忽略提交的 `artifacts/` 中。
+
+Windows 从项目根目录准备独立环境（其他显卡应选择匹配的 PyTorch 构建）：
+
+```powershell
+git clone https://github.com/pkhungurn/talking-head-anime-3-demo.git artifacts/tha3-runtime/upstream
+git -C artifacts/tha3-runtime/upstream checkout 8946939ec7b417f443d7b0e3fcd97384313fcdb8
+.\.venv\Scripts\python.exe -m venv --without-pip artifacts/tha3-runtime/venv
+.\.venv\Scripts\python.exe -m pip --python artifacts/tha3-runtime/venv/Scripts/python.exe install torch==2.9.1 --index-url https://download.pytorch.org/whl/cu128
+.\.venv\Scripts\python.exe -m pip --python artifacts/tha3-runtime/venv/Scripts/python.exe install numpy Pillow scipy matplotlib 'rembg[cpu]==2.0.86' 'opencv-python-headless>=4.12,<5'
+```
+
+从[上游官方模型链接](https://www.dropbox.com/s/y7b8jl4n2euv8xe/talking-head-anime-3-models.zip?dl=1)下载压缩包，将其中 `separable_float/` 的 `eyebrow_decomposer.pt`、`eyebrow_morphing_combiner.pt`、`face_morpher.pt`、`two_algo_face_body_rotator.pt`、`editor.pt` 放到 `artifacts/tha3-runtime/models/separable_float/`。仅使用可信权重。
+
+照片预处理另需 [lbpcascade_animeface](https://github.com/nagadomi/lbpcascade_animeface) 的 MIT XML 模型和 [rembg](https://github.com/danielgatis/rembg) 的 u2netp。安装时下载，实际任务不自动下载模型；OpenCV 5 已移除 CascadeClassifier，本实现使用 4.x。项目根目录执行：
+
+```powershell
+New-Item -ItemType Directory -Force artifacts/tha3-runtime/preprocess
+Invoke-WebRequest https://raw.githubusercontent.com/nagadomi/lbpcascade_animeface/master/lbpcascade_animeface.xml -OutFile artifacts/tha3-runtime/preprocess/lbpcascade_animeface.xml
+$env:U2NET_HOME = (Resolve-Path artifacts/tha3-runtime/preprocess).Path
+.\artifacts\tha3-runtime\venv\Scripts\python.exe -c "from rembg import new_session; new_session('u2netp', providers=['CPUExecutionProvider'])"
+```
+
+根 `.env` 中配置服务和模型，密钥只放服务端。以下两个供应商选择其一，地址须与密钥地域一致；千问也可使用控制台的业务空间专属 HTTPS 域名，并保留 `/api/v1` 后缀。模型须已为当前账户开通，参见[千问图像编辑参数](https://help.aliyun.com/zh/model-studio/qwen-image-edit-api)及[豆包图像接口](https://docs.volcengine.com/docs/ark/image-generation-api?lang=zh)。
+
+```dotenv
+AVATAR_GENERATION_ENABLED=true
+AVATAR_IMAGE_PROVIDER=doubao
+AVATAR_IMAGE_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
+AVATAR_IMAGE_MODEL=doubao-seedream-5-0-pro-260628
+AVATAR_IMAGE_API_KEY=替换为本机密钥
+# 千问替代配置：
+# AVATAR_IMAGE_PROVIDER=qwen
+# AVATAR_IMAGE_BASE_URL=https://dashscope.aliyuncs.com/api/v1
+# AVATAR_IMAGE_MODEL=qwen-image-2.0-pro
+AVATAR_IMAGE_TIMEOUT=300
+AVATAR_RENDER_TIMEOUT=300
+```
+
+当前选用 `doubao-seedream-5-0-pro-260628`，调用 `/images/generations`，上传照片为 Base64 Data URI，固定请求正方形 `2048x2048`、PNG、`response_format=b64_json`，后续仍由服务端抠图和整理到 THA3 布局。参数见 [Seedream 5.0 pro 官方说明](https://docs.volcengine.com/docs/ark/seedream-5-0-pro?lang=zh)。本地未填密钥时保持 `AVATAR_GENERATION_ENABLED=false`；填入方舟 API Key 后改为 true，并重启 API 和两个 worker。不要复用聊天 LLM 的密钥，也不要把密钥发到聊天中。
+
+2026-10-27 已用[公开 Grace Hopper 肖像](https://commons.wikimedia.org/wiki/File:Grace_Hopper.jpg)完成一次真实豆包图生图（约 85 秒），再抠图并以 GPU THA3 生成四态包；原图为 James S. Davis 摄、美国海军公开作品，结果为 AI 改编测试素材，不随 APK 分发。写实老人动漫脸使用 OpenCV 自带正面检测作为动漫检测未命中时的回退，不额外下载模型；仍拒绝多人或无脸图片。Android 真机上传、选择器返回和确认启用尚待联测。
+
+API 和两个 worker 使用相同数据库、私有存储、签名密钥和图像配置。还需将 `.env.example` 中五个路径项设为 GPU 主机的绝对路径，分别指向 `venv/Scripts/python.exe`、`upstream/`、`models/separable_float/`、`preprocess/lbpcascade_animeface.xml`、`preprocess/`。u2netp 支持位于该目录下的 `u2netp.onnx` 或 `models/u2netp/u2netp.onnx`。保存后重启 API/worker，并执行迁移。
+
+```powershell
+# 已激活后端环境；从 backend/ 运行两个独立终端，均设置 APP_ENV=dev
+python -m app.worker.main --serve          # 普通任务与文件清理
+python -m app.worker.main --avatar --serve # 单 GPU 顺序处理照片任务
+```
+
+GPU worker 使用同一份后端源码与业务规则，通过配置的独立 Python 执行抠图和推理。Linux 可在 GPU 主机安装同一环境，将 Python 路径改为 `venv/bin/python`；现有普通 API/worker 容器不含 CUDA，不能直接充当 GPU worker。没有运行 `--avatar` 时制作任务保持等待。生成请求不自动重试，处理失败后由本人取消并重选；未确认任务 24 小时到期。服务端清理和外部副本边界见 [安全说明](security.md#tha3-本机形象)。
+
+准备一张 512×512 的透明背景 RGBA PNG 动漫立绘；角色正面直立，头部按上游规范位于图片上半部中央的 128×128 区域，手不要遮挡脸部。脚本检查尺寸与透明背景，但不能自动判断立绘布局或人物还原质量。使用自己的立绘生成新角色包：
+
+```powershell
+.\artifacts\tha3-runtime\venv\Scripts\python.exe scripts/build_tha3_avatar.py `
+  --tha3-root artifacts/tha3-runtime/upstream `
+  --model-dir artifacts/tha3-runtime/models/separable_float `
+  --image artifacts/my-character.png `
+  --output artifacts/my-avatar.zip `
+  --art-credit "立绘作者、来源和使用许可" `
+  --preview artifacts/my-avatar-preview.png
+```
+
+默认使用 CUDA，可显式指定 `--device cpu`（速度较慢）。已有 ZIP 不会被覆盖；推理失败删除本次未完成的输出。预览从左到右为待机、倾听、思考、说话。资源包保留模型及立绘归属说明，格式为 `niannian-tha3-v1`；限四种状态、固定 256 像素图块/4 列、每种最多 16 帧，压缩包和解压读取总量均不超过 24MiB。
+
+老人端：聊天页下方“陪伴形象 → 选择照片制作形象”，选择清晰单人照片，查看处理服务和照片后点击“同意并开始制作”。代码会检查或申请本人 PORTRAIT 授权，再上传；选择器会暂停当前聊天，回来后可重新进入查看进度。完成后切换待机、倾听、思考、说话四态检查，点击“确认并启用这个形象”才替换聊天/首页形象。切后台或断网清除照片与未确认预览，回前台查询进度，不重发生成请求。可取消任务并删除服务端资源。
+
+离线 ZIP 导入仍在同一面板，须先在“家庭与授权设置 → 用于我与念念的交流”允许“数字人形象”。“删除本机形象并恢复默认”仅删除手机副本，服务端资源使用任务取消按钮删除。授权与本机副本处理见 [安全说明](security.md#tha3-本机形象)。
+
+THA3 代码为 MIT，模型权重为 CC BY 4.0；上游示例角色有各自许可，其中 Lambda 角色为 CC BY-NC 4.0。本地验证用 Lambda，示例包仅作非商业评估，不随 APK 分发；正式部署换用有权使用的立绘，并填写对应的归属及许可。详情见[上游素材说明](https://github.com/pkhungurn/talking-head-anime-3-demo/blob/main/data/images/README.md)。真实模型已生成角色包，Android 文件选择器、Keystore 及完整语音交互仍需指定真机验证。
 
 ## Android
 

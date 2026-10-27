@@ -23,6 +23,7 @@ from app.modules.notification.models import FamilyContact, Notification, Notific
 from app.modules.reminder.models import Reminder, ReminderExecution
 from app.modules.report.models import InteractionMetric
 from app.modules.signal.models import SignalEvent
+from app.modules.avatar.models import AvatarJob
 from app.platform.errors import AppError
 from app.platform.identifiers import utcnow
 
@@ -94,21 +95,35 @@ async def build_export(db, actor, storage, settings, request_id):
     available_memories = [row['id'] for row in data['collections']['memory']]
     assets = await rows(FileAsset, (FileAsset.owner_user_id == uid) & (FileAsset.status == 'AVAILABLE')
         & FileAsset.deleted_at.is_(None) & FileAsset.memory_id.in_(available_memories))
+    entries = [(f, f'photos/{f.id}') for f in assets]
+    data['collections']['avatar_job'] = []
+    from app.modules.avatar.service import access as avatar_access
+    for job in await rows(AvatarJob, (AvatarJob.owner_user_id == uid) & AvatarJob.deleted_at.is_(None)):
+        try:
+            await avatar_access(db, actor, job.id)
+        except AppError:
+            continue
+        data['collections']['avatar_job'].append(dict(id=job.id, family_id=job.family_id,
+            status=job.status, created_at=job.created_at, confirmed_at=job.confirmed_at))
+        for asset_id, name in ((job.source_id, 'source'), (job.pack_id, 'pack.zip'), (job.preview_id, 'preview.png')):
+            asset = await db.get(FileAsset, asset_id) if asset_id else None
+            if asset and asset.status == 'AVAILABLE' and not asset.deleted_at:
+                entries.append((asset, f'avatars/{job.id}/{name}'))
     data['collections']['file_asset'] = [dict(id=f.id, memory_id=f.memory_id, mime_type=f.mime_type,
-        archive_path=f'photos/{f.id}') for f in assets]
+        archive_path=path) for f, path in entries]
     payload = json.dumps(jsonable_encoder(data), ensure_ascii=False).encode('utf-8')
     size = len(payload)
-    if size + sum(f.size_bytes for f in assets) > budget:
+    if size + sum(f.size_bytes for f, _ in entries) > budget:
         raise too_large()
     output = BytesIO()
     with ZipFile(output, 'w', ZIP_DEFLATED) as archive:
         archive.writestr('account.json', payload)
-        for asset in assets:
+        for asset, archive_path in entries:
             # Storage failure aborts the export; never return an incomplete ZIP.
-            content = await storage.read(asset.object_key + '.safe', settings.file_max_size_bytes)
+            content = await storage.read(asset.object_key + '.safe', max(settings.file_max_size_bytes, 24 * 1024 * 1024))
             size += len(content)
             if size > budget:
                 raise too_large()
-            archive.writestr(f'photos/{asset.id}', content)
+            archive.writestr(archive_path, content)
     await record(db, uid, 'ACCOUNT_EXPORTED', 'USER', uid, request_id=request_id)
     return output.getvalue()

@@ -97,6 +97,9 @@ async def grant(db, actor, body, key, settings, request_id):
     db.add(row)
     await db.flush()
     if row.subject_user_id == row.grantee_user_id:
+        if row.scope == 'PORTRAIT':
+            from app.modules.avatar.service import invalidate_consent
+            await invalidate_consent(db, row.family_id, row.subject_user_id)
         if row.scope == 'VOICE':
             from app.modules.account.service import note_possible_copy
             await note_possible_copy(db, row.subject_user_id, 'DEVICE_SPEECH_UNVERIFIED')
@@ -134,6 +137,9 @@ async def revoke(db, actor, consent_id, body, key, settings, request_id):
     row.audit_log_id = event.id
     db.add(row)
     await db.flush()
+    if row.scope == 'PORTRAIT' and row.subject_user_id == row.grantee_user_id:
+        from app.modules.avatar.service import invalidate_consent
+        await invalidate_consent(db, row.family_id, row.subject_user_id)
     if row.scope == 'INTERACTION_STATS' and row.subject_user_id == row.grantee_user_id:
         from app.modules.report.metrics import erase
         await erase(db, row.family_id, row.subject_user_id)
