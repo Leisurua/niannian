@@ -44,7 +44,7 @@ async def run_one(factory, storage=None, *, push=None):
                 async with factory() as db:
                     prepared = await rag.prepare_index(db, task.resource_id, task.resource_version)
                     await db.commit()
-                result = await rag.embed(prepared[2], str(task_id)) if prepared else None
+                result = await rag.embed(prepared.texts, str(task_id)) if prepared else None
                 async with factory() as db:
                     current, lease = await authorize_index_then_lock_lease(db, task, token)
                     if lease:

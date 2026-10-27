@@ -46,6 +46,8 @@ def reply_for(text):
         return HELP
     if any(word in text for word in ('天气', '下雨', '提醒', '吃药', '几点', '刚才聊')):
         return SYSTEM_UNKNOWN
+    if any(word in text for word in ('谁陪', '陪我', '去医院', '复诊')):
+        return UNKNOWN
     if any(word in text for word in ('家', '女儿', '儿子', '孙', '老伴', '名字', '住', '记得', '亲人')):
         return UNKNOWN
     return CHAT

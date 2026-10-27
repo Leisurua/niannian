@@ -13,7 +13,8 @@ def main():
     parser.add_argument('check', choices=['lint', 'test', 'integration', 'android', 'windows'], nargs='?', default='test')
     parser.add_argument('paths', nargs='*', help='Optional pytest paths or Gradle tasks')
     args = parser.parse_args()
-    env = {**os.environ, 'PYTHONUTF8': '1', 'APP_ENV': 'test', 'PROVIDER_MODE': 'mock', 'LLM_PROVIDER': 'mock'}
+    env = {**os.environ, 'PYTHONUTF8': '1', 'APP_ENV': 'test', 'PROVIDER_MODE': 'mock',
+           'LLM_PROVIDER': 'mock', 'EMBEDDING_PROVIDER': 'mock'}
     env['PYTHONPATH'] = os.pathsep.join(map(str, [ROOT, ROOT / 'backend', ROOT / 'windows/src']))
     cwd = ROOT
     if args.check == 'lint':
