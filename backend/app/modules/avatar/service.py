@@ -119,8 +119,8 @@ async def upload_view(db, row, storage, settings):
     result = await view(db, row)
     if row.status == 'UPLOADING':
         source = await db.get(FileAsset, row.source_id)
-        # Never issue a new signed PUT outside the original cleanup window.
-        seconds = min(settings.file_url_seconds, int((row.created_at + timedelta(seconds=300) - utcnow()).total_seconds()))
+        original_upload_deadline = row.created_at + timedelta(seconds=300)
+        seconds = min(settings.file_url_seconds, int((original_upload_deadline - utcnow()).total_seconds()))
         if seconds <= 0:
             raise AppError('AVATAR_UPLOAD_EXPIRED', '照片上传已过期，请取消任务后重新选择。', 409)
         result.update(upload_url=await storage.upload_url(source.object_key, source.mime_type, source.size_bytes, seconds),

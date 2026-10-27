@@ -61,18 +61,17 @@ fun AvatarHost(model: AvatarModel?, family: String, user: String, usable: Boolea
             catch (_: Exception) { generationModel?.photoFailed() }
         }
     }
-    var requestedBinding by remember(family, user) { mutableStateOf<Pair<String, Int>?>(null) }
-    var pendingUri by remember(family, user) { mutableStateOf<android.net.Uri?>(null) }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        pendingUri = uri
-        if (uri == null) requestedBinding = null
+    var foregroundPackBinding by remember(family, user) { mutableStateOf<Pair<String, Int>?>(null) }
+    var pendingForegroundPackUri by remember(family, user) { mutableStateOf<android.net.Uri?>(null) }
+    val packPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        pendingForegroundPackUri = uri
+        if (uri == null) foregroundPackBinding = null
     }
-    // Keep the picker above the chat: entering the system picker clears the chat on ON_STOP.
-    LaunchedEffect(pendingUri, state.family, state.user, state.grantId, state.allowed, foreground) {
-        val uri = pendingUri
-        val binding = requestedBinding
+    LaunchedEffect(pendingForegroundPackUri, state.family, state.user, state.grantId, state.allowed, foreground) {
+        val uri = pendingForegroundPackUri
+        val binding = foregroundPackBinding
         if (uri != null && foreground && state.allowed) {
-            pendingUri = null; requestedBinding = null
+            pendingForegroundPackUri = null; foregroundPackBinding = null
             if (binding != ("${state.family}:${state.user}:${state.grantId}" to model.storageRevision.value)) return@LaunchedEffect
             model.importPack {
                 context.contentResolver.openInputStream(uri)?.use { AvatarPack.readLimited(it) }
@@ -99,8 +98,8 @@ fun AvatarHost(model: AvatarModel?, family: String, user: String, usable: Boolea
     CompositionLocalProvider(LocalAvatarModel provides model, LocalAvatarImport provides {
         val snapshot = model.state.value
         if (snapshot.allowed && !snapshot.busy) {
-            requestedBinding = "${snapshot.family}:${snapshot.user}:${snapshot.grantId}" to model.storageRevision.value
-            picker.launch("application/zip")
+            foregroundPackBinding = "${snapshot.family}:${snapshot.user}:${snapshot.grantId}" to model.storageRevision.value
+            packPicker.launch("application/zip")
         }
     }, LocalAvatarGeneration provides generationModel, LocalPhotoPicker provides {
         photoOwner = "$family:$user"
@@ -115,17 +114,17 @@ fun CompanionAvatar(size: Dp = 148.dp, phase: CompanionPhase = CompanionPhase.ID
     val state = model?.state?.collectAsState()?.value
     val revision = model?.storageRevision?.collectAsState()?.value
     val pack = previewPack ?: state?.pack?.takeIf { state.allowed && revision == state.storageRevision }
-    val decoded by produceState<Pair<AvatarPack, Map<CompanionPhase, ImageBitmap>>?>(null, pack) {
-        value = null
-        if (pack != null) value = withContext(Dispatchers.IO) {
-            runCatching { pack to pack.clips.mapValues { (_, clip) ->
+    var decoded by remember(pack) { mutableStateOf<Map<CompanionPhase, ImageBitmap>?>(null) }
+    LaunchedEffect(pack) {
+        decoded = if (pack == null) null else withContext(Dispatchers.IO) {
+            runCatching { pack.clips.mapValues { (_, clip) ->
                 val bitmap = checkNotNull(BitmapFactory.decodeByteArray(clip.png, 0, clip.png.size))
                 check(bitmap.width == clip.width && bitmap.height == clip.height)
                 bitmap.asImageBitmap()
             } }.getOrNull()
         }
     }
-    val image = decoded?.takeIf { it.first === pack }?.second?.get(phase)
+    val image = decoded?.get(phase)
     if (pack == null) {
         PersimmonCompanionOrb(size, phase, modifier)
         return

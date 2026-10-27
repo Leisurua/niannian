@@ -1,4 +1,3 @@
-"""CLI entry for the shared THA3 renderer; see docs/deployment.md."""
 from pathlib import Path
 import sys
 

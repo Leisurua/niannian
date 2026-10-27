@@ -63,7 +63,6 @@ class Renderer:
     async def render(self, illustration):
         self.calls += 1
         if self.hook: self.hook()
-        # Synthetic image fixture; actual GPU inference is verified separately.
         frame = Image.new('RGBA', (512, 512)); frame.paste((255, 160, 20, 255), (180, 60, 330, 500))
         stream = BytesIO(); write_pack(stream, lambda _: frame, 'Synthetic integration fixture')
         return stream.getvalue(), b''

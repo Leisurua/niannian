@@ -78,7 +78,6 @@ class ImageEditor:
                             or not re.fullmatch(r'dashscope-[a-z0-9-]+\.oss(?:-accelerate|-cn-[a-z0-9-]+)\.aliyuncs\.com', target.hostname or '')):
                         raise ValueError('Invalid image host')
                     raw = bytearray()
-                    # No API token is sent to the provider's temporary image storage URL.
                     async with client.stream('GET', url) as response:
                         response.raise_for_status()
                         async for chunk in response.aiter_bytes():

@@ -41,7 +41,6 @@ def pose_values(state: str, index: int) -> dict[str, float]:
         pose.update(neck_z=0.08, iris_rotation_x=0.18, iris_rotation_y=-0.1,
                     head_y=0.04 * math.sin(phase))
     elif state == 'SPEAKING':
-        # Varied mouth shapes, gated by actual TTS playback on Android; not phoneme alignment.
         mouth, amount = [('mouth_aaa', 0.0), ('mouth_aaa', 0.35), ('mouth_aaa', 0.65),
                          ('mouth_iii', 0.3), ('mouth_ooo', 0.45), ('mouth_uuu', 0.25),
                          ('mouth_aaa', 0.45), ('mouth_aaa', 0.1)][index]
@@ -55,7 +54,6 @@ def write_pack(output: Path | BytesIO, render, art_credit: str, preview: Path | 
     credits = (f'THA3 model: Pramook Khungurn, CC BY 4.0. {UPSTREAM}\n'
                f'Artwork: {art_credit.strip()}\nAnimated/resized into NianNian state clips.')
     manifest = dict(format=FORMAT, frame_size=FRAME_SIZE, columns=COLUMNS, credits=credits, states={})
-    # x mode preserves any existing avatar; a failed build cannot replace a working pack.
     if isinstance(output, Path):
         output.parent.mkdir(parents=True, exist_ok=True)
     previews = []

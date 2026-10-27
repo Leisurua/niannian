@@ -93,9 +93,8 @@ async def run_one(factory, storage, settings=None, *, editor=None, renderer=None
         return True
     work = watch = None
     try:
-        async with factory() as gate:
-            # Account erasure waits for provider I/O and any started storage writes to settle.
-            await send_gate(gate, owner, shared=True)
+        async with factory() as account_erasure_gate:
+            await send_gate(account_erasure_gate, owner, shared=True)
             work = asyncio.create_task(perform(factory, storage, settings, job_id, task_id, token,
                 editor or ImageEditor(settings), renderer or Tha3Renderer(settings)))
             watch = asyncio.create_task(keep_authorized(factory, settings, job_id, task_id, token))
