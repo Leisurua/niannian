@@ -47,6 +47,14 @@ async def listing(request: Request, response: Response,
     return await service.listing(db, actor, status, channel, limit, cursor, get_settings(), request.state.request_id)
 
 
+@router.get('/notifications/mobile-inbox', operation_id='getMobileNotificationInbox')
+async def mobile_inbox(request: Request, response: Response,
+    limit: int = Query(20, ge=1, le=100), cursor: str | None = None,
+    actor=Depends(current_identity), db=Depends(transaction)):
+    response.headers['Cache-Control'] = 'no-store'
+    return await service.mobile_inbox(db, actor, limit, cursor, get_settings(), request.state.request_id)
+
+
 @router.get('/notifications/{notification_id}', operation_id='getNotification')
 async def detail(notification_id: UUID, request: Request, response: Response,
     actor=Depends(current_identity), db=Depends(transaction)):

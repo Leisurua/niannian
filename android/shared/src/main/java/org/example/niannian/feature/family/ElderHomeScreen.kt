@@ -276,6 +276,9 @@ internal fun ElderDesignHome(
                 Spacer(modifier = Modifier.height(36.dp))
 
                 Column(Modifier.padding(horizontal = 16.dp)) {
+                    org.example.niannian.feature.notification.ElderSignalProgress(models.notifications) {
+                        feature = HomeFeature.NOTIFICATIONS
+                    }
                     HomeMessagesSection(state, models.messages, textScale,
                         onOpen = { feature = HomeFeature.MESSAGES },
                         onPhotos = { feature = HomeFeature.MEMORIES })

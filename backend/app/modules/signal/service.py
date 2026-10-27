@@ -113,7 +113,7 @@ async def accessible(db, row, actor, *, owner_status=False):
         return False
     try:
         if owner_status and actor.user_id == row.owner_user_id:
-            return row.type == 'SCAM_RISK'
+            return True
         await recipient(db, row.family_id, row.owner_user_id, actor.user_id, row.type)
         return True
     except AppError:
@@ -141,7 +141,8 @@ async def delivery_outcome(db, event_id, outcome):
 
 
 def view(row, *, owner=False, detail=False):
-    summary = 'Mock · ' + ('安全提示已记录，请先联系家人核实。' if owner else COPY[row.type][0])
+    summary = 'Mock · ' + (('安全提示已记录，请先联系家人核实。' if row.type == 'SCAM_RISK'
+        else '您的关注提示已记录，可查看家人的处理进度。') if owner else COPY[row.type][0])
     result = dict(id=str(row.id), owner_user_id=str(row.owner_user_id), family_id=str(row.family_id),
         type=row.type, severity=row.severity, summary=summary, status=row.status, created_at=iso_utc(row.detected_at))
     if not owner:
@@ -170,6 +171,12 @@ async def detail(db, actor, event_id, request_id):
     await audit.record(db, actor.user_id, 'SIGNAL_READ', 'SIGNAL', row.id, row.family_id, request_id)
     result = view(row, owner=actor.user_id == row.owner_user_id, detail=True)
     result['can_handle'] = actor.user_id != row.owner_user_id and await can_handle(db, actor, row)
+    if actor.user_id == row.owner_user_id:
+        result['history'] = await action_history(db, row.id)
+        if row.last_action_at:
+            result['actioned_at'] = iso_utc(row.last_action_at)
+        if row.resolved_at:
+            result.update(resolved_at=iso_utc(row.resolved_at), resolution_code=row.resolution_code)
     if actor.user_id != row.owner_user_id:
         result['history'] = await action_history(db, row.id)
         from app.modules.notification.contacts import event_contacts
