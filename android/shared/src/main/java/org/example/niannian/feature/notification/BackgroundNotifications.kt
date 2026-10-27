@@ -1,5 +1,6 @@
 package org.example.niannian.feature.notification
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -11,6 +12,7 @@ import android.app.job.JobService
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -47,6 +49,7 @@ object BackgroundNotifications {
 
     fun schedule(context: Context): Boolean {
         if (!enabled(context)) return false
+        if (context.checkSelfPermission(Manifest.permission.RECEIVE_BOOT_COMPLETED) != PackageManager.PERMISSION_GRANTED) return false
         val scheduler = context.getSystemService(JobScheduler::class.java)
         if (scheduler.getPendingJob(JOB_ID) != null) return true
         return scheduler.schedule(JobInfo.Builder(JOB_ID, ComponentName(context, NotificationSyncService::class.java))
@@ -108,19 +111,17 @@ object BackgroundNotifications {
                         .setTimeoutAfter(30 * 60 * 1000L).build()
                     manager.notify(id, 0, notice)
                 }
-                settings.edit().putString("ledger", ledger.update(ids).toString()).remove("restore").apply()
+                settings.edit().putString("ledger", ledger.recordSeenIds(ids).toString()).remove("restore").apply()
             }
             true
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) {
-            // Fail closed: cached notification IDs never authorize content or actions.
             hide(context)
             false
         }
     }
 }
 
-/** Shared repository serializes refresh-token rotation with Activity requests. */
 class NotificationSyncService : JobService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var job: Job? = null
@@ -142,11 +143,10 @@ internal data class MobileNotificationLedger(val scope: String, val seen: Map<St
     fun toPost(current: Set<String>, restore: Set<String> = emptySet()): Set<String> = current.filter {
         it !in seen || it in restore
     }.toSet()
-    fun update(current: Set<String>, now: Long = System.currentTimeMillis()): JSONObject {
+    fun recordSeenIds(current: Set<String>, now: Long = System.currentTimeMillis()): JSONObject {
         val history = JSONObject()
         seen.filterValues { it > now - 7 * 86400000L }.forEach { (id, time) -> history.put(id, time) }
         current.forEach { if (!history.has(it)) history.put(it, now) }
-        // IDs still posted are restored silently after a failed sync; user dismissals stay dismissed.
         return JSONObject().put("scope", scope).put("seen", history)
     }
     companion object {
