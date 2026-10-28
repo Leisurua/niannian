@@ -148,7 +148,7 @@ async def feedback(db, actor, execution_id, body, key, settings, request_id):
     if not row or row.owner_user_id != actor.user_id:
         raise AppError('REMINDER_NOT_FOUND', '提醒记录不存在或无权访问。', 404)
     parent = await access(db, actor, row.reminder_id)
-    await db.refresh(row)
+    await db.refresh(row, with_for_update=True)
     idem = audit.Idempotency(key, f'reminder-feedback:{row.id}', body.model_dump(mode='json'))
     if await idem.previous(db, actor.user_id, settings.idempotency_seconds):
         return execution_view(row)

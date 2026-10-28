@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import org.json.JSONObject
 import java.time.Instant
+import java.time.ZoneId
 import java.util.UUID
 
 interface ConversationSocket {
@@ -25,7 +26,7 @@ interface ConversationGateway {
     suspend fun connect(id: String, message: (String) -> Unit, closed: (Int) -> Unit): ConversationSocket
 }
 
-data class ChatMessage(val fromUser: Boolean, val text: String)
+data class ChatMessage(val fromUser: Boolean, val text: String, val sourceLabels: List<String> = emptyList())
 
 data class ConversationState(val family: String = "", val user: String = "", val id: String = "",
     val state: String = "IDLE", val connected: Boolean = false, val busy: Boolean = false,
@@ -33,7 +34,7 @@ data class ConversationState(val family: String = "", val user: String = "", val
     val llmMode: String = "", val messages: List<ChatMessage> = emptyList(), val retryText: String = "",
     val recording: Boolean = false, val recognizing: Boolean = false, val speaking: Boolean = false,
     val voiceEnabled: Boolean = false, val partialTranscript: String = "", val slowSpeech: Boolean = false,
-    val voiceAllowed: Boolean = false, val speechPending: Boolean = false) {
+    val voiceAllowed: Boolean = false, val speechPending: Boolean = false, val reminderRevision: Long = 0) {
     val companionPhase: CompanionPhase get() = when {
         !connected -> CompanionPhase.IDLE
         recording -> CompanionPhase.LISTENING
@@ -64,6 +65,7 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
     private var replyFloor = 0L
     private var interrupted = false
     private val earlyFrames = mutableListOf<String>()
+    private var weatherCityId: Int? = null
     private val tasks get() = scope ?: viewModelScope
 
     fun attachVoice(device: ConversationVoice) { stopVoice(); voice?.close(); voice = device }
@@ -92,6 +94,7 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
         replyFloor = 0
         interrupted = false
         earlyFrames.clear()
+        weatherCityId = null
         current.value = ConversationState()
     }
 
@@ -100,6 +103,8 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
         clear()
         current.value = ConversationState(family = family, user = user)
     }
+
+    fun setWeatherCity(id: Int?) { weatherCityId = id?.takeIf { it > 0 } }
 
     fun start() {
         if (current.value.busy || current.value.connected || current.value.family.isEmpty()) return
@@ -206,9 +211,14 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
                 "assistant.text" -> {
                     val text = payload.getString("text")
                     require(text.length <= 2000)
+                    val labels = payload.optJSONArray("source_labels")?.let { values ->
+                        require(values.length() <= 5)
+                        (0 until values.length()).map { values.getString(it).also { label -> require(label.length <= 60) } }
+                    } ?: emptyList()
                     deadline?.cancel()
                     current.value = current.value.copy(reply = text, busy = false,
-                        messages = (current.value.messages + ChatMessage(false, text)).takeLast(20))
+                        messages = (current.value.messages + ChatMessage(false, text, labels)).takeLast(20),
+                        reminderRevision = current.value.reminderRevision + if (payload.optBoolean("reminders_changed", false)) 1 else 0)
                     if (current.value.voiceEnabled && !interrupted && !current.value.recording && !current.value.recognizing
                         && event.has("in_reply_to") && event.getLong("in_reply_to") == replyFloor) speak(text)
                 }
@@ -251,7 +261,9 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
         if (!current.value.connected || current.value.busy || current.value.recording || current.value.recognizing
             || text.isBlank() || text.length > 2000) return false
         stopVoice()
-        if (!send("text.input", JSONObject().put("text", text))) return false
+        val payload = JSONObject().put("text", text).put("timezone", ZoneId.systemDefault().id)
+        weatherCityId?.let { payload.put("weather_city_id", it) }
+        if (!send("text.input", payload)) return false
         replyFloor = clientSequence
         interrupted = false
         current.value = current.value.copy(busy = true, state = "THINKING", reply = "", message = "",

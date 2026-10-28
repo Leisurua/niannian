@@ -94,3 +94,34 @@ def test_weather_timeout_is_safe():
     with pytest.raises(AppError) as caught:
         asyncio.run(WeatherService(httpx.MockTransport(timeout)).cities('北京'))
     assert 'private' not in caught.value.message
+
+
+def daily_payload():
+    return dict(timezone='Asia/Shanghai', daily_units=dict(temperature_2m_min='°C', temperature_2m_max='°C',
+        precipitation_probability_max='%'), daily=dict(time=[utcnow().astimezone(ZoneInfo('Asia/Shanghai')).date().isoformat()],
+        weather_code=[63], temperature_2m_min=[12], temperature_2m_max=[18], precipitation_probability_max=[75]))
+
+
+def test_weather_today_uses_daily_forecast_not_current_conditions():
+    payload = daily_payload()
+    def respond(request):
+        if request.url.path.endswith('/get'):
+            return httpx.Response(200, json=dict(id=1816670, name='Beijing', latitude=39.9, longitude=116.4))
+        assert 'precipitation_probability_max' in request.url.params['daily']
+        assert 'current' not in request.url.params
+        assert request.url.params['timezone'] == 'auto'
+        return httpx.Response(200, json=payload)
+    result = asyncio.run(WeatherService(httpx.MockTransport(respond)).today(1816670))
+    assert result['description'] == '雨' and result['precipitation_probability_max'] == 75
+    assert result['source']['name'] == 'Open-Meteo'
+
+
+@pytest.mark.parametrize('field,value', [('time', ['2000-01-01']), ('weather_code', [100]),
+    ('temperature_2m_min', [100]), ('temperature_2m_max', [None]), ('temperature_2m_max', [5]),
+    ('precipitation_probability_max', [True]), ('precipitation_probability_max', [101]),
+    ('precipitation_probability_max', []), ('precipitation_probability_max', [1, 2])])
+def test_daily_forecast_rejects_invalid_or_wrong_day_data(field, value):
+    payload = daily_payload()
+    payload['daily'][field] = value
+    with pytest.raises(AppError, match='今日预报'):
+        asyncio.run(WeatherService(transport(payload)).today(1816670))

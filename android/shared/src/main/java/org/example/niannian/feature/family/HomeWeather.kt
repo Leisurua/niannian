@@ -29,11 +29,13 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.math.roundToInt
 
-internal data class WeatherCity(val label: String, val latitude: Double, val longitude: Double) {
-    fun json(): String = JSONObject().put("label", label).put("latitude", latitude).put("longitude", longitude).toString()
+internal data class WeatherCity(val label: String, val latitude: Double, val longitude: Double, val id: Int? = null) {
+    fun json(): String = JSONObject().put("label", label).put("latitude", latitude).put("longitude", longitude)
+        .apply { id?.let { put("id", it) } }.toString()
     companion object {
         fun parse(value: JSONObject): WeatherCity {
-            val city = WeatherCity(value.getString("label"), value.getDouble("latitude"), value.getDouble("longitude"))
+            val city = WeatherCity(value.getString("label"), value.getDouble("latitude"), value.getDouble("longitude"),
+                if (value.has("id")) value.getInt("id").also { require(it > 0) } else null)
             require(city.label.isNotBlank() && city.latitude in -90.0..90.0 && city.longitude in -180.0..180.0)
             return city
         }
@@ -91,7 +93,7 @@ internal class OpenMeteoWeather : WeatherGateway {
             val row = rows.getJSONObject(index)
             WeatherCity.parse(JSONObject().put("label", listOf(row.getString("name"), row.optString("admin1"),
                 row.optString("country")).filter { it.isNotBlank() }.distinct().joinToString(" · "))
-                .put("latitude", row.getDouble("latitude")).put("longitude", row.getDouble("longitude")))
+                .put("latitude", row.getDouble("latitude")).put("longitude", row.getDouble("longitude")).put("id", row.getInt("id")))
         }
     }
     override suspend fun forecast(city: WeatherCity): HomeWeather = parseHomeWeather(get(

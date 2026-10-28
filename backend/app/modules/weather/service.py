@@ -69,7 +69,7 @@ class WeatherService:
         except (KeyError, ValueError, TypeError):
             raise AppError('WEATHER_UNAVAILABLE', '城市搜索数据不可用，请稍后重试。', 503) from None
 
-    async def current(self, city_id):
+    async def city(self, city_id):
         city = await self.fetch('https://geocoding-api.open-meteo.com/v1/get', dict(id=city_id))
         try:
             selected = city_view(city)
@@ -79,6 +79,38 @@ class WeatherService:
             longitude = number(city['longitude'], -180, 180)
         except (KeyError, ValueError, TypeError):
             raise AppError('WEATHER_UNAVAILABLE', '城市信息不可用，请重新选择城市。', 503) from None
+        return selected, latitude, longitude
+
+    async def today(self, city_id):
+        selected, latitude, longitude = await self.city(city_id)
+        body = await self.fetch('https://api.open-meteo.com/v1/forecast', dict(latitude=latitude, longitude=longitude,
+            daily='weather_code,temperature_2m_min,temperature_2m_max,precipitation_probability_max',
+            temperature_unit='celsius', timezone='auto', forecast_days=1))
+        try:
+            from zoneinfo import ZoneInfo
+            now = utcnow()
+            zone = ZoneInfo(body['timezone'])
+            day = now.astimezone(zone).date().isoformat()
+            daily, units = body['daily'], body['daily_units']
+            if daily['time'] != [day] or any(units[key] != '°C' for key in ('temperature_2m_min', 'temperature_2m_max')):
+                raise ValueError('Invalid forecast day or units')
+            if units['precipitation_probability_max'] != '%':
+                raise ValueError('Invalid probability units')
+            values = {}
+            for key, minimum, maximum in (('temperature_2m_min', -100, 70), ('temperature_2m_max', -100, 70),
+                    ('precipitation_probability_max', 0, 100), ('weather_code', 0, 99)):
+                if not isinstance(daily[key], list) or len(daily[key]) != 1:
+                    raise ValueError('Invalid daily values')
+                values[key] = number(daily[key][0], minimum, maximum)
+            if values['temperature_2m_min'] > values['temperature_2m_max'] or description(values['weather_code']) == '天气状态未知':
+                raise ValueError('Invalid forecast')
+            return dict(city=selected, date=day, timezone=body['timezone'], **values,
+                description=description(values['weather_code']), fetched_at=now.isoformat(), source=SOURCE)
+        except (KeyError, ValueError, TypeError, OverflowError):
+            raise AppError('WEATHER_UNAVAILABLE', '今日预报数据无效或已过期，请稍后重试。', 503) from None
+
+    async def current(self, city_id):
+        selected, latitude, longitude = await self.city(city_id)
         body = await self.fetch('https://api.open-meteo.com/v1/forecast', dict(latitude=latitude, longitude=longitude,
             current='temperature_2m,weather_code', temperature_unit='celsius', timezone='auto', timeformat='unixtime', forecast_days=1))
         try:

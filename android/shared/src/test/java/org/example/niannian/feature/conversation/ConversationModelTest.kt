@@ -65,6 +65,40 @@ class ConversationModelTest {
         model.clear()
     }
 
+    @Test fun dailyVoiceInputCarriesSelectedCityAndTimezoneAndShowsRealSource() = runBlocking {
+        val gateway = Gateway(); val model = ConversationModel(gateway, this); val voice = Voice()
+        model.bind("family", "elder"); model.setWeatherCity(1816670); model.attachVoice(voice)
+        model.start(); yield(); gateway.listener(frame(1)); yield()
+        model.voiceEntry(); voice.final("今天会下雨吗")
+        val payload = gateway.sent.last().getJSONObject("payload")
+        assertEquals("今天会下雨吗", payload.getString("text"))
+        assertEquals(1816670, payload.getInt("weather_city_id"))
+        assertEquals(java.time.ZoneId.systemDefault().id, payload.getString("timezone"))
+        gateway.listener(frame(2, "assistant.text", JSONObject().put("text", "今日预报降水概率75%。")
+            .put("source_labels", org.json.JSONArray().put("Open-Meteo 今日预报")), gateway.sent.last().getLong("sequence"))); yield()
+        assertEquals(listOf("Open-Meteo 今日预报"), model.state.value.messages.last().sourceLabels)
+        assertEquals(listOf("今日预报降水概率75%。"), voice.spoken)
+        model.bind("another-family", "elder")
+        model.start(); yield(); gateway.listener(frame(3)); yield(); model.input("今天会下雨吗")
+        assertFalse(gateway.sent.last().getJSONObject("payload").has("weather_city_id"))
+        model.clear()
+    }
+
+    @Test fun successfulFeedbackSignalsReminderRefreshAndOldTurnsCannotSignalIt() = runBlocking {
+        val gateway = Gateway(); val model = ConversationModel(gateway, this)
+        model.bind("family", "elder"); model.start(); yield(); gateway.listener(frame(1)); yield()
+        model.input("第一项完成了")
+        val pending = gateway.sent.last().getLong("sequence")
+        model.interrupt()
+        gateway.listener(frame(2, "assistant.text", JSONObject().put("text", "旧确认").put("reminders_changed", true), pending)); yield()
+        assertEquals(0L, model.state.value.reminderRevision)
+        model.input("第一项完成了")
+        gateway.listener(frame(3, "assistant.text", JSONObject().put("text", "已记录完成").put("reminders_changed", true),
+            gateway.sent.last().getLong("sequence"))); yield()
+        assertEquals(1L, model.state.value.reminderRevision)
+        model.clear(); assertEquals(0L, model.state.value.reminderRevision)
+    }
+
     @Test fun reconnectKeepsIncreasingClientSequenceAndIgnoresOldCallback() = runBlocking {
         val gateway = Gateway(); val model = ConversationModel(gateway, this)
         model.bind("family", "elder"); model.start(); yield()

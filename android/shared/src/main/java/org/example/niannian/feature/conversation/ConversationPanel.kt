@@ -1,6 +1,8 @@
 package org.example.niannian.feature.conversation
 
 import android.Manifest
+import android.content.Context
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -41,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import org.json.JSONObject
 
 @Composable
 fun ConversationPanel(model: ConversationModel, familyId: String, userId: String, unavailable: Boolean,
@@ -48,6 +51,13 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
     val state by model.state.collectAsState()
     val owner = LocalLifecycleOwner.current
     val context = LocalContext.current
+    val weatherPrefs = remember(context) { context.getSharedPreferences("home-weather", Context.MODE_PRIVATE) }
+    val weatherProfile = "$userId:$familyId:$userId"
+    fun updateWeatherCity() {
+        model.setWeatherCity(runCatching {
+            JSONObject(weatherPrefs.getString(weatherProfile, null) ?: "").optInt("id").takeIf { it > 0 }
+        }.getOrNull())
+    }
     val voice = remember(context) { AndroidConversationVoice(context) }
     var draft by remember(familyId, userId) { mutableStateOf("") }
     var permissionSession by remember(familyId, userId) { mutableStateOf<String?>(null) }
@@ -78,7 +88,14 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
         }
     }
     LaunchedEffect(state.messages) { chatScroll.animateScrollTo(chatScroll.maxValue) }
-    LaunchedEffect(familyId, userId) { model.bind(familyId, userId) }
+    LaunchedEffect(familyId, userId) { model.bind(familyId, userId); updateWeatherCity() }
+    DisposableEffect(weatherPrefs, weatherProfile, model) {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == weatherProfile) updateWeatherCity()
+        }
+        weatherPrefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { weatherPrefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
     DisposableEffect(model, voice) {
         model.attachVoice(voice)
         onDispose { model.detachVoice(voice) }
@@ -86,7 +103,7 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
     DisposableEffect(owner, familyId, userId) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) { pendingVoiceEntry = false; permissionSession = null; draft = ""; model.clear() }
-            if (event == Lifecycle.Event.ON_START) model.bind(familyId, userId)
+            if (event == Lifecycle.Event.ON_START) { model.bind(familyId, userId); updateWeatherCity() }
         }
         owner.lifecycle.addObserver(observer)
         onDispose { owner.lifecycle.removeObserver(observer); permissionSession = null; draft = ""; model.clear() }
@@ -130,10 +147,11 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(when (state.llmMode) {
                     "real" -> "AI 对话 · 支持语音和文字"
-                    "mock" -> "Mock 演示 · 固定模拟回复"
+                    "mock" -> "闲聊为 Mock 演示 · 日期、天气和提醒查询使用实际数据"
                     else -> "连接后可说话或打字"
                 }, color = MaterialTheme.colorScheme.primary)
                 Text("我是 AI，不是真实家人。会话回顾需要本人明确授权；不会自动联系家人。", fontSize = 18.sp)
+                Text("可以问“今天几号”“今天会下雨吗”“今天有什么安排”，再说“第一项完成了”或“第一项稍后处理”。天气使用首页选择的城市。", fontSize = 18.sp)
                 Text("点击说话会使用设备语音服务，可能联网处理声音和朗读内容。应用不保存录音；识别文字交给 AI。请勿说出密码或验证码。", fontSize = 18.sp)
                 Column(Modifier.fillMaxWidth().heightIn(max = 360.dp).verticalScroll(chatScroll),
                     verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -141,6 +159,7 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
                         Text("${if (item.fromUser) "您" else "念念 AI"}：${item.text}",
                             fontSize = if (state.slow) 28.sp else 22.sp,
                             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                        if (item.sourceLabels.isNotEmpty()) Text("来源：${item.sourceLabels.joinToString("、")}", fontSize = 16.sp)
                     }
                 }
                 if (state.message.isNotEmpty()) Text(state.message, fontSize = 18.sp)

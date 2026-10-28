@@ -48,6 +48,15 @@ x-websocket-channels:
       replay input. Solicited events carry in_reply_to with the originating client sequence, including asynchronous turn results
       and interrupt acknowledgements. The initial ready, unsolicited invitations and protocol rejection errors may omit it.
       Clients validate server sequence continuity before discarding events older than the latest input or interrupt.
+      text.input payload accepts text plus optional timezone (valid IANA name, default Asia/Shanghai) and
+      weather_city_id (public Open-Meteo city ID, positive integer up to 2147483647). Daily date/time, today's
+      forecast and owner reminders use deterministic data queries, bypassing RAG and the LLM in both real and Mock modes.
+      Their source_labels identify server time, Open-Meteo forecast or owner reminder records/feedback.
+      Today's plans include recurring occurrences before worker execution and postponed items due today, scoped to
+      the authenticated owner and conversation family. Feedback targets a named or numbered item from this connection;
+      ambiguous, negative, quoted or stale commands make no change. LATER defaults to ten minutes and accepts 1-1440
+      minutes. Successful feedback is committed before assistant.text carries reminders_changed=true; clients refresh
+      their reminder cache. Repeat refreshes read queries and never reapplies feedback. Context is cleared on disconnect.
 paths:
   /avatar-generation:
     get:

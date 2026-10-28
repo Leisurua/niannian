@@ -135,6 +135,11 @@ internal fun BindHomeModels(state: CompanionState, account: CompanionModel, mode
         onDispose { owner.lifecycle.removeObserver(observer); clear() }
     }
     val family = homeFamily(state)
+    val chat = models.conversation?.state?.collectAsState()?.value
+    LaunchedEffect(foreground, family, state.userId, chat?.reminderRevision) {
+        if (foreground && family.isNotBlank() && chat?.family == family && chat.user == state.userId &&
+            chat.reminderRevision > 0 && !state.offline && state.error.isBlank()) models.reminders.refresh()
+    }
     val authorization = state.permissions.toString() + state.selfPermissions.toString() + state.members.toString()
     LaunchedEffect(foreground, family, state.userId, state.busy, state.offline, state.error, subject, feature, authorization) {
         if (!foreground || family.isBlank()) { clear(); return@LaunchedEffect }
