@@ -150,14 +150,14 @@ def test_interrupt_discards_prepared_feedback_before_any_write(system, monkeypat
     home = household(client)
     post(client, '/v1/reminders', home[2], reminder_body(home))
     entered = threading.Event()
-    original_answer = daily.answer
+    original_answer = daily.prepare_answer
     async def held(*args, **kwargs):
         result = await original_answer(*args, **kwargs)
         if result and result.kind == 'FEEDBACK':
             entered.set()
             await asyncio.Event().wait()
         return result
-    monkeypatch.setattr(daily, 'answer', held)
+    monkeypatch.setattr(daily, 'prepare_answer', held)
     cid = start(client, home)
     with client.websocket_connect('/v1/ws/conversations/' + cid, headers=home[4]) as ws:
         handshake(ws, cid)
@@ -208,7 +208,6 @@ def test_today_projection_uses_schedule_rules_and_requested_local_day(system):
             return await daily.today_choices(db, SimpleNamespace(user_id=UUID(home[3])),
                 SimpleNamespace(family_id=UUID(home[0])), ZoneInfo('Asia/Shanghai'), datetime(2026, 10, 28, 0, 5, tzinfo=timezone.utc))
     choices = asyncio.run(run())
-    # Oct 27 16:30 UTC and 23:30 UTC both fall on Oct 28 in Shanghai.
     assert {c.title for c in choices} == {'上海早上', '上海凌晨'}
 
 

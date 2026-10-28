@@ -1,4 +1,3 @@
-"""Deterministic daily queries. Reminder writes run in the publishing transaction."""
 import re
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta, timezone
@@ -46,8 +45,6 @@ def normalized(text):
 
 def feedback_command(text):
     value = normalized(text)
-    # Only direct affirmative statements can change a reminder. Questions,
-    # negation, reported speech, conditions and quoted examples grant no authority.
     if any(word in value for word in ('不', '没', '未', '别', '无须', '无需', '如果', '假如', '假设', '要是',
             '可能', '也许', '大概', '好像', '应该', '准备', '打算', '说', '吗', '么', '?', '？', '“', '”', '"', "'", '「', '」', '‘', '’')):
         return None
@@ -126,9 +123,9 @@ async def today_choices(db, actor, conversation, zone, now):
             choices[(parent.id, item.occurrence_key)] = choice
     for row in executions:
         parent = by_id[row.reminder_id]
-        # An old execution whose schedule was edited is not a current plan.
         item = next_occurrence(reminders.schedule(parent), row.scheduled_at, reminders.POLICY)
-        if item and item.occurrence_key == row.occurrence_key:
+        matches_current_schedule = item is not None and item.occurrence_key == row.occurrence_key
+        if matches_current_schedule:
             choices[(parent.id, row.occurrence_key)] = Choice(parent.id, parent.version, row.scheduled_at,
                 row.occurrence_key, parent.title, row.feedback_status, row.next_due_at, row.triggered_at)
     await audit.record(db, actor.user_id, 'REMINDER_LIST_READ', 'REMINDER', family_id=conversation.family_id)
@@ -172,7 +169,7 @@ def select_choice(command, context):
     return matches[0] if len(matches) == 1 else None
 
 
-async def answer(db, actor, conversation, text, payload, weather, context=(), *, now=None):
+async def prepare_answer(db, actor, conversation, text, payload, weather, context=(), *, now=None):
     kind = intent(text)
     if kind is None:
         return None
@@ -193,10 +190,8 @@ async def answer(db, actor, conversation, text, payload, weather, context=(), *,
         except AppError:
             return Answer(kind, '现在没有获取到有效的今日天气预报，请稍后再问。我暂时不能确定今天会不会下雨。')
     if kind == 'REMINDERS':
-        # Read current plans only when the authenticated socket publishes.
         return Answer(kind, '', sources=('本人提醒记录',))
     if kind == 'FEEDBACK':
-        # Prepare only; the socket applies feedback immediately before commit/send.
         return Answer(kind, '', tuple(context), ('本人提醒反馈',))
     if kind == 'FEEDBACK_CLARIFY':
         return Answer(kind, '尚未更改提醒。请先问“今天有什么安排”，再明确说“第一项完成了”或“第一项稍后处理”。')

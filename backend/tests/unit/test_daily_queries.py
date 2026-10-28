@@ -61,9 +61,9 @@ def test_weather_missing_city_and_failed_provider_never_invent_an_answer():
     class Weather:
         async def today(self, city):
             raise AppError('WEATHER_UNAVAILABLE', 'fictional', 503)
-    missing = asyncio.run(daily.answer(None, None, None, '今天会下雨吗', {}, Weather(), now=NOW))
+    missing = asyncio.run(daily.prepare_answer(None, None, None, '今天会下雨吗', {}, Weather(), now=NOW))
     assert '选择' in missing.text
-    failed = asyncio.run(daily.answer(None, None, None, '今天会下雨吗', {'weather_city_id': 123}, Weather(), now=NOW))
+    failed = asyncio.run(daily.prepare_answer(None, None, None, '今天会下雨吗', {'weather_city_id': 123}, Weather(), now=NOW))
     assert '不能确定' in failed.text
     assert '今天没有' not in failed.text
 

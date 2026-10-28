@@ -41,13 +41,10 @@ async def generate_turn(factory, bearer, settings, orchestrator, conversation_id
         actor = await authenticate(db, bearer[7:], settings)
         row = await service.access(db, actor, conversation_id, owner_only=True, active=True)
         if daily.intent(text_input):
-            # All tool answers bypass RAG and the LLM, including Mock mode.
-            # Release business locks before the public weather network request.
-            # The socket authenticates again before publishing or writing feedback.
             await db.commit()
             try:
                 async with asyncio.timeout(18):
-                    answer = await daily.answer(db, actor, row, text_input, query_payload or {},
+                    answer = await daily.prepare_answer(db, actor, row, text_input, query_payload or {},
                         weather or WeatherService(), reminder_context)
             except TimeoutError:
                 answer = daily.Answer('WEATHER', '天气查询超时，暂时不能确定今天会不会下雨，请稍后再问。')
