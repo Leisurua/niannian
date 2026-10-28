@@ -26,7 +26,7 @@ Android / Windows → FastAPI REST / WebSocket → PostgreSQL + pgvector / 私�
 
 ## 客户端和交互
 
-Android 采用 Kotlin、Compose、ViewModel/StateFlow。只保留 `app-elder`、`app-family`、`shared` 三个 Gradle 模块。共享库按 `data`、`core` 和各 `feature` 分包，网络、登录刷新和业务 Gateway 共用；设备权限、本地提醒调度由老人端拥有。
+Android 采用 Kotlin、Compose、ViewModel/StateFlow。只保留 `app-elder`、`app-family`、`shared` 三个 Gradle 模块。共享库按 `data`、`core` 和各 `feature` 分包，网络、登录刷新和业务 Gateway 共用；老人端拥有本地提醒调度，家属端声明后台收件与通知权限。
 
 | 客户端 | 当前界面/交互 |
 | --- | --- |
@@ -37,7 +37,7 @@ Android 采用 Kotlin、Compose、ViewModel/StateFlow。只保留 `app-elder`、
 
 老人端以大字、明显按钮和语音/文字输入组织对话。设备 ASR 识别后复用文字 WSS，设备 TTS 朗读回复，提供按钮打断、重播、慢速朗读和文字降级。LLM 模式由服务器握手返回；设备语音服务与 LLM 配置独立。放大文字仅改变字号，实际录音/播放状态由客户端管理，详见 [AI 说明](ai.md)。
 
-老人端基础数字人使用共享 Compose Canvas 柿子形象，四种展示状态直接派生自 `ConversationModel`；首页和设置中的聊天入口共用同一真实会话界面。家属端 `NotificationModel` 同步授权事件及通知，详情可确认、记录联系和解决；后端 `signal` service 使用家庭锁、当前授权、独立处理权限和幂等审计完成状态更新，复用现有数据库字段。
+老人端基础数字人使用共享 Compose Canvas 柿子形象，四种展示状态直接派生自 `ConversationModel`；首页和设置中的聊天入口共用同一真实会话界面。双端 `NotificationModel` 同步事件状态及处理历史，家属详情可确认、记录联系和解决，老人仅查看本人进度。家属本机后台通知使用持久 JobScheduler 任务读取最小路由收件箱，再创建通用系统通知；前后台共用 Application 内的 Repository，点击经认证打开独立事件面板。后端 `signal` service 使用家庭锁、当前授权、独立处理权限和幂等审计完成状态更新，复用现有数据库字段。调度时效与设备限制见 [部署说明](deployment.md#android)。
 
 THA3 自定义形象支持手机选照片并授权，后端调用千问/豆包生成立绘，GPU worker 整理透明背景和面部位置后预生成四态角色包。任务保存到 `avatar_job`，照片、预览和角色包复用私有 `file_asset`；普通 worker 不领取生成任务。Android 的 `AvatarGenerationModel` 读取进度、下载预览、接受本人确认，`AvatarPack` 校验格式，`AvatarModel` 复验 PORTRAIT 授权，`AvatarStorage` 在本机加密保存，`CompanionAvatar` 按真实会话四态绘制图块。也保留离线制作脚本和本机 ZIP 导入；默认形象可独立使用。部署方式见 [THA3 接入](deployment.md#tha3-自定义陪伴形象)。
 
@@ -62,7 +62,7 @@ Windows 用 Tk 和标准库 HTTP；`windows/src/niannian_desktop` 共用登录�
 
 ## 后台任务和状态一致性
 
-worker 每 15 秒运行一周期，同进程最多一周期，合并迟到触发；每周期最多处理 20 个任务。task/outbox 的唯一业务键去重，30 秒租约可回收，单任务 20 秒上限，最多 5 次尝试，指数退避最高 300 秒，耗尽进入 DEAD。
+worker 每 15 秒运行维护周期，同进程最多一维护周期，合并迟到触发；每周期最多处理 20 个任务。同一 worker 另有每轮间隔 1 秒的轻量通知派发循环，只领取 `NOTIFICATION_DISPATCH`，不等待记忆索引或全量维护；依赖失败后间隔退至 15 秒。两个循环共用 outbox 租约和幂等规则。task/outbox 的唯一业务键去重，30 秒租约可回收，单任务 20 秒上限，最多 5 次尝试，指数退避最高 300 秒，耗尽进入 DEAD。
 
 照片生成由同一后端的 `--avatar` worker 顺序处理，每 5 秒续租并复验授权。图像请求与本地处理各有独立超时；每任务只尝试一次，避免未知结果或进程重启自动重复付费请求。生成完成保持 READY，只有本人确认后才 ACTIVE；失败和取消复用现有文件清理任务。
 

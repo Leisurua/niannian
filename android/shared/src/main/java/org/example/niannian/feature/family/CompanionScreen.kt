@@ -49,13 +49,14 @@ fun CompanionScreen(model: CompanionModel, environmentLabel: String,
     reminders: ReminderModel, memories: MemoryModel, tools: ConversationToolsModel,
     conversation: ConversationModel? = null, notifications: NotificationModel? = null,
     messages: MessageModel? = null, onNotifications: () -> Unit = {}, offlineContent: @Composable () -> Unit = {},
-    avatar: AvatarModel? = null, avatarGeneration: AvatarGenerationModel? = null) {
+    avatar: AvatarModel? = null, avatarGeneration: AvatarGenerationModel? = null,
+    notificationSettings: @Composable () -> Unit = {}) {
     val state by model.state.collectAsState()
     AvatarHost(avatar, homeFamily(state), state.userId,
         state.loggedIn && !state.offline && state.error.isBlank(), state.busy,
         state.selfPermissions.filter { it.scope == "PORTRAIT" }.toString(), avatarGeneration) {
         CompanionScreenContent(model, environmentLabel, reminders, memories, tools, conversation, notifications,
-            messages, onNotifications, offlineContent)
+            messages, onNotifications, offlineContent, notificationSettings)
     }
 }
 
@@ -63,7 +64,7 @@ fun CompanionScreen(model: CompanionModel, environmentLabel: String,
 private fun CompanionScreenContent(model: CompanionModel, environmentLabel: String,
     reminders: ReminderModel, memories: MemoryModel, tools: ConversationToolsModel,
     conversation: ConversationModel?, notifications: NotificationModel?, messages: MessageModel?,
-    onNotifications: () -> Unit, offlineContent: @Composable () -> Unit) {
+    onNotifications: () -> Unit, offlineContent: @Composable () -> Unit, notificationSettings: @Composable () -> Unit) {
     val state by model.state.collectAsState()
     val mutationUnavailable = state.busy || state.offline || state.pendingWrite
     var address by remember(state.address) { mutableStateOf(state.address) }
@@ -73,7 +74,7 @@ private fun CompanionScreenContent(model: CompanionModel, environmentLabel: Stri
     var consentChange by remember { mutableStateOf<ConsentChange?>(null) }
     var showFamilySettings by remember { mutableStateOf(false) }
     val homeModels = remember(reminders, memories, tools, conversation, notifications, messages) {
-        HomeModels(reminders, memories, tools, conversation, notifications, onNotifications, messages)
+        HomeModels(reminders, memories, tools, conversation, notifications, onNotifications, messages, notificationSettings)
     }
     BackHandler(enabled = showFamilySettings) { showFamilySettings = false }
     if (!showFamilySettings) {

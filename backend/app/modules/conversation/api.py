@@ -297,7 +297,7 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                         if pending_signal_input and result.trace.get('result_status') != 'FAILED':
                             from app.modules.signal.service import record_turn
                             signal_events = await record_turn(db, actor, row.id, pending_signal_input[1],
-                                pending_signal_input[0], result.signal_candidates)
+                                pending_signal_input[0], result.signal_candidates, candidate_mode=result.signal_mode)
                             outgoing += [service.event(row, 'signal.created', item) for item in signal_events]
                         pending_signal_input = None
                         outgoing += [service.event(row, 'assistant.text', {'text': last_reply, 'source_labels': source_labels})]

@@ -26,7 +26,7 @@ async def create_for_event(db, source, recipients):
     now = utcnow()
     for uid in recipients:
         pref = await preferences.current(db, source['family_id'], source['owner_user_id'], uid)
-        channels = pref.channels if source['type'] in ('SCAM_RISK','PHYSICAL_DISCOMFORT') else [c for c in pref.channels if c == 'IN_APP']
+        channels = pref.channels if source['type'] in ('SCAM_RISK','PHYSICAL_DISCOMFORT') else [c for c in pref.channels if c in ('IN_APP', 'PUSH')]
         for channel in channels:
             key = hashlib.sha256(f"{source['id']}:{uid}:{channel}".encode()).hexdigest()
             if await db.scalar(select(Notification.id).where(Notification.dedupe_key == key)):
@@ -35,7 +35,7 @@ async def create_for_event(db, source, recipients):
                 channel=channel, status='QUEUED', summary=SUMMARY, policy_version=signals.POLICY_VERSION,
                 provider=provider_name(get_settings(), channel), created_at=now, retention_until=min(now + timedelta(days=7), source['retention_until']),
                 dispatch_deadline=now + timedelta(hours=24), dedupe_key=key)
-            if row.provider != 'mock':
+            if source.get('recognition_mode', 'MOCK') != 'MOCK':
                 row.summary = '有一条关注提示，请在应用内查看授权详情。'
             db.add(row)
             await db.flush()
@@ -52,7 +52,7 @@ async def context(db, row, *, for_delivery=True):
 def view(row):
     result = dict(id=str(row.id), signal_event_id=str(row.signal_event_id), channel=row.channel,
         status=row.status, summary=row.summary, action=row.action, created_at=iso_utc(row.created_at),
-        provider=row.provider, simulated=row.provider == 'mock', delivery_status=row.provider_status,
+        provider=row.provider, simulated=row.provider == 'mock' and row.channel != 'IN_APP', delivery_status=row.provider_status,
         error_code=row.error_code)
     if row.read_at:
         result['read_at'] = iso_utc(row.read_at)
@@ -61,7 +61,8 @@ def view(row):
 
 async def detail(db, actor, notification_id, request_id, *, read_key=None, settings=None):
     row = await db.get(Notification, notification_id)
-    if not row or row.recipient_user_id != actor.user_id or not await context(db, row, for_delivery=False):
+    source = await context(db, row, for_delivery=False) if row and row.recipient_user_id == actor.user_id else None
+    if not source:
         raise AppError('NOTIFICATION_NOT_FOUND', '通知不存在或无权查看。', 404)
     await db.refresh(row)
     if row.deleted_at or row.status not in ('SENT','DELIVERED','READ','FAILED'):
@@ -77,7 +78,36 @@ async def detail(db, actor, notification_id, request_id, *, read_key=None, setti
                 request_id=request_id, metadata=idem.metadata)
     else:
         await audit.record(db, actor.user_id, 'NOTIFICATION_DETAIL', 'NOTIFICATION', row.id, request_id=request_id)
-    return view(row)
+    return view(row) | dict(family_id=str(source['family_id']), owner_user_id=str(source['owner_user_id']))
+
+
+async def mobile_inbox(db, actor, limit, cursor, settings, request_id):
+    """Only routing IDs leave the API for local Android notifications.
+
+    Recheck consent, source, channel and quiet hours on every synchronization,
+    including notifications that the worker has already published.
+    """
+    from app.modules.signal.models import SignalEvent
+    eligible = []
+    now = utcnow()
+    for event_id in await signals.visible_ids(db, actor):
+        event = await db.get(SignalEvent, event_id)
+        if event.status not in ('VALIDATED', 'NOTIFIED', 'NOTIFICATION_FAILED'):
+            continue
+        pref = await preferences.current(db, event.family_id, event.owner_user_id, actor.user_id)
+        if 'IN_APP' in pref.channels and preferences.ready_at(pref, now) == now:
+            eligible.append(event_id)
+    query = select(Notification).where(Notification.recipient_user_id == actor.user_id,
+        Notification.signal_event_id.in_(eligible), Notification.channel == 'IN_APP',
+        Notification.status.in_(('SENT', 'DELIVERED')), Notification.deleted_at.is_(None),
+        Notification.retention_until > now)
+    rows, page = await page_rows(db, query, Notification, codec(settings), f'mobile-inbox:{actor.user_id}', limit, cursor)
+    items = []
+    for row in rows:
+        event = await db.get(SignalEvent, row.signal_event_id)
+        items.append(dict(id=str(row.id), signal_event_id=str(row.signal_event_id),
+            family_id=str(event.family_id), owner_user_id=str(event.owner_user_id)))
+    return dict(items=items, page=page, request_id=request_id)
 
 
 async def listing(db, actor, status, channel, limit, cursor, settings, request_id):
@@ -151,7 +181,7 @@ async def prepare(db, task_id, token, notification_id):
         NotificationAttempt.status == 'STARTED'))).all()
     for attempt in old:
         attempt.status, attempt.finished_at, attempt.error_code = 'FAILED', now, 'LEASE_EXPIRED'
-    if old and row.provider != 'mock':
+    if old and row.provider != 'mock' and row.channel != 'IN_APP':
         # The process may have died after the provider accepted the message.
         row.status, row.error_code = 'FAILED', 'DELIVERY_UNKNOWN'
         await tasks.finish(db, task_id, token)
@@ -178,7 +208,7 @@ async def dispatch(factory, task_id, token, notification_id, push=None):
         await db.commit()
     if not prepared:
         return
-    if prepared[4] != 'mock':
+    if prepared[4] != 'mock' and prepared[2] != 'IN_APP':
         await dispatch_external(factory, task_id, token, notification_id, prepared)
         return
     failure = False
@@ -253,7 +283,8 @@ async def dispatch_external(factory, task_id, token, notification_id, prepared):
                     raise DeliveryFailure('CHANNEL_CONFIGURATION_CHANGED')
                 destination = await contacts.destination(db, source, row.recipient_user_id, row.channel)
                 async with asyncio.timeout(5):
-                    receipt = await ExternalNotifications(settings).send(row.channel, destination.value if destination else '')
+                    routing = dict(notification_id=row.id, recipient_id=row.recipient_user_id) if row.channel == 'PUSH' else {}
+                    receipt = await ExternalNotifications(settings).send(row.channel, destination.value if destination else '', **routing)
                 row.status, row.sent_at, row.error_code = 'SENT', utcnow(), None
                 apply_receipt(row, receipt.status)
                 attempt.provider_message_id = receipt.message_id

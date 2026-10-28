@@ -5,6 +5,7 @@ import org.example.niannian.data.*
 import org.example.niannian.feature.reminder.*
 import org.example.niannian.feature.message.MessageModel
 import org.example.niannian.feature.memory.MemoryModel
+import org.example.niannian.feature.notification.NotificationModel
 import org.json.JSONObject
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -62,6 +63,7 @@ class MainActivity : ComponentActivity() {
                         MessageModel::class.java -> MessageModel(messageGateway, true)
                         ConversationModel::class.java -> ConversationModel(conversationGateway)
                         ConversationToolsModel::class.java -> ConversationToolsModel(toolsGateway)
+                        NotificationModel::class.java -> NotificationModel(repository.notificationGateway())
                         AvatarModel::class.java -> AvatarModel(repository.portraitGateway(), avatarStore)
                         AvatarGenerationModel::class.java -> AvatarGenerationModel(repository.avatarGenerationGateway(),
                             { job, bytes -> appearance.activateGenerated(job, bytes) },
@@ -76,6 +78,7 @@ class MainActivity : ComponentActivity() {
             val messageModel = ViewModelProvider(this, factory)[MessageModel::class.java]
             val conversationModel = ViewModelProvider(this, factory)[ConversationModel::class.java]
             val toolsModel = ViewModelProvider(this, factory)[ConversationToolsModel::class.java]
+            val notificationModel = ViewModelProvider(this, factory)[NotificationModel::class.java]
             val avatarModel = ViewModelProvider(this, factory)[AvatarModel::class.java]
             appearance = avatarModel
             val avatarGeneration = ViewModelProvider(this, factory)[AvatarGenerationModel::class.java]
@@ -83,6 +86,7 @@ class MainActivity : ComponentActivity() {
             setContent {
                 CompanionScreen(model, runtime.statusLabel, reminderModel, memoryModel, toolsModel,
                     messages = messageModel,
+                    notifications = notificationModel,
                     avatar = avatarModel,
                     avatarGeneration = avatarGeneration,
                     conversation = conversationModel,

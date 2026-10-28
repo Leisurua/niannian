@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     notification_external_enabled: bool = False
     notification_push_provider: Literal['mock', 'ntfy'] = 'mock'
     ntfy_base_url: str | None = None
+    ntfy_ca_file: str | None = None
     twilio_account_sid: str | None = Field(default=None, repr=False)
     twilio_auth_token: str | None = Field(default=None, repr=False)
     twilio_from_number: str | None = Field(default=None, repr=False)

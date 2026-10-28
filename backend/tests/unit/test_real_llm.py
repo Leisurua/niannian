@@ -110,7 +110,7 @@ def test_provider_timeout_and_cancellation():
 
 
 def test_authorized_uuid_strings_and_all_context_are_revalidated():
-    record = SimpleNamespace(id=uuid4(), family_id=uuid4(), type="EVENT", content="虚构养花记录")
+    record = SimpleNamespace(id=uuid4(), family_id=uuid4(), type="EVENT", title="虚构标题", content="虚构养花记录")
     result = turn(adapter(lambda _: response(output(memory_refs=[str(record.id)]))), memory_records=[record])
     assert result.fallback_code is None
     assert result.memory_records == (record,)

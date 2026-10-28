@@ -153,3 +153,18 @@ def test_real_vectors_still_enforce_source_family_and_visibility(semantic):
     with engine.begin() as connection:
         connection.execute(text('UPDATE memory SET version=version+1'))
     assert retrieve(factory, home, '下周谁陪我去医院') == ()
+
+
+def test_title_only_fact_survives_retrieval_and_revoke(semantic):
+    client, _, factory, storage = semantic
+    home = household(client)
+    grant(client, home)
+    own = own_grant(client, home)
+    title = '女儿小梅的陪诊安排'
+    row = memory(client, home, title=title, content='每周三上午九点在家门口集合，然后一起去医院复诊。')
+    asyncio.run(drain(factory, storage))
+    records = retrieve(factory, home, '谁陪我去医院复诊')
+    assert str(records[0].id) == row['id'] and records[0].title == title
+    assert '小梅' not in records[0].content
+    assert post(client, '/v1/consents/' + own + '/revoke', home[4]).status_code == 201
+    assert retrieve(factory, home, '谁陪我去医院复诊') == ()

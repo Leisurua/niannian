@@ -14,16 +14,25 @@ class NotificationModelTest {
         var readCount = 0; var lastBody: JSONObject? = null; var lastVersion: Long? = null
         var eventStatus = "NOTIFIED"; var canHandle = true; var actionCount = 0
         var actionWait: CompletableDeferred<Unit>? = null
+        var listReads = 0
+        val calls = mutableListOf<String>()
         fun event() = JSONObject().put("id", eventId).put("family_id", family).put("owner_user_id", "elder")
             .put("summary", "Mock · 请先联系家人核实").put("status", eventStatus).put("can_handle", canHandle)
-        override suspend fun events(family: String) = listOf(event())
+        override suspend fun events(family: String): List<JSONObject> {
+            if (fail) error("offline")
+            return listOf(event())
+        }
         override suspend fun list(): List<JSONObject> {
+            listReads++
             wait?.await(); if (fail) error("offline")
             return listOf(JSONObject().put("id", id).put("signal_event_id", eventId).put("status", "SENT")
                 .put("channel", "IN_APP").put("summary", "Mock · 有关注提示"))
         }
         override suspend fun call(path: String, method: String, body: JSONObject?, version: Long?): JSONObject {
+            calls.add(path)
             if (fail) error("offline")
+            if (path.startsWith("/v1/notifications/")) return JSONObject().put("id", id).put("family_id", family)
+                .put("owner_user_id", "elder").put("signal_event_id", eventId).put("status", "SENT")
             if (path.startsWith("/v1/signal-events")) return event()
             lastBody = body; lastVersion = version
             return JSONObject().put("family_id", "family").put("owner_user_id", "elder").put("recipient_user_id", "child")
@@ -50,7 +59,7 @@ class NotificationModelTest {
         val gateway = Gateway(); val model = NotificationModel(gateway, this)
         model.bind("family", "elder", "child"); model.refresh(); yield()
         assertEquals(1, model.state.value.items.size)
-        assertTrue(model.state.value.message.contains("Mock"))
+        assertTrue(model.state.value.items.single().explanation.contains("Mock"))
         model.read(model.state.value.items.single()); yield()
         assertEquals(1, gateway.readCount)
         assertTrue(model.state.value.detail.contains("核实"))
@@ -139,6 +148,43 @@ class NotificationModelTest {
         assertTrue(model.state.value.event!!.actions.isEmpty())
         assertTrue(model.state.value.message.contains("误报"))
         model.handle("CONTACT"); yield(); assertEquals(1, gateway.actionCount)
+        model.clear()
+    }
+
+    @Test fun notificationClickOpensExactEventAndPollingKeepsItsLatestState() = runBlocking {
+        val gateway = Gateway(); val model = NotificationModel(gateway, this)
+        model.bind("family", "elder", "child"); model.openNotification(id); yield()
+        assertEquals(eventId, model.state.value.event!!.id)
+        assertEquals(1, gateway.readCount); assertEquals(0, gateway.actionCount)
+        gateway.eventStatus = "RESOLVED"
+        model.refresh(); yield()
+        assertEquals("RESOLVED", model.state.value.event!!.status)
+        assertTrue(model.state.value.event!!.actions.isEmpty())
+        assertEquals(1, gateway.readCount)
+        model.clear()
+    }
+
+    @Test fun notificationForAnotherFamilyCannotMarkReadOrExposeDetail() = runBlocking {
+        val gateway = Gateway(); val model = NotificationModel(gateway, this)
+        gateway.family = "other"
+        model.bind("family", "elder", "child"); model.openNotification(id); yield()
+        assertNull(model.state.value.event); assertEquals(0, gateway.readCount)
+        assertTrue(model.state.value.detail.isEmpty()); assertFalse(model.state.value.loaded)
+        model.clear()
+    }
+
+    @Test fun elderProgressUsesOwnEventsWithoutRecipientInboxOrPreferences() = runBlocking {
+        val gateway = Gateway(); gateway.canHandle = false
+        val model = NotificationModel(gateway, this)
+        model.bind("family", "elder", "elder"); model.refresh(); yield()
+        assertTrue(model.state.value.loaded); assertEquals(0, gateway.listReads)
+        assertTrue(gateway.calls.isEmpty())
+        model.read(model.state.value.items.single()); yield()
+        assertEquals(0, gateway.readCount); assertTrue(model.state.value.event!!.actions.isEmpty())
+        gateway.eventStatus = "CONTACTED"; model.refresh(); yield()
+        assertEquals("CONTACTED", model.state.value.event!!.status)
+        gateway.fail = true; model.refresh(); yield()
+        assertTrue(model.state.value.items.isEmpty()); assertNull(model.state.value.event)
         model.clear()
     }
 }

@@ -182,17 +182,37 @@ THA3 代码为 MIT，模型权重为 CC BY 4.0；上游示例角色有各自许�
 
 家属端在“家人关注事件”中确认关注、人工记录已联系、标记误报或解决。误报可以直接关闭待确认事件；解决需先确认关注。详情展示处理时间线，误报/解决立即取消待发通知，已发布记录保留至原期限。当前家庭创建者或同时有 `SIGNAL_READ`、`SIGNAL_WRITE` 的子女、照护人、紧急联系人可以处理，仍需长辈的 `NOTIFICATION_TO_FAMILY` 授权，身体不适另需 `HEALTH_MEDICATION`。
 
+家属首页点击“开启本机后台通知”，Android 13 及以上需允许系统通知，并在对应长辈的通知偏好保留“应用内”。应用使用系统 JobScheduler 持久任务，关闭界面或进程回收后仍可联网补拉；重启手机后任务由系统恢复，登录凭证继续加密保存。前台每 30 秒同步，后台任务最短周期 15 分钟，实际执行会受 Doze、网络和厂商省电策略影响，不能作为即时或紧急送达保证，参见 [Android 调度接口](https://developer.android.com/reference/android/app/job/JobInfo.Builder#setPeriodic(long))。系统“强行停止”后需重新打开应用；禁用本机通知或退出登录会取消任务及通知。此功能无需 ntfy 或 Twilio 配置。
+
+通知栏仅显示通用 AI 提示，关注识别仍为 Mock。点击可冷启动或复用家属界面，先核对接收账号并经 API 重新验证授权，再直接进入对应事件处理；读取只标记已读，处理必须由家属明确提交。断网、撤权、渠道关闭、免打扰或事件已处理时，下次同步会移除旧提示，已知旧提示不会反复响铃。老人首页“家人的处理进度”在前台每 30 秒同步本人事件状态，点击可查看谁在何时确认关注、人工记录联系、误报或解决；处理记录不代表平台验证电话已接通。无新增数据库迁移，升级 API 和两个 APK 后使用。当前未连接 Android 设备，关闭界面收通知、点击及跨端交互仍需真机验证。
+
 双方在家庭设置的“我的联系方式与紧急联系”登记本人号码（E.164，如带 +86 国家区号），可单独允许号码分享、登记为紧急联系人或删除。号码加密保存；退出/移除成员时删除。长辈可在此处逐人授予或撤回关注通知、健康信息授权。管理员可邀请紧急联系人并授予处理权限。事件中的拨号、短信入口使用当前获准分享的号码，打开系统拨号/短信编辑器，由用户完成发送；不会据此标记联系成功。号码为本人声明，尚未做运营商验证。
 
 ### 外部关注通知（默认关闭）
 
 API 和 worker 同时配置 `CONTACT_ENCRYPTION_KEY`（用 `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` 生成并仅保存到本地 `.env`），才能保存号码/推送主题。升级数据库后可使用联系人功能，无须开启外发。密钥丢失会导致已存号码无法解密；不要使用登录签名密钥替代。
 
-外发需显式设置 `APP_ENV=dev`、`NOTIFICATION_EXTERNAL_ENABLED=true`。ntfy 推送设置 `NOTIFICATION_PUSH_PROVIDER=ntfy`、`NTFY_BASE_URL`（HTTPS 私有服务）、`PUSH_API_KEY`，接收者在联系人设置填写本人主题，并在 ntfy 手机客户端订阅；服务端必须为主题配置访问控制。此实现通过 ntfy 客户端接收后台推送，念念 APK 尚未内置厂商推送 SDK。[ntfy 官方发送接口](https://docs.ntfy.sh/publish/)。
+外发需显式设置 `APP_ENV=dev`、`NOTIFICATION_EXTERNAL_ENABLED=true`。ntfy 推送设置 `NOTIFICATION_PUSH_PROVIDER=ntfy`、`NTFY_BASE_URL`（HTTPS 私有服务）、`PUSH_API_KEY`；私有 CA 可设置 `NTFY_CA_FILE`，始终验证 TLS。接收者在联系人设置保存管理员分配给本人的主题，点击“打开 ntfy 订阅”，用本人只读账号登录并开启即时投递与系统通知，再在对应长辈的通知偏好开启 PUSH。主题须配置访问控制。此实现通过 ntfy 客户端接收后台推送，念念 APK 尚未内置厂商推送 SDK。[ntfy 官方发送接口](https://docs.ntfy.sh/publish/)、[手机即时投递与订阅](https://docs.ntfy.sh/subscribe/phone/)。
+
+服务端有独立的秒级通知派发循环，沿用当前授权、免打扰、租约和失败处理。普通关注线索可使用 IN_APP/PUSH；SMS/PHONE 仍限于既定风险/身体不适策略。ntfy 提示点击后通过 `niannian-family://notification/<notification-id>/<recipient-id>` 打开家属端，再核验账号和服务端授权后显示事件；链接不含令牌，不自动处理事件。Android 的 15 分钟定期收件用于补拉，不是及时推送的等待周期。系统省电、断网和关闭 ntfy 仍可能影响送达，不能承诺紧急通信。
+
+#### Windows 免费私有 ntfy
+
+[官方 Windows 版](https://docs.ntfy.sh/install/#windows)可直接自托管，无需购买云推送套餐。项目提供 `infra/ntfy/setup_windows.py`：下载固定版本并核对 SHA256，创建 HTTPS 证书、默认拒绝的主题权限、后端只写账号和一个手机只读账号，写入本地 `.env`，不覆盖已有联系人加密密钥。例如在项目根目录运行（地址替换为电脑当前局域网 IPv4）：
+
+```powershell
+.\.venv\Scripts\python.exe infra/ntfy/setup_windows.py --host 192.168.1.10 --port 8443
+```
+
+账号、主题和配置保存在被 Git 忽略且限制本机访问的 `artifacts/ntfy-runtime/private/`；手机连接信息为 `phone-connection.json`。把公开证书 `artifacts/ntfy-runtime/niannian-ntfy-ca.crt` 导入 ntfy 的“设置 → 高级 → 管理证书”，再按连接信息添加账号和订阅。发布密钥不交给手机；不同收件人须配置各自主题/只读账号。
+
+本机启动入口为 `infra/ntfy/start_windows.ps1`，停止入口为 `infra/ntfy/stop_windows.ps1`。配置完成后可在管理员终端运行 `infra/ntfy/install_service.ps1`，安装为自动启动的 `NianNianNtfy` Windows 服务，使用 LocalService 和专属服务 SID，只获 ntfy 程序读取与私有数据目录权限；此时启停/重新配置也需管理员终端。本次本机已安装该服务，独立于开发会话运行。需要手机同网连接时运行 `infra/ntfy/allow_lan.ps1 -ServerIp <电脑地址> -Port 8443`，规则仅允许本地子网访问这个程序/端口。电脑需保持开机；IP 改变时先停止，再用新地址运行配置脚本，根 CA 与账号保留，手机同步修改服务地址。此方案不提供跨网公网地址。后端 API/worker 重启后读取新 `.env`。
+
+2026-10-28 本地私有实例已完成真实 HTTPS 发布/订阅、点击路由及匿名/越权拒绝验证；当时没有连接的 Android 手机，锁屏即时投递及 App 点击仍待指定真机验证。
 
 短信和自动语音电话配置 `TWILIO_ACCOUNT_SID`、`TWILIO_AUTH_TOKEN`、`TWILIO_FROM_NUMBER`。接收者登记本人号码并在对应长辈通知偏好中主动开启 SMS/PHONE，遵守免打扰；服务商账号、号码、地区发送权限与费用由部署方配置。发送内容仅为“念念 AI 提醒，请到应用查看授权详情”，不外发逐字稿、健康线索、家庭名称或事件标识。语音为 AI 自动播报，不是接通长辈本人。[短信 API](https://www.twilio.com/docs/messaging/api/message-resource)、[语音 API](https://www.twilio.com/docs/voice/api/call-resource)。
 
-`GET /v1/notification-capabilities` 返回实际配置状态；外发关闭、缺少配置或接收地址会保留明确失败记录，不回退为成功。供应商受理仅标记 SENT；worker 查询 Twilio 回执，短信 delivered 才记送达，电话 busy/no-answer/failed 显示失败，completed 仅表示呼叫结束（可能是语音信箱），不会自动确认、联系或解决事件。外部发送超时、丢失回包或进程在发送中崩溃时标记 DELIVERY_UNKNOWN 并停止自动重发，避免重复呼叫；需人工核实。Mock 推送仍仅为模拟，不证明设备送达。尚未使用真实账号、号码或设备验证外部渠道。
+`GET /v1/notification-capabilities` 返回实际配置状态；外发关闭、缺少配置或接收地址会保留明确失败记录，不回退为成功。供应商受理仅标记 SENT；worker 查询 Twilio 回执，短信 delivered 才记送达，电话 busy/no-answer/failed 显示失败，completed 仅表示呼叫结束（可能是语音信箱），不会自动确认、联系或解决事件。外部发送超时、丢失回包或进程在发送中崩溃时标记 DELIVERY_UNKNOWN 并停止自动重发，避免重复呼叫；需人工核实。Mock 推送仍仅为模拟，不证明设备送达。ntfy 本地真实服务验证见上节；Twilio 真实号码和 Android 实机送达尚未验证。
 
 `android/local.properties` 配置本机 `sdk.dir`，不要提交。两个应用共享 `shared`；日常只构建所改应用或一个 Demo 变体：
 

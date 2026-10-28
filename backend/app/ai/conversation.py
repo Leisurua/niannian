@@ -13,10 +13,10 @@ from app.integrations.contracts import (
     ProviderStatus, TTSRequest,
 )
 from app.integrations.mock import MockAvatar, MockLLM, MockTTS
-from app.ai.signal_candidates import extract_mock
+from app.ai.signal_candidates import SemanticSignal, extract_mock, extract_semantic
 from app.modules.safety.rules import evaluate, WARNING, EMERGENCY_COPY, RULE_VERSION
 
-PROMPT_VERSION = '1.2.0'
+PROMPT_VERSION = '1.3.0'
 IDENTITY = '你好，我是念念 AI。今天想聊点什么？这是 Mock 演示，仅显示文字。'
 REAL_IDENTITY = '你好，我是念念 AI，不是真实家人。您发送的文字将交给 AI 服务生成回复。今天想聊点什么？当前只支持文字。'
 UNKNOWN = '我不确定，可以问问家人。当前没有可用且获准引用的家庭记忆。'
@@ -34,7 +34,7 @@ class ConversationOutput(BaseModel):
     intent: Literal['GENERAL_CHAT', 'MEMORY_QUERY']
     needs_clarification: bool
     memory_candidates: list[dict] = Field(max_length=5)
-    signal_candidates: list[dict] = Field(max_length=3)
+    signal_candidates: list[SemanticSignal] = Field(max_length=3)
     blocked_action: str | None
     uncertainty_reason: str | None = Field(max_length=240)
 
@@ -72,6 +72,7 @@ class TurnResult:
     trace: dict
     memory_records: tuple = ()
     signal_candidates: tuple = ()
+    signal_mode: str = 'MOCK'
 
 
 def grounded_reply(text, memories):
@@ -90,7 +91,7 @@ class AIOrchestrator:
     """The caller authenticates before input and again before publishing output.
 
     Mock replies remain deterministic; real output has a strict schema and
-    references only the authorized retrieval set. No candidate or action authority.
+    references only the authorized retrieval set. Candidates grant no action authority.
     """
 
     def __init__(self, *, llm=None, tts=None, avatar=None, timeout=8.0):
@@ -110,6 +111,7 @@ class AIOrchestrator:
         candidates = ()
         safety = None
         capabilities = None
+        signal_mode = 'MOCK'
         if isinstance(text, str) and text.strip() and len(text) <= 2000:
             safety = evaluate(text)
         if safety and safety.kind in ('SCAM_RISK', 'EMERGENCY'):
@@ -119,18 +121,19 @@ class AIOrchestrator:
                     model='deterministic-safety', provider_version=RULE_VERSION, prompt_id='fixed-safety',
                     prompt_version=RULE_VERSION, policy_version='1.1.0', latency_ms=0,
                     result_status='SUCCEEDED', fallback_code=None, memory_candidate_count=0,
-                    signal_candidate_count=len(candidates)), (), candidates)
+                    signal_candidate_count=len(candidates)), (), candidates, 'RULE')
         try:
             async with asyncio.timeout(self.timeout):
                 if not isinstance(text, str) or not text.strip() or len(text) > 2000:
                     raise ValueError('Invalid input')
                 capabilities = self.llm.capabilities()
                 real = capabilities.provider == 'openai_compatible'
+                signal_mode = 'SEMANTIC' if real else 'MOCK'
                 if capabilities.provider not in ('mock', 'openai_compatible'):
                     raise ValueError('Unsupported provider')
                 if not capabilities.structured_output or 'zh-CN' not in capabilities.languages:
                     raise ValueError('Unsupported capability')
-                memories = [dict(id=str(r.id), content=r.content, type=r.type, family_id=str(r.family_id),
+                memories = [dict(id=str(r.id), title=r.title, content=r.content, type=r.type, family_id=str(r.family_id),
                     verification='CONFIRMED', source_type='FAMILY_MEMORY') for r in memory_records]
                 expected_reply, expected_refs = grounded_reply(text, memories)
                 request = LLMRequest(request_id=request_id, task='conversation',
@@ -149,11 +152,15 @@ class AIOrchestrator:
                           else ConversationOutput.model_validate(response.structured_output))
                 allowed_refs = {r.id for r in memory_records}
                 if (not output.reply.strip() or not set(output.memory_refs) <= allowed_refs
-                        or output.memory_candidates or output.signal_candidates or output.blocked_action is not None
+                        or output.memory_candidates or (not real and output.signal_candidates) or output.blocked_action is not None
                         or (not real and (output.reply != expected_reply or output.memory_refs != expected_refs))):
                     raise ValueError('Untrusted response')
                 reply = output.reply
-                candidates = extract_mock(text, conversation_id=conversation_id, message_id=uuid5(conversation_id, request_id))
+                if real:
+                    candidates = extract_semantic(output.signal_candidates, conversation_id=conversation_id,
+                        message_id=uuid5(conversation_id, request_id), current_text=text)
+                else:
+                    candidates = extract_mock(text, conversation_id=conversation_id, message_id=uuid5(conversation_id, request_id))
                 optional_fallback = 'TTS_UNAVAILABLE'
                 # Even unquoted context can influence free-form output; revalidate all of it.
                 used = tuple(memory_records) if real else tuple(r for r in memory_records if r.id in output.memory_refs)
@@ -189,7 +196,7 @@ class AIOrchestrator:
             result_status='FAILED' if state == AvatarState.ERROR else 'PARTIAL' if code else 'SUCCEEDED',
             fallback_code=code, memory_candidate_count=0, signal_candidate_count=len(candidates) if state != AvatarState.ERROR else 0)
         return TurnResult(reply, state, code, trace, used if state != AvatarState.ERROR else (),
-            candidates if state != AvatarState.ERROR else ())
+            candidates if state != AvatarState.ERROR else (), signal_mode)
 
 
 def configured_orchestrator(settings):

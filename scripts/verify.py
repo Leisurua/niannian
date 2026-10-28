@@ -14,7 +14,8 @@ def main():
     parser.add_argument('paths', nargs='*', help='Optional pytest paths or Gradle tasks')
     args = parser.parse_args()
     env = {**os.environ, 'PYTHONUTF8': '1', 'APP_ENV': 'test', 'PROVIDER_MODE': 'mock',
-           'LLM_PROVIDER': 'mock', 'EMBEDDING_PROVIDER': 'mock'}
+           'LLM_PROVIDER': 'mock', 'EMBEDDING_PROVIDER': 'mock',
+           'NOTIFICATION_EXTERNAL_ENABLED': 'false', 'NOTIFICATION_PUSH_PROVIDER': 'mock'}
     env['PYTHONPATH'] = os.pathsep.join(map(str, [ROOT, ROOT / 'backend', ROOT / 'windows/src']))
     cwd = ROOT
     if args.check == 'lint':

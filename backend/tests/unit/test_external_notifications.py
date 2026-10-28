@@ -80,3 +80,42 @@ def test_terminal_receipt_at_acceptance_is_applied_without_waiting_for_poll(chan
     apply_receipt(row, receipt)
     assert row.status == expected
     assert bool(row.delivered_at) == (expected == 'DELIVERED')
+
+
+def test_push_click_contains_only_notification_and_recipient_ids():
+    import json
+    from uuid import uuid4
+    from app.integrations.notifications import notification_link
+    notice, recipient = uuid4(), uuid4()
+    def handle(request):
+        body = json.loads(request.content)
+        assert body['click'] == notification_link(notice, recipient)
+        assert body['click'] == f'niannian-family://notification/{notice}/{recipient}'
+        assert set(body) == {'topic', 'title', 'message', 'click'}
+        assert 'fictional-token' not in str(body)
+        return httpx.Response(200, json={'id': 'accepted123'})
+    asyncio.run(ExternalNotifications(settings(), httpx.MockTransport(handle)).send('PUSH', 'fictional-private-topic',
+        notification_id=notice, recipient_id=recipient))
+
+
+def test_subscription_route_requires_configured_private_service_and_valid_topic():
+    from app.integrations.notifications import subscription_link
+    from app.modules.notification.contacts import ContactInput
+    configured = settings()
+    assert subscription_link(configured, 'fictional-topic') == 'ntfy://ntfy.example.invalid/fictional-topic'
+    assert subscription_link(Settings(), 'fictional-topic') is None
+    for topic in ('', 'a/b', 'topic?token=x', 'x' * 65):
+        assert subscription_link(configured, topic) is None
+    with pytest.raises(ValidationError):
+        ContactInput(ntfy_topic='x' * 65)
+    assert subscription_link(configured.model_copy(update={'ntfy_base_url': 'https://ntfy.example.invalid/prefix'}), 'topic') is None
+
+
+def test_invalid_private_ca_does_not_disable_tls_or_send(tmp_path):
+    certificate = tmp_path / 'invalid.crt'
+    certificate.write_text('not a certificate')
+    def unexpected(request):
+        pytest.fail('An invalid CA must fail before contacting the push server')
+    provider = ExternalNotifications(settings(ntfy_ca_file=str(certificate)), httpx.MockTransport(unexpected))
+    with pytest.raises(DeliveryFailure, match='CHANNEL_NOT_CONFIGURED'):
+        asyncio.run(provider.send('PUSH', 'fictional-private-topic'))
