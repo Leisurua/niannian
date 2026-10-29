@@ -32,6 +32,15 @@ class StartPayload(_Payload):
 
 class TextPayload(_Payload):
     text: str = Field(min_length=1)
+    timezone: str = 'Asia/Shanghai'
+    weather_city_id: int | None = Field(default=None, gt=0, le=2147483647, strict=True)
+
+    @field_validator('timezone')
+    @classmethod
+    def valid_timezone(cls, value):
+        from app.modules.reminder.schedule import iana_zone
+        iana_zone(value)
+        return value
 
     @field_validator('text')
     @classmethod

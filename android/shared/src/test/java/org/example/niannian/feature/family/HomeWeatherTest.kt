@@ -29,6 +29,8 @@ class HomeWeatherTest {
     @Test fun cityPreferenceRoundTripsWithoutInventingLocation() {
         assertEquals(first, WeatherCity.parse(JSONObject(first.json())))
         assertTrue(runCatching { WeatherCity.parse(JSONObject(first.json()).put("latitude", 100)) }.isFailure)
+        assertEquals(first.copy(id = 1816670), WeatherCity.parse(JSONObject(first.copy(id = 1816670).json())))
+        assertNull(WeatherCity.parse(JSONObject(first.json())).id)
     }
 
     @Test fun noDefaultCityAndFailureNeverFallsBackToSampleWeather() = runBlocking {

@@ -41,7 +41,7 @@ def classify(text):
     return sorted(emotions), topics
 
 
-async def collect(db, row, sequence, text, started_at, completed_at):
+async def collect(db, row, sequence, text, started_at, completed_at, *, simulated=None):
     try:
         grant_id = await consent.explicit_scope(db, row.family_id, row.owner_user_id, row.owner_user_id, 'INTERACTION_STATS')
     except AppError as error:
@@ -65,7 +65,7 @@ async def collect(db, row, sequence, text, started_at, completed_at):
     await db.execute(insert(InteractionMetric).values(
         conversation_id=row.id, sequence=sequence, family_id=row.family_id, owner_user_id=row.owner_user_id,
         consent_id=grant_id, occurred_at=completed_at, duration_seconds=duration, emotions=emotions, topics=topics,
-        simulated=row.provider_metadata.get('provider') == 'mock',
+        simulated=row.provider_metadata.get('provider') == 'mock' if simulated is None else simulated,
         retention_until=min(completed_at + timedelta(days=35), grant.expires_at or completed_at + timedelta(days=35)),
     ).on_conflict_do_nothing(index_elements=['conversation_id', 'sequence']))
 

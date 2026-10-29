@@ -1,19 +1,22 @@
 import asyncio
 import hashlib
 import time
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from uuid import UUID
+from zoneinfo import ZoneInfo
 import psycopg
 
 from anyio import CancelScope
 from fastapi import APIRouter, Depends, Header, Request, Response, WebSocket, WebSocketDisconnect
 from sqlalchemy import text
 
-from app.ai.conversation import configured_orchestrator, UNKNOWN, UNAVAILABLE
+from app.ai.conversation import TurnResult, configured_orchestrator, UNKNOWN, UNAVAILABLE
+from app.integrations.contracts import AvatarState
 from app.modules.memory import rag
 from app.modules.audit import service as audit
 from app.modules.auth.service import authenticate
-from app.modules.conversation import service, summary as recap, proactive
+from app.modules.conversation import service, summary as recap, proactive, daily
+from app.modules.weather.service import WeatherService
 from app.platform.identifiers import utcnow
 from app.modules.conversation.protocol import InputLimits, MessageBudget, ProtocolError, parse_client_frame
 from app.platform.authentication import current_identity
@@ -26,11 +29,28 @@ router = APIRouter(prefix='/v1', tags=['Conversations'])
 _connections = {}
 
 
-async def generate_turn(factory, bearer, settings, orchestrator, conversation_id, text_input, request_id, history=()):
+@dataclass(frozen=True)
+class DailyTurn(TurnResult):
+    answer: daily.Answer | None = None
+
+
+async def generate_turn(factory, bearer, settings, orchestrator, conversation_id, text_input, request_id, history=(),
+                        query_payload=None, weather=None, reminder_context=()):
     async with factory() as db:
         # Authentication failures must never fall through into an external LLM call.
         actor = await authenticate(db, bearer[7:], settings)
         row = await service.access(db, actor, conversation_id, owner_only=True, active=True)
+        if daily.intent(text_input):
+            await db.commit()
+            try:
+                async with asyncio.timeout(18):
+                    answer = await daily.prepare_answer(db, actor, row, text_input, query_payload or {},
+                        weather or WeatherService(), reminder_context)
+            except TimeoutError:
+                answer = daily.Answer('WEATHER', '天气查询超时，暂时不能确定今天会不会下雨，请稍后再问。')
+            return DailyTurn(answer.text, AvatarState.IDLE, None,
+                dict(request_id=request_id, conversation_id=str(conversation_id), provider='daily-data',
+                    model='deterministic', result_status='SUCCEEDED', query_kind=answer.kind), answer=answer)
         history_records = tuple(record for _, records in history for record in records)
         if not await rag.revalidate(db, actor, history_records):
             history, history_records = (), ()
@@ -146,6 +166,11 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
     pending_topic = None
     pending_signal_input = None
     pending_sequence = None
+    pending_query_payload = None
+    reminder_context = ()
+    last_daily = None
+    last_query = None
+    last_source_labels = None
     listener = None
     listen_task = None
     notices = asyncio.Queue(maxsize=1)
@@ -233,6 +258,8 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                             pending_topic = None
                             pending_signal_input = None
                             pending_sequence = None
+                            pending_query_payload = None
+                            last_daily = last_query = None
                             outgoing = service.handle(row, message)
                         elif message.type == 'text.input':
                             if turn_task or not row.provider_metadata.get('identity_disclosed'):
@@ -257,17 +284,35 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                                 pending_topic = recap.topic_for(message.payload['text'])
                                 pending_signal_input = (message.payload['text'], f'turn-{message.sequence}', utcnow())
                                 pending_sequence = message.sequence
+                                pending_query_payload = message.payload
                                 outgoing = [service.event(row, 'assistant.state', {'state': 'THINKING'})]
                                 outgoing += service.scam_warning(row, message.payload['text'])
                                 turn_task = asyncio.create_task(generate_turn(factory, bearer, settings, orchestrator,
-                                    conversation_id, message.payload['text'], f'turn-{message.sequence}', tuple(history)))
+                                    conversation_id, message.payload['text'], f'turn-{message.sequence}', tuple(history),
+                                    message.payload, getattr(websocket.app.state, 'weather_service', None), reminder_context))
                         elif message.type in ('repeat', 'slow_down'):
                             if turn_task or last_reply is None:
                                 outgoing = [service.event(row, 'error', {'code': 'PROVIDER_TEMPORARILY_UNAVAILABLE', 'retryable': False})]
+                            elif last_daily and last_daily.kind in ('DATE', 'WEATHER', 'REMINDERS'):
+                                pending_sequence = message.sequence
+                                pending_query_payload = last_query
+                                pending_signal_input = None
+                                row.backend_state = 'THINKING'
+                                outgoing = [service.event(row, 'assistant.state', {'state': 'THINKING'})]
+                                turn_task = asyncio.create_task(generate_turn(factory, bearer, settings, orchestrator,
+                                    conversation_id, last_query['text'], f'repeat-{message.sequence}', (), last_query,
+                                    getattr(websocket.app.state, 'weather_service', None), reminder_context))
                             else:
                                 if not await rag.revalidate(db, actor, last_records):
                                     last_reply, last_records = UNKNOWN, ()
-                                outgoing = [service.event(row, 'assistant.text', {'text': last_reply, 'source_labels': source_labels}),
+                                if last_daily and last_daily.choices:
+                                    current_choices = await daily.today_choices(db, actor, row,
+                                        ZoneInfo(last_query.get('timezone', 'Asia/Shanghai')), utcnow())
+                                    if any(not any(c.reminder_id == old.reminder_id and c.occurrence_key == old.occurrence_key
+                                            and c.version == old.version and c.status == old.status for c in current_choices)
+                                            for old in last_daily.choices):
+                                        last_reply = '提醒状态已变更，请重新问“今天有什么安排”。'
+                                outgoing = [service.event(row, 'assistant.text', {'text': last_reply, 'source_labels': last_source_labels or source_labels}),
                                     service.event(row, 'assistant.state', {'state': 'IDLE'})]
                         else:
                             outgoing = service.handle(row, message)
@@ -276,12 +321,22 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                         result_start = len(outgoing)
                         result = turn_task.result()
                         turn_task = None
+                        if isinstance(result, DailyTurn):
+                            published = await daily.publish(db, actor, row, result.answer, pending_query_payload['text'],
+                                pending_query_payload, settings, result.trace['request_id'])
+                            result = replace(result, assistant_text=published.text, answer=published)
+                            reminder_context = published.choices if published.kind in ('REMINDERS', 'FEEDBACK') else reminder_context
+                            last_daily, last_query = published, pending_query_payload
+                            last_source_labels = list(published.sources)
+                        else:
+                            last_daily = last_query = None
+                            last_source_labels = source_labels
                         if not await rag.revalidate(db, actor, result.memory_records):
                             last_reply, last_records = UNKNOWN, ()
                             history.clear()
                         else:
                             last_reply, last_records = result.assistant_text, result.memory_records
-                            if pending_signal_input and result.trace.get('result_status') != 'FAILED':
+                            if pending_signal_input and not isinstance(result, DailyTurn) and result.trace.get('result_status') != 'FAILED':
                                 history.append((dict(user=pending_signal_input[0], assistant=last_reply), last_records))
                                 history = history[-6:]
                                 while sum(len(t['user']) + len(t['assistant']) for t, _ in history) > 12000:
@@ -293,14 +348,18 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                         pending_topic = None
                         if pending_signal_input and result.trace.get('result_status') != 'FAILED' and last_reply not in (UNAVAILABLE, UNKNOWN):
                             from app.modules.report.metrics import collect
-                            await collect(db, row, pending_sequence, pending_signal_input[0], pending_signal_input[2], utcnow())
+                            await collect(db, row, pending_sequence, pending_signal_input[0], pending_signal_input[2], utcnow(),
+                                simulated=False if isinstance(result, DailyTurn) else None)
                         if pending_signal_input and result.trace.get('result_status') != 'FAILED':
                             from app.modules.signal.service import record_turn
                             signal_events = await record_turn(db, actor, row.id, pending_signal_input[1],
                                 pending_signal_input[0], result.signal_candidates, candidate_mode=result.signal_mode)
                             outgoing += [service.event(row, 'signal.created', item) for item in signal_events]
                         pending_signal_input = None
-                        outgoing += [service.event(row, 'assistant.text', {'text': last_reply, 'source_labels': source_labels})]
+                        response_payload = {'text': last_reply, 'source_labels': last_source_labels}
+                        if isinstance(result, DailyTurn) and result.answer.reminders_changed:
+                            response_payload['reminders_changed'] = True
+                        outgoing += [service.event(row, 'assistant.text', response_payload)]
                         if result.fallback_code:
                             outgoing += [service.event(row, 'error', {'code': 'PROVIDER_TEMPORARILY_UNAVAILABLE', 'retryable': False})]
                         outgoing += [service.event(row, 'assistant.state', {'state': row.backend_state})]
@@ -308,6 +367,7 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                             {**item, 'in_reply_to': pending_sequence} for item in outgoing[result_start:]
                         ]
                         pending_sequence = None
+                        pending_query_payload = None
                     if notice and raw is None and turn_task is None and not outgoing and await proactive.accept(db, row, notice, last_interaction):
                         outgoing = [service.event(row, 'assistant.text', {'text': proactive.INVITATION, 'source_labels': ['Mock']})]
                         last_interaction = utcnow()
