@@ -97,7 +97,7 @@ object BackgroundNotifications {
                     val pending = PendingIntent.getActivity(context, 0, launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
                     val notice = Notification.Builder(context, if (id in ledger.seen) RESTORED_CHANNEL else CHANNEL)
                         .setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle("念念 · 家人关注")
-                        .setContentText("有一条关注提示（Mock 识别），点击核实并处理。")
+                        .setContentText("有一条关注提示，点击查看识别来源并核实处理。")
                         .setContentIntent(pending).setAutoCancel(true).setOnlyAlertOnce(true)
                         .setVisibility(Notification.VISIBILITY_PRIVATE).setCategory(Notification.CATEGORY_SOCIAL)
                         .setTimeoutAfter(30 * 60 * 1000L).build()

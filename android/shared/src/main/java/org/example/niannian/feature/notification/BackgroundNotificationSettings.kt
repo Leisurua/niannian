@@ -61,6 +61,7 @@ fun BackgroundNotificationSettings(repository: FamilyRepository, user: String) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("本机后台通知：" + if (enabled && permitted) "已开启" else "未开启")
             Text("关闭界面后仍由系统同步，通常每 15 分钟一次，省电时可能延迟。点击通知可进入处理。")
+            Text("及时通知请在家庭设置完成 ntfy 订阅，并在对应长辈的通知偏好开启推送；本机定期收件可用于补收。")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (enabled) TextButton(onClick = { BackgroundNotifications.stop(context); enabled = false; message = "本机后台通知已关闭。" }) { Text("关闭本机通知") }
                 else Button(onClick = {

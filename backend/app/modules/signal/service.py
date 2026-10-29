@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from uuid import uuid5
 from sqlalchemy import delete, select
 
-from app.ai.signal_candidates import extract_mock
+from app.ai.signal_candidates import extract_mock, revalidate_semantic
 from app.modules.audit import service as audit
 from app.modules.audit.models import AuditLog
 from app.modules.auth.service import active_user, codec, display_names
@@ -20,6 +20,7 @@ from app.platform.resource_access import authorize
 from app.platform.tasks import enqueue
 
 POLICY_VERSION = 'w7-mock-1.0.0'
+POLICIES = {'MOCK': POLICY_VERSION, 'SEMANTIC': 'signals-semantic-1.0.0', 'RULE': 'signals-rule-1.0.0'}
 COPY = {
     'SCAM_RISK': ('交流中出现需核实的敏感操作组合，请先联系家人核实。', 'PAUSE_AND_VERIFY_WITH_FAMILY'),
     'PHYSICAL_DISCOMFORT': ('老人提到身体不舒服，可主动关心并提供联系帮助。', 'CHECK_IN_AND_OFFER_CONTACT'),
@@ -43,11 +44,19 @@ async def recipient(db, fid, owner, user_id, kind):
     return tuple([await consent.explicit_scope(db, fid, owner, user_id, scope) for scope in scopes])
 
 
-async def record_turn(db, actor, conversation_id, request_id, text, candidates):
+async def record_turn(db, actor, conversation_id, request_id, text, candidates, *, candidate_mode='MOCK'):
     locked_source = await conversation.signal_source(db, conversation_id, actor=actor, active=True)
     if not locked_source:
         return []
-    expected = extract_mock(text, conversation_id=conversation_id, message_id=uuid5(conversation_id, request_id))
+    if candidate_mode not in POLICIES:
+        return []
+    if candidate_mode == 'SEMANTIC':
+        expected = revalidate_semantic(candidates, conversation_id=conversation_id,
+            message_id=uuid5(conversation_id, request_id), current_text=text)
+    else:
+        expected = extract_mock(text, conversation_id=conversation_id, message_id=uuid5(conversation_id, request_id))
+        if candidate_mode == 'RULE':
+            expected = tuple(c for c in expected if c.type in ('SCAM_RISK', 'EMERGENCY'))
     if tuple(candidates) != expected:
         return []
     idem = audit.Idempotency(request_id, 'signal-turn:' + str(conversation_id),
@@ -79,7 +88,7 @@ async def record_turn(db, actor, conversation_id, request_id, text, candidates):
         row = SignalEvent(id=uuid7(), owner_user_id=actor.user_id, family_id=locked_source['family_id'],
             type=candidate.type, severity=severity, source_conversation_id=conversation_id,
             evidence_summary=COPY[candidate.type][0], rule_id=rule.rule_id if candidate.type == 'SCAM_RISK' else candidate.trigger_category,
-            rule_version=RULE_VERSION, policy_version=POLICY_VERSION, trigger_category=candidate.trigger_category,
+            rule_version=RULE_VERSION, policy_version=POLICIES[candidate_mode], trigger_category=candidate.trigger_category,
             consent_check_result='ALLOWED', status='VALIDATED', dedupe_key=key, detected_at=now,
             validated_at=now, retention_until=now + timedelta(days=7))
         db.add(row)
@@ -87,14 +96,19 @@ async def record_turn(db, actor, conversation_id, request_id, text, candidates):
         from app.modules.notification.service import create_for_event
         await create_for_event(db, snapshot(row), recipients)
         await audit.record(db, actor.user_id, 'SIGNAL_VALIDATED', 'SIGNAL', row.id, row.family_id,
-            metadata={'rule_id': row.rule_id, 'rule_version': row.rule_version, 'provider': 'mock', **idem.metadata})
+            metadata={'rule_id': row.rule_id, 'rule_version': row.rule_version,
+                'provider': {'MOCK': 'mock', 'SEMANTIC': 'openai_compatible', 'RULE': 'rules'}[candidate_mode], **idem.metadata})
         events.append(dict(signal_event_id=str(row.id), type=row.type, severity=row.severity))
     return events
 
 
 def snapshot(row):
     return dict(id=row.id, family_id=row.family_id, owner_user_id=row.owner_user_id,
-        type=row.type, retention_until=row.retention_until)
+        type=row.type, retention_until=row.retention_until, recognition_mode=recognition_mode(row))
+
+
+def recognition_mode(row):
+    return next((mode for mode, version in POLICIES.items() if version == row.policy_version), 'MOCK')
 
 
 async def internal_metadata(db, event_id):
@@ -141,10 +155,13 @@ async def delivery_outcome(db, event_id, outcome):
 
 
 def view(row, *, owner=False, detail=False):
-    summary = 'Mock · ' + (('安全提示已记录，请先联系家人核实。' if row.type == 'SCAM_RISK'
+    mode = recognition_mode(row)
+    prefix = {'MOCK': 'Mock · ', 'SEMANTIC': 'AI 语义线索 · ', 'RULE': '规则提示 · '}[mode]
+    summary = prefix + (('安全提示已记录，请先联系家人核实。' if row.type == 'SCAM_RISK'
         else '您的关注提示已记录，可查看家人的处理进度。') if owner else COPY[row.type][0])
     result = dict(id=str(row.id), owner_user_id=str(row.owner_user_id), family_id=str(row.family_id),
-        type=row.type, severity=row.severity, summary=summary, status=row.status, created_at=iso_utc(row.detected_at))
+        type=row.type, severity=row.severity, summary=summary, status=row.status,
+        recognition_mode=mode, created_at=iso_utc(row.detected_at))
     if not owner:
         result.update(reason={'category': row.trigger_category, 'display_text': COPY[row.type][0]}, recommended_action=COPY[row.type][1])
         if detail:

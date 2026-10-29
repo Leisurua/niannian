@@ -72,6 +72,122 @@ def setup_event(system, channels=None, utterance=UTTERANCE):
     return home, cid, consent_id, result
 
 
+def test_semantic_candidates_require_current_scopes_and_keep_only_fixed_summary(system):
+    from app.ai.signal_candidates import extract_semantic
+    client, engine, factory, _ = system
+    home = household(client)
+    cid = UUID(start(client, home))
+    utterance = '我这两天总感觉头有点晕，想让女儿来看看我。'
+    async def publish(request='semantic-turn'):
+        candidates = extract_semantic([dict(category='SELF_REPORTED_DISCOMFORT', evidence=utterance,
+            subject='SELF', assertion='AFFIRMED')], conversation_id=cid,
+            message_id=uuid5(cid, request), current_text=utterance)
+        async with factory() as db:
+            result = await signals.record_turn(db, SimpleNamespace(user_id=UUID(home[3])), cid,
+                request, utterance, candidates, candidate_mode='SEMANTIC')
+            await db.commit()
+            return result
+    assert asyncio.run(publish()) == []
+    grant_id = grant(client, home, 'NOTIFICATION_TO_FAMILY')
+    assert asyncio.run(publish()) == []
+    grant(client, home, 'HEALTH_MEDICATION')
+    pref(client, home)
+    event, = asyncio.run(publish())
+    assert asyncio.run(publish()) == []
+    drain(factory)
+    path = '/v1/signal-events/' + event['signal_event_id']
+    detail = client.get(path, headers=home[2]).json()
+    assert detail['recognition_mode'] == 'SEMANTIC' and 'Mock' not in detail['summary']
+    with engine.connect() as conn:
+        stored = conn.execute(text('SELECT evidence_summary,source_message_id,evidence_hash FROM signal_event')).all()
+        assert len(stored) == 1 and utterance not in str(stored)
+        assert stored[0][1:] == (None, None)
+    assert post(client, '/v1/consents/' + grant_id + '/revoke', home[4]).status_code == 201
+    assert asyncio.run(publish('after-revoke')) == []
+    assert client.get(path, headers=home[2]).status_code == 404
+    assert client.get('/v1/notifications/mobile-inbox', headers=home[2]).json()['items'] == []
+
+
+def test_real_conversation_semantic_observation_reaches_family_inbox(system, monkeypatch):
+    import json
+    import httpx
+    from app.ai.conversation import AIOrchestrator
+    from app.integrations.openai_compatible import OpenAICompatibleLLM
+    from app.modules.conversation import api
+    client, _, factory, _ = system
+    home = household(client)
+    grant(client, home, 'NOTIFICATION_TO_FAMILY')
+    pref(client, home)
+    utterance = '好几天没见到闺女了，挺想她的。'
+    def respond(request):
+        output = dict(reply='听起来您很想念女儿，可以找时间和她聊聊。', memory_refs=[], intent='GENERAL_CHAT',
+            needs_clarification=False, memory_candidates=[], blocked_action=None, uncertainty_reason=None,
+            signal_candidates=[dict(category='EXPLICIT_MISS_FAMILY', evidence=utterance, subject='SELF', assertion='AFFIRMED')])
+        return httpx.Response(200, json={'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps(output)}}]})
+    llm = OpenAICompatibleLLM(base_url='https://llm.example/v1', api_key='fictional-key',
+        model='fictional-model', transport=httpx.MockTransport(respond))
+    monkeypatch.setattr(api, 'configured_orchestrator', lambda settings: AIOrchestrator(llm=llm))
+    cid = start(client, home)
+    with client.websocket_connect('/v1/ws/conversations/' + cid, headers=home[4]) as ws:
+        handshake(ws, cid)
+        ws.send_json(ws_frame(cid, 'text.input', 2, {'text': utterance}))
+        assert ws.receive_json()['payload']['state'] == 'THINKING'
+        event = ws.receive_json()
+        assert event['type'] == 'signal.created' and event['payload']['type'] == 'MISS_FAMILY'
+        assert ws.receive_json()['type'] == 'assistant.text'
+        assert ws.receive_json()['payload']['state'] == 'IDLE'
+    drain(factory)
+    item, = client.get('/v1/notifications/mobile-inbox', headers=home[2]).json()['items']
+    detail = client.get('/v1/signal-events/' + item['signal_event_id'], headers=home[2]).json()
+    assert detail['recognition_mode'] == 'SEMANTIC' and detail['can_handle']
+
+
+def test_fast_ntfy_dispatch_routes_to_current_recipient_and_honors_revoke(system, monkeypatch):
+    import json
+    import httpx
+    from cryptography.fernet import Fernet
+    from app.integrations.notifications import ExternalNotifications, notification_link
+    from app.modules.notification import contacts
+    from app.platform.config import Settings
+    from app.worker.main import dispatch_notifications
+    config = Settings(app_env='dev', notification_external_enabled=True, notification_push_provider='ntfy',
+        ntfy_base_url='https://push.example.invalid', push_api_key='fictional-publish-secret',
+        contact_encryption_key=Fernet.generate_key().decode())
+    monkeypatch.setattr(notifications, 'get_settings', lambda: config)
+    monkeypatch.setattr(contacts, 'get_settings', lambda: config)
+    sent = []
+    def handle(request):
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json={'id': 'fixture-accepted'})
+    monkeypatch.setattr(notifications, 'ExternalNotifications', lambda settings: ExternalNotifications(settings, httpx.MockTransport(handle)))
+    client, engine, factory, _ = system
+    home, _, grant_id, _ = setup_event(system, channels=['IN_APP', 'PUSH', 'SMS', 'PHONE'], utterance='我想女儿了。')
+    contact = f'/v1/families/{home[0]}/my-contact'
+    saved = client.put(contact, headers={**home[2], 'If-Match': '0'}, json={'ntfy_topic': 'fictional-private-topic'})
+    assert saved.status_code == 200 and saved.json()['push_subscription_url'] == 'ntfy://push.example.invalid/fictional-private-topic'
+    assert 'fictional-publish-secret' not in saved.text
+    assert client.get(contact, headers=home[4]).json()['push_subscription_url'] is None
+    async def queued_cleanup():
+        async with factory() as db:
+            await tasks.enqueue(db, 'MEMORY_CLEANUP', UUID(home[0]), uuid4(), 1)
+            await db.commit()
+    asyncio.run(queued_cleanup())
+    asyncio.run(dispatch_notifications(factory))
+    asyncio.run(dispatch_notifications(factory))
+    items = client.get('/v1/notifications', headers=home[2]).json()['items']
+    assert {item['channel'] for item in items} == {'IN_APP', 'PUSH'}
+    push = next(item for item in items if item['channel'] == 'PUSH')
+    assert push['status'] == 'SENT' and not push['simulated'] and len(sent) == 1
+    assert sent[0]['click'] == notification_link(push['id'], home[1])
+    assert client.get('/v1/notifications/' + push['id'], headers=home[2]).json()['owner_user_id'] == home[3]
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT status FROM task_outbox WHERE kind='MEMORY_CLEANUP'")).scalar() == 'PENDING'
+    assert post(client, '/v1/consents/' + grant_id + '/revoke', home[4]).status_code == 201
+    assert client.get('/v1/notifications/' + push['id'], headers=home[2]).status_code == 404
+    asyncio.run(dispatch_notifications(factory))
+    assert len(sent) == 1
+
+
 def test_mobile_inbox_contains_only_unread_authorized_routes(system):
     client, engine, factory, _ = system
     home, _, _, events = setup_event(system, channels=['IN_APP', 'PUSH'])
@@ -193,7 +309,9 @@ def test_wss_to_inapp_minimal_event_and_idempotent_read(system):
     assert inbox.headers['cache-control'] == 'no-store'
     item, = inbox.json()['items']
     assert item['status'] == 'SENT' and item['signal_event_id'] == event_id
-    assert 'Mock' in item['summary'] and UTTERANCE not in str(item)
+    assert 'Mock' not in item['summary'] and UTTERANCE not in str(item)
+    assert item['provider'] == 'in_app' and item['simulated'] is False
+    assert client.get('/v1/signal-events/' + event_id, headers=home[2]).json()['recognition_mode'] == 'RULE'
     detail = client.get('/v1/signal-events/' + event_id, headers=home[2])
     assert detail.json()['reason']['category'] == 'VERIFICATION_CODE_AND_SECRECY'
     assert detail.json()['status'] == 'NOTIFIED'
@@ -209,7 +327,7 @@ def test_wss_to_inapp_minimal_event_and_idempotent_read(system):
     assert client.get('/v1/notifications/' + item['id'], headers=home[4]).status_code == 404
     with engine.connect() as conn:
         row = conn.execute(text('SELECT delivered_at,provider FROM notification')).one()
-        assert row == (None, 'mock')
+        assert row == (None, 'in_app')
         assert conn.execute(text('SELECT source_message_id FROM signal_event')).scalar() is None
 
 
@@ -311,7 +429,8 @@ def test_mock_push_retry_exhaustion_and_independent_inapp_success(system):
     with engine.connect() as conn:
         rows = conn.execute(text('SELECT channel,status,delivered_at FROM notification ORDER BY channel')).all()
         assert rows == [('IN_APP','SENT',None),('PUSH','FAILED',None)]
-        assert conn.execute(text("SELECT count(*) FROM notification_attempt WHERE provider='mock'")).scalar() == 6
+        assert conn.execute(text("SELECT count(*) FROM notification_attempt WHERE provider='mock'")).scalar() == 5
+        assert conn.execute(text("SELECT count(*) FROM notification_attempt WHERE provider='in_app'")).scalar() == 1
         assert conn.execute(text("SELECT count(*) FROM task_outbox WHERE status='DEAD'")).scalar() == 1
         assert 'synthetic-private-provider-body' not in str(conn.execute(text('SELECT error_detail_redacted FROM notification_attempt')).all())
     assert client.get('/v1/signal-events/'+events[0]['signal_event_id'],headers=home[2]).json()['status']=='NOTIFIED'

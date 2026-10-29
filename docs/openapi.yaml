@@ -4218,6 +4218,10 @@ components:
           $ref: '#/components/schemas/Id'
         type:
           $ref: '#/components/schemas/SignalType'
+        recognition_mode:
+          type: string
+          enum: [MOCK, RULE, SEMANTIC]
+          description: Persisted recognition source; independent of notification transport and delivery status.
         severity:
           $ref: '#/components/schemas/SignalSeverity'
         summary:
@@ -4637,7 +4641,7 @@ components:
           default: false
         ntfy_topic: &id004
           type: string
-          pattern: ^[A-Za-z0-9_-]{0,120}$
+          pattern: ^[A-Za-z0-9_-]{0,64}$
           default: ''
     FamilyContactResponse:
       type: object
@@ -4646,6 +4650,12 @@ components:
         share_phone: *id002
         emergency: *id003
         ntfy_topic: *id004
+        push_status:
+          type: string
+          enum: [AVAILABLE, MOCK, DISABLED]
+        push_subscription_url:
+          type: [string, 'null']
+          description: Current member's ntfy topic link when real push is configured; contains no publishing credentials. Opening is not delivery confirmation.
         version:
           type: integer
           minimum: 0

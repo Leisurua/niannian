@@ -35,7 +35,7 @@ class OpenAICompatibleLLM:
             }, ensure_ascii=False)},
         ]
         payload = {"model": self.model, "messages": messages, "stream": False,
-                   "response_format": {"type": "json_object"}, "max_tokens": 1200}
+                   "response_format": {"type": "json_object"}, "max_tokens": 1800}
         if self.thinking is not None:
             payload["thinking"] = {"type": self.thinking}
         try:

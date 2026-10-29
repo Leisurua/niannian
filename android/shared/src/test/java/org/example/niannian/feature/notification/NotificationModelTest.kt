@@ -59,7 +59,7 @@ class NotificationModelTest {
         val gateway = Gateway(); val model = NotificationModel(gateway, this)
         model.bind("family", "elder", "child"); model.refresh(); yield()
         assertEquals(1, model.state.value.items.size)
-        assertTrue(model.state.value.message.contains("Mock"))
+        assertTrue(model.state.value.items.single().explanation.contains("Mock"))
         model.read(model.state.value.items.single()); yield()
         assertEquals(1, gateway.readCount)
         assertTrue(model.state.value.detail.contains("核实"))

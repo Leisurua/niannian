@@ -21,7 +21,7 @@ class ContactInput(Input):
     phone: str = Field(default='', pattern=r'^(?:\+[1-9][0-9]{6,14})?$')
     share_phone: bool = False
     emergency: bool = False
-    ntfy_topic: str = Field(default='', pattern=r'^[A-Za-z0-9_-]{0,120}$')
+    ntfy_topic: str = Field(default='', pattern=r'^[A-Za-z0-9_-]{0,64}$')
 
 
 def cipher():
@@ -46,9 +46,13 @@ async def current(db, fid, uid):
 
 
 def view(row):
+    from app.integrations.notifications import capabilities, subscription_link
+    settings = get_settings()
+    topic = decrypt(row.topic_ciphertext) if row else ''
     return dict(version=row.version if row else 0, phone=decrypt(row.phone_ciphertext) if row else '',
         share_phone=row.share_phone if row else False, emergency=row.emergency if row else False,
-        ntfy_topic=decrypt(row.topic_ciphertext) if row else '')
+        ntfy_topic=topic, push_status=capabilities(settings)['channels']['PUSH'],
+        push_subscription_url=subscription_link(settings, topic))
 
 
 async def read(db, actor, fid):

@@ -128,7 +128,7 @@ class NotificationModel(private val gateway: NotificationGateway, private val sc
         }
         if (stamp == generation) {
             if (preference != null) setting(preference)
-            current.value = current.value.copy(items = values, loaded = true, message = if (elder) "已同步家人处理进度。提示识别为 Mock；处理记录由家人提交。" else "已同步 · 事件识别为 Mock；各渠道结果以发送记录为准。",
+            current.value = current.value.copy(items = values, loaded = true, message = if (elder) "已同步家人处理进度。关注提示需核实，处理记录由家人提交。" else "已同步 · 关注提示需核实，识别方式见各条提示；渠道结果以发送记录为准。",
                 pushMode = capabilities?.optString("PUSH", "DISABLED") ?: "MOCK",
                 smsAvailable = capabilities?.optString("SMS") == "AVAILABLE", phoneAvailable = capabilities?.optString("PHONE") == "AVAILABLE")
             openedEvent?.let { id ->

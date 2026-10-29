@@ -28,6 +28,15 @@ def status(client, result, token):
     return client.get('/v1/account-deletions/' + result['id'], headers={'X-Deletion-Token': token})
 
 
+def test_inapp_delivery_does_not_create_external_erasure_requirements(system):
+    from backend.tests.integration.test_notifications import setup_event, drain
+    client, _, factory, _ = system
+    home, _, _, _ = setup_event(system)
+    drain(factory)
+    result, token = request_delete(client, home[4])
+    assert status(client, result, token).json()['providers'] == []
+
+
 def test_export_owns_data_not_family_authority_or_credentials(system):
     client, engine, _, storage = system
     home = household(client)

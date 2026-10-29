@@ -13,15 +13,15 @@
 | Android 基础数字人 | `android/shared/.../conversation/PersimmonCompanionOrb.kt` | Compose Canvas 2D 柿子形象；待机、听您说话、思考中、正在回答；口型随设备实际播放启停 |
 | THA3 自定义形象 | `modules/avatar`、`integrations/avatar_preprocess.py` / `tha3_renderer.py`、Android `AvatarGenerationModel` / `AvatarModel` / `CompanionAvatar` | 手机照片经千问/豆包生成立绘，服务端抠图与构图后由真实 THA3 生成四态包，下载预览并手动确认启用；也支持离线 ZIP 导入 |
 | 后端 ASR / TTS / Avatar | `backend/app/integrations/mock/adapters.py` | 仍为 Mock 占位，不解码/返回音频；Android 语音不调用它们 |
-| Push | 同上，MockPush | 仅模拟派发，不声明设备送达 |
+| 通知渠道 | `integrations/notifications.py` | 应用内收件、可配置 ntfy/Twilio；未启用的外部渠道保持关闭或明确 Mock，实际送达状态独立展示 |
 | 摘要 | `backend/app/modules/conversation/summary.py` | 从受控主题生成最多四条回顾，不存逐字稿 |
-| 关注候选 / 主动邀请 | `backend/app/ai/signal_candidates.py`、`proactive.py` | 有限演示短语提取、确定性邀请资格判断 |
+| 关注候选 / 主动邀请 | `backend/app/ai/signal_candidates.py`、`proactive.py` | 真实 LLM 结构化语义候选及原文复验；Mock 有限短语；确定性邀请资格判断 |
 
 ## 接口与编排边界
 
 DTO 的唯一字段定义是 [integrations/contracts.py](../backend/app/integrations/contracts.py)，不在 Markdown 复制完整类。请求使用 request_id；LLM 另带 task、system_policy、conversation_context、authorized_memory、user_input、safety_context、output_schema、prompt_id/version。返回包含状态、结构化结果和 provider/model/prompt 元数据。
 
-Mock 编排超时 8 秒，真实 LLM 默认 20 秒（`LLM_TIMEOUT_SECONDS`，上限 20 秒）；TTS/Avatar 降级调用各最多 2 秒。没有自动重试，避免重复生成；用户可编辑后重新发送。LLM 输出通过严格 Pydantic 校验：文本长度、引用集合、空候选数组及无操作权限；Mock 另校验固定话术。异常、超时、非 JSON、截断或非法输出使用固定兜底，原始响应体及异常不发布、不记录。
+Mock 编排超时 8 秒，真实 LLM 默认 20 秒（`LLM_TIMEOUT_SECONDS`，上限 20 秒）；TTS/Avatar 降级调用各最多 2 秒。没有自动重试，避免重复生成；用户可编辑后重新发送。LLM 输出通过严格 Pydantic 校验：文本长度、引用集合、受限关注候选、空记忆候选及无操作权限；Mock 另校验固定话术。异常、超时、非 JSON、截断或非法输出使用固定兜底，原始响应体及异常不发布、不记录。
 
 每个 WebSocket 连接仅在内存保存最近最多 6 轮、共 12000 字的上下文，不写数据库。断线后上下文清空；Android 最多显示 20 条临时消息，后台、断线、换家庭或结束后清空。历史涉及的记忆在下一次外发前及回复发布前重新校验，撤权后丢弃受影响上下文。为限制依赖集合，超过 30 条记忆依赖时清空历史。真实 LLM 接口接收当前输入、短期历史及已授权记忆；不能据结构校验宣称自由回复完全无幻觉。
 
@@ -37,7 +37,9 @@ Mock 编排超时 8 秒，真实 LLM 默认 20 秒（`LLM_TIMEOUT_SECONDS`，上
 4. 只检索有效 chunk/embedding 与当前源版本，验证向量 provider/model/version、维度和有限数值。
 5. 生成后、重复回答和任务写回再次验证引用。撤权或源变化使旧向量/候选失效，不能在迟到回复中继续发布。
 
-记忆内容作为数据，不能充当指令。缺少授权依据、冲突或未知事实明确说不确定，不编造家人信息。
+检索结果同时向回答模型提供当前获准记忆的完整标题和命中正文片段，避免仅存在于标题中的人名、关系或安排信息丢失。两者共用源版本及撤权复验，不单独缓存标题。
+
+记忆标题和正文均作为数据，不能充当指令。缺少授权依据、冲突或未知事实明确说不确定，不编造家人信息。
 
 本地检索使用 `BAAI/bge-small-zh-v1.5`（FastEmbed / ONNX CPU），查询加检索指令；正文按 320 字、64 字重叠分块，并将标题前 96 字加入向量输入。每条记忆最多返回一个最佳片段，总计最多 5 条；默认余弦相似度门槛 0.5，可通过 `EMBEDDING_MIN_RELEVANCE` 调整。该门槛已在虚构陪诊、散步和喜好记录上验证，不代表通用准确率或时间推理能力。原始片段用于引用，不把模型自由回答当作家庭事实。[模型说明](https://huggingface.co/BAAI/bge-small-zh-v1.5)、[本地推理实现](https://qdrant.tech/documentation/embeddings/fastembed/)。
 
@@ -67,7 +69,11 @@ THA3 使用官方 `separable_float` 的五个网络，预生成呼吸/眨眼、�
 
 ## 关注与风险规则
 
-候选类型为身体不适、情绪表达、往事、思念、诈骗风险、紧急求助。每批最多三个，携带当前 conversation/message 来源、类别和固定建议；置信度不是医疗概率或授权。非法/跨会话来源、未知类别、注入属性会被拒绝。短语词表只在 [signal_candidates.py](../backend/app/ai/signal_candidates.py) 维护。
+真实 LLM 在同一次回答中返回最多三个本人肯定表达的语义线索，覆盖身体不适、情绪、思念/联系意愿及往事/偏好/照片背景。候选只含受限类别和本轮原文证据，不含接收人、权限、严重等级或动作。服务端检查证据确实来自本轮，结合原文所在句过滤否定、转述、引用、假设与已缓解表达；来源 ID、固定摘要和建议由代码生成，写库前再次复验。证据原文只驻留当轮内存，不写入事件或审计。记忆候选仍不自动确认。
+
+Mock 模式保留有限短语；诈骗组合和明确求助继续由独立确定性规则优先处理，模型不能将普通线索升级为紧急事件。事件 `recognition_mode` 区分 `MOCK`、`RULE`、`SEMANTIC`，与通知渠道是否模拟、是否送达分别展示。候选不代表诊断或已核实事实，权限和外发策略仍由业务代码决定。实现集中在 [signal_candidates.py](../backend/app/ai/signal_candidates.py)。
+
+2026-10-27 已用已配置的真实 LLM 验证两种自然改写，以及否定、第三人称、引语、假设和已缓解共七条虚构输入；不能推广为所有表达的识别准确率。权限、幂等、撤权及候选到家属收件箱的流程另由集成测试覆盖。
 
 [safety/rules.py](../backend/app/modules/safety/rules.py) 用组合指标识别敏感操作，固定规则优先给本地警告；不是对人或交易作确定诈骗结论。事件持久化及通知另行检查来源、去重、授权和收件人。明确求助当前只显示联系提示，不创建真实呼叫，不声称接通。
 

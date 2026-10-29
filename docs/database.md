@@ -564,6 +564,8 @@ UNIQUE `(message_id, recipient_member_id)`，索引 `(recipient_member_id, messa
 
 ### signal_event
 
+识别来源复用 `policy_version` 保存：`w7-mock-1.0.0` 为演示短语，`signals-rule-1.0.0` 为确定性规则，`signals-semantic-1.0.0` 为经原文校验的真实 LLM 语义线索。API 据此返回 `recognition_mode`，不新增字段或迁移。语义证据原文不落库，`source_message_id`、`evidence_hash` 仍为空。
+
 受规则验证的有限非紧急事件；当前 source_message_id 留空，不创建伪持久化消息。 模型：[SignalEvent](../backend/app/modules/signal/models.py)。家属处理复用已有字段：确认 → ACKNOWLEDGED、人工记录已联系 → CONTACTED、标记误报 → FALSE_POSITIVE、确认解决 → RESOLVED；更新 `last_action_by` / `last_action_at`，解决时写 `resolved_at` / `resolution_code=FAMILY_CONFIRMED`。各次操作写入现有审计表，重复操作不改处理时间，保留期限不延长。事件动作复用既有字段；联系人与发送回执字段通过 `20261023_attention_contacts` 迁移增加。
 
 | 字段 | PostgreSQL 类型 | NULL / 键 | 默认或关联 |

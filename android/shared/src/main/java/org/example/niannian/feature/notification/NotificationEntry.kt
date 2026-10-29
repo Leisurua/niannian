@@ -17,7 +17,6 @@ import org.example.niannian.data.FamilyRepository
 import org.example.niannian.data.notificationGateway
 import java.util.UUID
 
-data class NotificationLaunch(val id: String, val recipient: String)
 private data class NotificationRoute(val family: String, val owner: String)
 
 @Composable

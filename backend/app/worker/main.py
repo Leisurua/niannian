@@ -58,6 +58,27 @@ async def run_cycle():
         raise
 
 
+async def dispatch_notifications(factory=None):
+    from app.platform.db import session_factory
+    from app.worker.tasks import run_one
+    for _ in range(20):
+        if not await run_one(factory or session_factory, kinds=('NOTIFICATION_DISPATCH',)):
+            break
+
+
+async def notification_loop():
+    delay = 1
+    while True:
+        await asyncio.sleep(delay)
+        try:
+            await dispatch_notifications()
+            delay = 1
+        except Exception:
+            log_event(logging.getLogger('nianian.worker'), logging.ERROR,
+                'NOTIFICATION_CYCLE_FAILED', error_code='DEPENDENCY_UNAVAILABLE')
+            delay = 15
+
+
 async def serve():
     scheduler = AsyncIOScheduler()
     async def safe_cycle():
@@ -67,10 +88,13 @@ async def serve():
             pass  # stable redacted error already emitted; next tick retries
     scheduler.add_job(safe_cycle, 'interval', seconds=15, max_instances=1, coalesce=True)
     scheduler.start()
+    notifications = asyncio.create_task(notification_loop())
     try:
         await safe_cycle()
         await asyncio.Event().wait()
     finally:
+        notifications.cancel()
+        await asyncio.gather(notifications, return_exceptions=True)
         scheduler.shutdown(wait=False)
 
 

@@ -48,6 +48,7 @@ class RetrievedMemory:
     content: str
     type: str
     relevance: float
+    title: str = ''
 
 
 def live(row):
@@ -202,7 +203,7 @@ async def retrieve(db, actor, family_id, subject, query, request_id):
     scopes = await authorized_scopes(db, actor, family_id, subject)
     if not scopes:
         return ()
-    allowed = select(Memory.id, Memory.family_id, Memory.subject_user_id, Memory.version, Memory.type,
+    allowed = select(Memory.id, Memory.family_id, Memory.subject_user_id, Memory.version, Memory.type, Memory.title,
         MemoryChunk.content, MemoryEmbedding.embedding).join(MemoryChunk, MemoryChunk.memory_id == Memory.id).join(
         MemoryEmbedding, MemoryEmbedding.memory_chunk_id == MemoryChunk.id).where(
         Memory.family_id == family_id, Memory.subject_user_id == subject, Memory.required_consent_scope.in_(scopes),
@@ -221,7 +222,7 @@ async def retrieve(db, actor, family_id, subject, query, request_id):
     rows = (await db.execute(select(best).order_by(best.c.distance, best.c.id).limit(5))).mappings().all()
     await audit.record(db, actor.user_id, 'MEMORY_RAG_READ', 'MEMORY', family_id=family_id, request_id=request_id)
     return tuple(RetrievedMemory(row['id'], row['family_id'], row['subject_user_id'], row['version'],
-        row['content'], row['type'], 1 - row['distance']) for row in rows)
+        row['content'], row['type'], 1 - row['distance'], title=row['title']) for row in rows)
 
 
 async def revalidate(db, actor, records):

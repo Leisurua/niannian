@@ -102,7 +102,7 @@ async def erase_database(db, uid):
     # after the originating notification and attempt are physically removed.
     external = (await db.execute(select(Notification, NotificationAttempt).join(NotificationAttempt,
         NotificationAttempt.notification_id == Notification.id).where(Notification.id.in_(notifications),
-            NotificationAttempt.provider != 'mock'))).all()
+            Notification.channel != 'IN_APP', NotificationAttempt.provider != 'mock'))).all()
     for notification, attempt in external:
         await note_provider_resource(db, uid, 'NOTIFICATION:' + attempt.provider,
             dict(channel=notification.channel, resource_id=attempt.provider_message_id, service_account='LEGACY_UNVERIFIED'))

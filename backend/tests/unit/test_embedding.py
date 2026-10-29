@@ -80,3 +80,16 @@ def test_foreign_citation_rejected_even_when_authorized_context_exists():
     result = asyncio.run(AIOrchestrator(llm=Forged()).handle(request_id='fixture', conversation_id=uuid4(),
         text='记得我家吗', memory_records=(record,)))
     assert result.assistant_text == UNAVAILABLE and result.memory_records == ()
+
+
+def test_authorized_title_is_supplied_to_answer_model():
+    seen = []
+    class Capture(MockConversationLLM):
+        async def generate(self, request):
+            seen.extend(request.authorized_memory)
+            return await super().generate(request)
+    record = rag.RetrievedMemory(uuid4(), uuid4(), uuid4(), 1, '每周三一起去医院复诊。',
+        'EVENT', 1, title='女儿小梅的陪诊安排')
+    asyncio.run(AIOrchestrator(llm=Capture()).handle(request_id='title-fixture', conversation_id=uuid4(),
+        text='谁陪我去医院', memory_records=(record,)))
+    assert seen[0]['title'] == record.title and seen[0]['content'] == record.content

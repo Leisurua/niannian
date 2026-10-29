@@ -23,14 +23,18 @@ import org.example.niannian.feature.notification.BackgroundNotifications
 import org.example.niannian.feature.notification.BackgroundNotificationSettings
 import org.example.niannian.feature.notification.NotificationEntry
 import org.example.niannian.feature.notification.NotificationLaunch
+import org.example.niannian.feature.notification.validatedNotificationLaunch
+import org.example.niannian.feature.notification.parseNotificationLink
 
 class MainActivity : ComponentActivity() {
     private var notificationLaunch by mutableStateOf<NotificationLaunch?>(null)
     private fun acceptNotification(intent: Intent?) {
-        val id = intent?.getStringExtra(BackgroundNotifications.NOTICE_ID) ?: return
-        val recipient = intent.getStringExtra(BackgroundNotifications.RECIPIENT) ?: return
-        if (runCatching { UUID.fromString(id).toString() == id && UUID.fromString(recipient).toString() == recipient }.getOrDefault(false))
-            notificationLaunch = NotificationLaunch(id, recipient)
+        if (intent?.action == Intent.ACTION_VIEW) {
+            notificationLaunch = parseNotificationLink(intent.dataString)
+        } else {
+            validatedNotificationLaunch(intent?.getStringExtra(BackgroundNotifications.NOTICE_ID),
+                intent?.getStringExtra(BackgroundNotifications.RECIPIENT))?.let { notificationLaunch = it }
+        }
     }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent); setIntent(intent); acceptNotification(intent)
@@ -80,6 +84,7 @@ class MainActivity : ComponentActivity() {
                     notificationLaunch = null
                     intent.removeExtra(BackgroundNotifications.NOTICE_ID)
                     intent.removeExtra(BackgroundNotifications.RECIPIENT)
+                    intent.data = null
                 }
             }
         }
