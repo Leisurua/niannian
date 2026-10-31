@@ -7,7 +7,7 @@ name = "niannian-windows"
 version = "0.1.0"
 description = "NianNian family and elder desktop demos"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["sounddevice==0.5.3", "websockets==17.1"]
 
 [project.scripts]
 niannian-family-client = "niannian_family_client.app:main"

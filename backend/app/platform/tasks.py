@@ -13,7 +13,7 @@ class Task(Base):
     __tablename__ = 'task_outbox'
     __table_args__ = (
         CheckConstraint('resource_version > 0', name='ck_task_version'),
-        CheckConstraint("kind IN ('MEMORY_INDEX','MEMORY_CLEANUP','FILE_CLEANUP','CONVERSATION_SUMMARY','CONVERSATION_SUMMARY_CLEANUP','NOTIFICATION_DISPATCH','SIGNAL_CLEANUP','NOTIFICATION_CLEANUP','AVATAR_GENERATE')", name='ck_task_kind'),
+        CheckConstraint("kind IN ('MEMORY_INDEX','MEMORY_CLEANUP','FILE_CLEANUP','CONVERSATION_SUMMARY','CONVERSATION_SUMMARY_CLEANUP','NOTIFICATION_DISPATCH','SIGNAL_CLEANUP','NOTIFICATION_CLEANUP','AVATAR_GENERATE','VOICE_GENERATE','VOICE_CLEANUP')", name='ck_task_kind'),
         CheckConstraint("status IN ('PENDING','RUNNING','RETRY','SUCCEEDED','DEAD')", name='ck_task_status'),
         CheckConstraint('attempts >= 0 AND max_attempts > 0 AND attempts <= max_attempts', name='ck_task_attempts'),
         CheckConstraint("(status = 'RUNNING' AND lease_token IS NOT NULL AND lease_until IS NOT NULL) OR (status <> 'RUNNING' AND lease_token IS NULL AND lease_until IS NULL)", name='ck_task_lease'),
@@ -40,7 +40,7 @@ async def enqueue(db, kind, family_id, resource_id, version, epoch='source', rea
     key = f'{kind}:{resource_id}:{version}:{epoch}'
     command = insert(Task).values(id=uuid7(), kind=kind, family_id=family_id,
         resource_id=resource_id, resource_version=version, business_key=key,
-        max_attempts=1 if kind == 'AVATAR_GENERATE' else 5)
+        max_attempts=1 if kind in ('AVATAR_GENERATE', 'VOICE_GENERATE') else 5)
     if rearm:
         command = command.on_conflict_do_update(index_elements=['business_key'],
             set_={'status': 'PENDING', 'attempts': 0, 'available_at': utcnow(), 'updated_at': utcnow()},

@@ -226,6 +226,8 @@ Windows 使用 `gradlew.bat`；按需运行 `:shared:lintDebug`。APK 位于各 
 
 双端首页“选择城市”接入 [Open-Meteo 城市搜索](https://open-meteo.com/en/docs/geocoding-api)与[天气接口](https://open-meteo.com/en/docs)，需设备可访问 `geocoding-api.open-meteo.com`、`api.open-meteo.com` 的 HTTPS。首次无默认城市；手动选择按本机账户/家庭/长辈分别保存，可清除，不表示长辈实时位置。页面显示城市、摄氏温度、天气、数据时间和来源，前台每 15 分钟刷新，可手动重试；退后台隐藏天气，恢复前台重新获取，超过 3 小时的数据不展示。使用公共非商业接口，商用部署需按服务方条款配置。
 
+老人语音生活查询共用当前会话和系统 ASR/TTS：先在首页选择天气城市，再进入聊天问“今天会下雨吗”“今天几号”“今天有什么安排”。旧版本保存的城市缺少公共编号时重新选择一次；不自动按定位或城市名猜测。天气对话由后端访问上述 Open-Meteo 域名取得当天预报，需服务器也能出站 HTTPS。无城市或网络失败有明确反馈，日期和提醒查询不依赖 LLM 可用。提醒查询后说“第一项完成了”或“第一项稍后处理”，保存成功会报出结果并刷新本机提醒；具体识别范围和默认延后时间见 [AI 说明](ai.md)。本功能沿用现有表，无新增迁移。
+
 首页动态与留言页共用真实文字消息；“看到啦”提交已读回执，收到消息不自动算已读。照片通过“分享照片到家庭记忆”进入已有上传/授权流程。原声留言和视频通话仍无服务端能力：界面明确标注未接入，不模拟播放、拨通或家人回话。
 
 模拟器连接 `http://10.0.2.2:8000`。真机 API 用 HTTPS；USB Debug 可执行 `adb reverse tcp:8000 tcp:8000` 后填 `http://127.0.0.1:8000`。照片上传直接访问 S3_PUBLIC_ENDPOINT，下载通过 PUBLIC_BASE_URL 表示的 API；这些地址都需从设备可达。必要时为 USB 联调转发存储端口，或设置设备可访问的存储地址。不能把任意局域网 HTTP 地址当作 Android 已允许的 API。
@@ -288,3 +290,13 @@ docker compose --env-file infra/linux/.env -f infra/linux/docker-compose.yml dow
 统计默认关闭。在 Android 老人端“家庭设置”开启本人“互动统计与周报”，如需家属阅读，再单独向家庭创建者授予同项授权；非创建者还需要 REPORT_READ。实际文字或设备语音转写完成后积累记录，开启前历史不会补录。家属首页“统计周报”选择长辈、星期一及查看理由，老人端设置区可打开“我的周报”并删除本人记录；Windows 先选择家庭，再读取长辈列表、选择周和理由后生成。
 
 报告无需定时任务或外部 LLM，查询时生成；现有 worker 负责到期清理。空报告会说明原因；提醒/关注提示还需各自授权。限定主题分类与统计口径见 [ai](ai.md)，不以空记录推断健康状态。真实设备上的周报布局与完整操作仍需真机验证。
+
+## 家人音色联调
+
+没有配置百炼凭据时，在项目根目录的本机终端运行 `.\.venv\Scripts\python.exe scripts/configure_family_voice.py`，按提示输入北京地域业务空间 ID 和 API Key（隐藏输入）。脚本先查询音色列表验证鉴权，成功后才保存本机 `.env` 并开启 FAMILY_VOICE_ENABLED；失败不修改配置。`--check` 仅检查已有配置。不要通过聊天、命令行参数或 Git 提交密钥。配置后以 APP_ENV=dev 重启 API 和普通 worker。此检查只验证音色管理鉴权，不代表合成模型权限与真实音色效果已通过验收。获取凭据见[百炼官方说明](https://help.aliyun.com/zh/model-studio/get-api-key/)。
+
+沿用 API、普通 worker、PostgreSQL 和私有 S3 存储；升级前执行 Alembic 迁移。设置 APP_ENV=dev、FAMILY_VOICE_ENABLED=true、FAMILY_VOICE_WORKSPACE_ID（百炼北京业务空间）和 FAMILY_VOICE_API_KEY。模型固定 cosyvoice-v3.5-flash，客户端不配置密钥。修改业务空间不能继续使用旧空间的音色，需使用原配置清理后重新制作。未配置时录入入口明确提示制作不可用。
+
+家属双端录制 24 kHz、16-bit 单声道 WAV（10—60 秒，建议 15—20 秒），本人批准后由普通 worker 制作；READY 后本人试听并启用。老人同意云端文本处理且已有 VOICE 自授权后选择使用。Android 保留系统 ASR；Windows 本次使用文字输入，sounddevice 负责录放音、websockets 负责会话连接，系统普通声音不可用则保留文字。Windows 使用 requirements/pyproject 中声明的依赖后重新打包，验证 PortAudio DLL 随包提供。
+
+至少两位知情测试者完成录入、代录确认、试听启用、双端选择、打断和撤回后，才能记录真实音色闭环验收通过。没有获准样本或未开通模型时，只报告代码与模拟适配器测试结果，不报告真实复刻验收成功。

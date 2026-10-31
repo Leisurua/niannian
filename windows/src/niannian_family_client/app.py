@@ -84,6 +84,9 @@ class FamilyClientApp(DesktopLifecycle, tk.Tk):
         self._build_message_tab()
         self.insights = InsightsPanel(self.tabs, self)
         self.tabs.add(self.insights, text=' 天气与周报 ')
+        from niannian_desktop.voices import FamilyVoices
+        self.voice_panel = FamilyVoices(self.tabs, self)
+        self.tabs.add(self.voice_panel, text=' 家人声音 ')
 
         log_card = ttk.Frame(self, style="Card.TFrame", padding=(14, 8))
         log_card.pack(fill="x", padx=28, pady=(0, 22))
@@ -102,6 +105,8 @@ class FamilyClientApp(DesktopLifecycle, tk.Tk):
 
         ttk.Label(left, text="服务器连接", style="CardTitle.TLabel").pack(anchor="w")
         ttk.Label(left, text="填写 API 根地址；不要在末尾添加 /v1。", style="Muted.TLabel").pack(anchor="w", pady=(4, 14))
+        self.demo_identity = tk.StringVar(value='demo-child')
+        ttk.Combobox(left, textvariable=self.demo_identity, values=['demo-child', 'demo-caregiver', 'demo-other'], state='readonly').pack(fill='x', pady=6)
         self.url_var = tk.StringVar(value="http://127.0.0.1:8000")
         ttk.Entry(left, textvariable=self.url_var, font=("Consolas", 11)).pack(fill="x", pady=(0, 12))
         row = ttk.Frame(left, style="Card.TFrame")
@@ -278,9 +283,12 @@ class FamilyClientApp(DesktopLifecycle, tk.Tk):
             return
         base_url = self.url_var.get()
 
+        selector = getattr(self, 'demo_identity', None)
+        identifier = selector.get() if selector is not None else 'demo-child'
+
         def operation() -> tuple[NianNianClient, dict[str, Any]]:
             client = NianNianClient(base_url)
-            return client, client.login("demo-child")
+            return client, client.login(identifier)
 
         def success(result: tuple[NianNianClient, dict[str, Any]]) -> None:
             self.client, payload = result

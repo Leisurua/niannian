@@ -280,6 +280,32 @@ class FamilyRepository(
         return downloadPrivate("/v1/avatar-jobs/$id/pack", 24 * 1024 * 1024)
     }
 
+    suspend fun voiceAudio(id: String, kind: String): ByteArray {
+        require(UUID.fromString(id).toString() == id && kind in listOf("sample", "preview"))
+        return downloadPrivate("/v1/voice-profiles/$id/$kind", 4 * 1024 * 1024)
+    }
+
+    suspend fun uploadVoice(id: String, bytes: ByteArray) {
+        require(UUID.fromString(id).toString() == id && bytes.size <= 3_000_000)
+        call("/v1/me")
+        requestMutex.withLock { withContext(Dispatchers.IO) {
+            val session = store.load()
+            val origin = ConnectionPolicy.origin(session.getString("origin"), debug)
+            val connection = connectionFactory(URL("$origin/v1/voice-profiles/$id/sample"))
+            try {
+                connection.instanceFollowRedirects = false
+                connection.connectTimeout = 10000; connection.readTimeout = 30000
+                connection.requestMethod = "PUT"; connection.doOutput = true
+                connection.setRequestProperty("Authorization", "Bearer " + session.getString("access_token"))
+                connection.setRequestProperty("Content-Type", "audio/wav")
+                connection.setFixedLengthStreamingMode(bytes.size)
+                connection.outputStream.use { it.write(bytes) }
+                if (connection.responseCode !in 200..299) throw ApiFailure(connection.responseCode,
+                    "VOICE_UPLOAD_FAILED", "录音上传未确认，请刷新状态后重试。")
+            } finally { connection.disconnect() }
+        } }
+    }
+
     private suspend fun downloadPrivate(path: String, maximum: Int): ByteArray {
         call("/v1/me") // refresh an expired login before attempting the binary request
         return requestMutex.withLock { withContext(Dispatchers.IO) {

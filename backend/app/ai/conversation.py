@@ -17,8 +17,8 @@ from app.ai.signal_candidates import SemanticSignal, extract_mock, extract_seman
 from app.modules.safety.rules import evaluate, WARNING, EMERGENCY_COPY, RULE_VERSION
 
 PROMPT_VERSION = '1.3.0'
-IDENTITY = '你好，我是念念 AI。今天想聊点什么？这是 Mock 演示，仅显示文字。'
-REAL_IDENTITY = '你好，我是念念 AI，不是真实家人。您发送的文字将交给 AI 服务生成回复。今天想聊点什么？当前只支持文字。'
+IDENTITY = '你好，我是念念 AI，不是真实家人。闲聊为 Mock 演示；日期、天气和提醒会查询实际数据。今天想问什么？'
+REAL_IDENTITY = '你好，我是念念 AI，不是真实家人。闲聊文字会交给 AI 服务生成回复；日期、天气和提醒会查询实际数据。今天想问什么？'
 UNKNOWN = '我不确定，可以问问家人。当前没有可用且获准引用的家庭记忆。'
 UNAVAILABLE = '我现在没法回答，稍后再试或问问家人。'
 CHAT = '这是 Mock 演示回复。我在这里陪您，可以聊聊今天想做的事。'

@@ -237,6 +237,8 @@ async def update_member(db: AsyncSession, actor: Identity, family_id: UUID, memb
         member.status, member.left_at = "REVOKED", utcnow()
         from app.modules.notification.contacts import delete_member
         await delete_member(db, family_id, member.user_id)
+        from app.modules.voice.service import invalidate_member
+        await invalidate_member(db, family_id, member.user_id)
     if body.permission_codes is not None:
         member.permission_codes = dict.fromkeys(body.permission_codes, True)
     member.updated_at = max(utcnow(), member.updated_at + timedelta(microseconds=1))
@@ -252,6 +254,8 @@ async def leave(db: AsyncSession, actor: Identity, family_id: UUID, member_id: U
     member.status, member.left_at = "LEFT", utcnow()
     from app.modules.notification.contacts import delete_member
     await delete_member(db, family_id, member.user_id)
+    from app.modules.voice.service import invalidate_member
+    await invalidate_member(db, family_id, member.user_id)
     member.updated_at = max(utcnow(), member.updated_at + timedelta(microseconds=1))
     await audit.record(db, actor.user_id, "FAMILY_MEMBER_LEFT", "FAMILY_MEMBER", member.id, family_id, request_id)
 

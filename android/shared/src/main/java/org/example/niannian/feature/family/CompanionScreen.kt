@@ -19,6 +19,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import org.example.niannian.feature.voice.LocalVoiceProfiles
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,8 +57,10 @@ fun CompanionScreen(model: CompanionModel, environmentLabel: String,
     AvatarHost(avatar, homeFamily(state), state.userId,
         state.loggedIn && !state.offline && state.error.isBlank(), state.busy,
         state.selfPermissions.filter { it.scope == "PORTRAIT" }.toString(), avatarGeneration) {
-        CompanionScreenContent(model, environmentLabel, reminders, memories, tools, conversation, notifications,
-            messages, onNotifications, offlineContent, notificationSettings)
+        CompositionLocalProvider(LocalVoiceProfiles provides model.voiceProfiles) {
+            CompanionScreenContent(model, environmentLabel, reminders, memories, tools, conversation, notifications,
+                messages, onNotifications, offlineContent, notificationSettings)
+        }
     }
 }
 

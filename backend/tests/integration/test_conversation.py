@@ -44,6 +44,45 @@ def test_mock_unknown_repeat_slow_down_end_and_no_transcript(system):
         assert record[0]['trace']['provider'] == 'mock'
 
 
+def test_interrupt_keeps_completed_answer_for_spoken_replay_but_not_cancelled_turn(system):
+    client, _, _, _ = system
+    home = household(client)
+    cid = start(client, home)
+    llm = HeldLLM()
+    with client.websocket_connect('/v1/ws/conversations/' + cid, headers=home[4]) as ws:
+        handshake(ws, cid)
+        ws.send_json(ws_frame(cid, 'text.input', 2, {'text': '你好'}))
+        assert ws.receive_json()['payload']['state'] == 'THINKING'
+        assert ws.receive_json()['payload']['text'] == CHAT
+        ws.receive_json()
+        # Device ASR starts by interrupting local speech and any pending server turn.
+        ws.send_json(ws_frame(cid, 'interrupt', 3))
+        assert ws.receive_json()['in_reply_to'] == 3
+        ws.send_json(ws_frame(cid, 'repeat', 4))
+        replay = ws.receive_json()
+        assert replay['in_reply_to'] == 4 and replay['payload']['text'] == CHAT
+        ws.receive_json()
+    # A fresh socket has no replay state. Cancelling generation cannot make its
+    # unfinished output available to a subsequent spoken repeat.
+    app.state.conversation_orchestrator = AIOrchestrator(llm=llm)
+    try:
+        with client.websocket_connect('/v1/ws/conversations/' + cid, headers=home[4]) as ws:
+            ws.receive_json()
+            ws.send_json(ws_frame(cid, 'session.start', 5, {'client_session_id': 'fictional', 'input_mode': 'TEXT'}))
+            ws.receive_json()
+            ws.send_json(ws_frame(cid, 'text.input', 6, {'text': '新的问题'}))
+            assert ws.receive_json()['payload']['state'] == 'THINKING'
+            assert llm.started.wait(2)
+            ws.send_json(ws_frame(cid, 'interrupt', 7))
+            assert ws.receive_json()['in_reply_to'] == 7
+            assert llm.cancelled.wait(2)
+            ws.send_json(ws_frame(cid, 'repeat', 8))
+            rejected = ws.receive_json()
+            assert rejected['type'] == 'error' and rejected['in_reply_to'] == 8
+    finally:
+        del app.state.conversation_orchestrator
+
+
 @pytest.mark.parametrize('stop', ['interrupt', 'session.end', 'disconnect', 'logout'])
 def test_pending_turn_cannot_publish_after_interrupt_end_disconnect_or_revoke(system, stop):
     client, _, _, _ = system
