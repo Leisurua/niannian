@@ -17,6 +17,7 @@ import java.util.Locale
 
 /** Uses the user's installed speech services, which may use the network. */
 class AndroidConversationVoice(context: Context) : ConversationVoice {
+    private val pcm = org.example.niannian.feature.voice.PcmPlayer()
     private val app = context.applicationContext
     private val main = Handler(Looper.getMainLooper())
     private val audio = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -155,7 +156,14 @@ class AndroidConversationVoice(context: Context) : ConversationVoice {
         }
     }
 
+    override fun startPcm(started: () -> Unit, finished: () -> Unit, failed: (String) -> Unit) {
+        stop(); pcm.start(started, finished, failed)
+    }
+    override fun pcmChunk(bytes: ByteArray) = pcm.chunk(bytes)
+    override fun endPcm() = pcm.finish()
+
     override fun stop() {
+        pcm.stop()
         epoch++
         pendingSpeech = null
         failedSpeech = null

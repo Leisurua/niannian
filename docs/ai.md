@@ -12,7 +12,8 @@
 | Android ASR / TTS | `android/shared/.../conversation/AndroidConversationVoice.kt` | 系统 SpeechRecognizer 收音识别，TextToSpeech 中文朗读；依赖已安装的服务，可能联网 |
 | Android 基础数字人 | `android/shared/.../conversation/PersimmonCompanionOrb.kt` | Compose Canvas 2D 柿子形象；待机、听您说话、思考中、正在回答；口型随设备实际播放启停 |
 | THA3 自定义形象 | `modules/avatar`、`integrations/avatar_preprocess.py` / `tha3_renderer.py`、Android `AvatarGenerationModel` / `AvatarModel` / `CompanionAvatar` | 手机照片经千问/豆包生成立绘，服务端抠图与构图后由真实 THA3 生成四态包，下载预览并手动确认启用；也支持离线 ZIP 导入 |
-| 后端 ASR / TTS / Avatar | `backend/app/integrations/mock/adapters.py` | 仍为 Mock 占位，不解码/返回音频；Android 语音不调用它们 |
+| 旧编排 ASR / TTS / Avatar 占位 | `backend/app/integrations/mock/adapters.py` | 仍为 Mock 占位，不解码/返回音频；Android 语音不调用它们 |
+| 家人音色 TTS | `modules/voice`、`integrations/family_voice.py`、`conversation/speech.py` | 本人授权制作、试听发布、双端选声与 PCM 流；默认关闭，真实录音联调待完成 |
 | 通知渠道 | `integrations/notifications.py` | 应用内收件、可配置 ntfy/Twilio；未启用的外部渠道保持关闭或明确 Mock，实际送达状态独立展示 |
 | 摘要 | `backend/app/modules/conversation/summary.py` | 从受控主题生成最多四条回顾，不存逐字稿 |
 | 关注候选 / 主动邀请 | `backend/app/ai/signal_candidates.py`、`proactive.py` | 真实 LLM 结构化语义候选及原文复验；Mock 有限短语；确定性邀请资格判断 |
@@ -47,7 +48,7 @@ Mock 编排超时 8 秒，真实 LLM 默认 20 秒（`LLM_TIMEOUT_SECONDS`，上
 
 ## 会话、回顾与主动邀请
 
-WSS 保持本人文字/状态通道。Android 点击说话后由系统 ASR 收音，最终识别结果以 `text.input` 提交；最终 `assistant.text` 交给系统 TTS。后端不接收原始音频，`audio.chunk`、`audio.end` 等消息名仍返回不可用。语音能力与 `llm_mode` 独立，Mock 回复也可以朗读，不能据此声称用了真实 LLM。
+WSS 保持本人文字输入；协商 pcm_v1 的客户端可接收家人音色 PCM 输出。Android 点击说话后由系统 ASR 收音，最终识别结果先匹配本地控制口令，其余以 `text.input` 提交；最终 `assistant.text` 交给系统 TTS。后端不接收原始音频，`audio.chunk`、`audio.end` 等消息名仍返回不可用。语音能力与 `llm_mode` 独立，Mock 回复也可以朗读，不能据此声称用了真实 LLM。
 
 日期、天气和当天安排通过 [conversation/daily.py](../backend/app/modules/conversation/daily.py) 的确定性查询接入同一语音/文字通道，不调用 RAG 或 LLM，真实/Mock 闲聊模式均可用。支持“今天几号／星期几／现在几点”“今天会下雨吗／需要带伞吗”“今天有什么安排”。日期由服务端时钟按设备传来的 IANA 时区计算，未传默认 Asia/Shanghai；天气只查首页手选城市，使用 Open-Meteo 当地当天预报、温度区间和最高降水概率，明确预报性质及日期。没有城市、无有效预报或查询超时均明确说明，不用当前晴天推断全天无雨。返回的 `source_labels` 在 Android 每条回答下展示实际来源。
 
@@ -57,7 +58,9 @@ WSS 保持本人文字/状态通道。Android 点击说话后由系统 ASR 收�
 
 `ConversationModel` 管理录音、识别、等待和播放状态。语音由本人对自己的显式 VOICE 授权控制，握手返回 `voice_allowed`，撤回或到期通过 `voice.permission` 停止音频；规则见安全说明。单次收音最多 30 秒，点击“说完了”停止收音并等待最终结果最多 10 秒；空白、超长、超时或服务失败不自动重发。点击“停止”或“打断并说话”立即取消本地识别/朗读并发送 `interrupt` 取消后端任务。后端用 `in_reply_to` 标记请求序号，客户端校验服务器连续序号后丢弃旧轮次；设备回调使用递增代次丢弃迟到结果。断线、后台、结束和切换家庭同样停止音频。当前支持按钮打断，不做持续监听或自动人声打断。
 
-重播重新请求服务器复验记忆权限，不直接朗读缓存回答；主动邀请不自动播音。语音实现遵循 Android [SpeechRecognizer](https://developer.android.com/reference/android/speech/SpeechRecognizer) 和 [TextToSpeech](https://developer.android.com/reference/android/speech/tts/TextToSpeech) 生命周期。具体协议在 [openapi.yaml](openapi.yaml)，传输与留存边界见 [security](security.md)。
+识别或打字输入完整短句“再说一遍”“慢一点／说慢一点”“恢复语速”“停一下／停止”“结束聊天”时，Android 直接执行重播、设置语速、打断或结束，不交给 LLM，不计为新聊天轮次。允许首尾空白和句末句号、逗号、感叹号；问句、引语、转述和更长句子仍作为普通输入。反复说“慢一点”保持慢速，不切换回正常语速；有上一条回答时重新请求服务器再播，没有回答则只保存本次会话的语速选择。“今天少打扰我”继续由既有服务端主动陪伴设置处理。
+
+进入收音仍先打断，播放时没有后台收音；要说控制口令需先点“打断并说话”，直接点停止可立即停止。打断保留本连接已完成回答及其权限依赖，新问题开始时清除上一条重播资格，取消未完成轮次不能重播其结果；断线、结束、后台和换家庭清除临时内容。重播重新请求服务器复验记忆权限，不直接朗读缓存回答；日期、天气、提醒查询重新取数，反馈重播只核对已有结果、不重复写入。主动邀请不自动播音。语音实现遵循 Android [SpeechRecognizer](https://developer.android.com/reference/android/speech/SpeechRecognizer) 和 [TextToSpeech](https://developer.android.com/reference/android/speech/tts/TextToSpeech) 生命周期。具体协议在 [openapi.yaml](openapi.yaml)，传输与留存边界见 [security](security.md)。
 
 老人首页和聊天入口共用 `ConversationPanel`，移除了聊天页固定示例回复和持续“正在听”的模拟状态。`ConversationState.companionPhase` 由本地录音、识别、请求等待、待播和实际播音派生；服务端 `LISTENING` / `SPEAKING` 不能单独让形象显示收音或动嘴。TTS `onStart` 才标记实际播音，`onDone`、`onStop`、失败、按钮打断、切后台、断线和 VOICE 撤权立即清除待播/播音标记并丢弃旧回调。ASR 自动结束收音后进入识别等待。基础口型是播放期间的开合循环，不是音素对齐或音量分析。
 
@@ -99,3 +102,11 @@ Mock 模式保留有限短语；诈骗组合和明确求助继续由独立确定
 口径：有成功轮次的不同会话计一次交流；同一会话跨日只在周总次数中计一次。轮次按服务端完成时间和所选 IANA 时区归属，汇总每日首末互动、24 小时时段及夜间（22:00—06:00）轮数。活跃时长为每轮回复耗时与同会话内不超过五分钟的相邻轮次间隔，每轮最多五分钟；它是估计，不是录音时长。提醒按计划执行时点计数，展示 DONE/LATER/SKIPPED/PENDING/NO_RESPONSE 和已反馈记录的平均响应秒数，不将未反馈解释为未服药。关注提示仅聚合当前仍可访问的事件，注明七天保留导致的缺失。
 
 情绪类别为开心、难过、孤独、担忧、思念家人；仅识别有限的第一人称明确表达，过滤否定、提问、引语和转述。主题使用固定词组/同义词分类（如包饺子、种花种菜、工作往事），按不同会话去重并列出至少两次的主题。这是真实输入上的有限本地规则，尚不是需求中完整的 embedding 语义聚类；未分类不代表没有相关内容。周报始终标注“交流观察线索”、方法、授权/保留/数据缺失及 Mock，不推断健康、睡眠、心理或认知结论。
+
+## 家人授权音色
+
+新增家人音色录入、本人批准云制作、试听确认启用和老人选择；每人每家庭一个启用版本，代录者不能代授权。云端使用百炼北京区 cosyvoice-v3.5-flash；默认关闭，不把 Mock 标为复刻成功。真实相似度和双端设备体验仍需获准样本实测。
+
+会话保留文字输入协议；客户端以 session.start.audio_capabilities=["pcm_v1"] 协商输出音频。assistant.text.speech_mode 为 device/cloud/none，旧客户端保留系统朗读；新客户端接收 tts.start/chunk/end/error，使用 playback_id 与 in_reply_to 丢弃迟到音频。PCM 为 24 kHz、16-bit 单声道，每块最多 8192 字节，经 Base64 传输。只合成最终获准文本；当前服务端 MockTTS 不承担真实音频输出，真实链路位于 conversation/speech.py。
+
+voice.select 切换本人已获准音色，不清空对话；voice.selected 确认切换，音频事件携带 voice_profile_id，客户端丢弃旧音色包；text.input、repeat、slow_down 可携带 speech_rate（0.5—2）。音色选择按账号/家庭共享。录音、云端处理与生命周期边界见 security.md，配置见 deployment.md。

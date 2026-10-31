@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = Field(default=20, gt=0, le=20)
     asr_api_key: str | None = Field(default=None, repr=False)
     tts_api_key: str | None = Field(default=None, repr=False)
+    family_voice_enabled: bool = False
+    family_voice_api_key: SecretStr | None = Field(default=None, repr=False)
+    family_voice_workspace_id: str = Field(default='', pattern=r'^[a-zA-Z0-9-]*$')
     embedding_provider: Literal['mock', 'local'] = 'mock'
     embedding_model_path: str | None = None
     embedding_threads: int = Field(default=2, ge=1, le=16)

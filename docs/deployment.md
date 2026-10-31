@@ -290,3 +290,13 @@ docker compose --env-file infra/linux/.env -f infra/linux/docker-compose.yml dow
 统计默认关闭。在 Android 老人端“家庭设置”开启本人“互动统计与周报”，如需家属阅读，再单独向家庭创建者授予同项授权；非创建者还需要 REPORT_READ。实际文字或设备语音转写完成后积累记录，开启前历史不会补录。家属首页“统计周报”选择长辈、星期一及查看理由，老人端设置区可打开“我的周报”并删除本人记录；Windows 先选择家庭，再读取长辈列表、选择周和理由后生成。
 
 报告无需定时任务或外部 LLM，查询时生成；现有 worker 负责到期清理。空报告会说明原因；提醒/关注提示还需各自授权。限定主题分类与统计口径见 [ai](ai.md)，不以空记录推断健康状态。真实设备上的周报布局与完整操作仍需真机验证。
+
+## 家人音色联调
+
+没有配置百炼凭据时，在项目根目录的本机终端运行 `.\.venv\Scripts\python.exe scripts/configure_family_voice.py`，按提示输入北京地域业务空间 ID 和 API Key（隐藏输入）。脚本先查询音色列表验证鉴权，成功后才保存本机 `.env` 并开启 FAMILY_VOICE_ENABLED；失败不修改配置。`--check` 仅检查已有配置。不要通过聊天、命令行参数或 Git 提交密钥。配置后以 APP_ENV=dev 重启 API 和普通 worker。此检查只验证音色管理鉴权，不代表合成模型权限与真实音色效果已通过验收。获取凭据见[百炼官方说明](https://help.aliyun.com/zh/model-studio/get-api-key/)。
+
+沿用 API、普通 worker、PostgreSQL 和私有 S3 存储；升级前执行 Alembic 迁移。设置 APP_ENV=dev、FAMILY_VOICE_ENABLED=true、FAMILY_VOICE_WORKSPACE_ID（百炼北京业务空间）和 FAMILY_VOICE_API_KEY。模型固定 cosyvoice-v3.5-flash，客户端不配置密钥。修改业务空间不能继续使用旧空间的音色，需使用原配置清理后重新制作。未配置时录入入口明确提示制作不可用。
+
+家属双端录制 24 kHz、16-bit 单声道 WAV（10—60 秒，建议 15—20 秒），本人批准后由普通 worker 制作；READY 后本人试听并启用。老人同意云端文本处理且已有 VOICE 自授权后选择使用。Android 保留系统 ASR；Windows 本次使用文字输入，sounddevice 负责录放音、websockets 负责会话连接，系统普通声音不可用则保留文字。Windows 使用 requirements/pyproject 中声明的依赖后重新打包，验证 PortAudio DLL 随包提供。
+
+至少两位知情测试者完成录入、代录确认、试听启用、双端选择、打断和撤回后，才能记录真实音色闭环验收通过。没有获准样本或未开通模型时，只报告代码与模拟适配器测试结果，不报告真实复刻验收成功。

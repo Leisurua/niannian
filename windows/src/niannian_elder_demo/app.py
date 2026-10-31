@@ -87,6 +87,7 @@ class ElderDemoApp(DesktopLifecycle, tk.Tk):
         self._build_setup_panel()
         self._build_message_panel()
         ttk.Button(self.left, text='天气与我的周报', command=self.open_insights).pack(fill='x', pady=10)
+        ttk.Button(self.left, text='和念念聊天 · 选择声音', command=self.open_conversation).pack(fill='x', pady=10)
 
         footer = ttk.Frame(self, padding=(28, 0, 28, 22))
         footer.pack(fill="x")
@@ -97,6 +98,17 @@ class ElderDemoApp(DesktopLifecycle, tk.Tk):
             text="演示程序 · 不提供真实急救或电话呼叫",
             style="Sub.TLabel",
         ).pack(side="right")
+
+    def open_conversation(self):
+        if getattr(self, 'conversation_window', None) and self.conversation_window.winfo_exists():
+            self.conversation_window.lift()
+            return
+        from niannian_desktop.conversation import ConversationPanel
+        self.conversation_window = tk.Toplevel(self)
+        self.conversation_window.title('念念 AI · 对话与声音')
+        self.conversation_window.geometry('1000x720')
+        self.voice_panel = ConversationPanel(self.conversation_window, self)
+        self.voice_panel.pack(fill='both', expand=True)
 
     def open_insights(self):
         if getattr(self, 'insights_window', None) and self.insights_window.winfo_exists():

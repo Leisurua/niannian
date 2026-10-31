@@ -176,6 +176,8 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
     notices = asyncio.Queue(maxsize=1)
     last_interaction = utcnow()
     history = []
+    from app.modules.conversation.speech import Speech
+    speech = Speech(factory, bearer, settings, conversation_id, getattr(websocket.app.state, 'family_voice_provider', None))
     orchestrator = getattr(websocket.app.state, 'conversation_orchestrator', None) or configured_orchestrator(settings)
     # The handshake must not consult a provider: local safety replies remain
     # available even when provider capability discovery is broken.
@@ -214,7 +216,7 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
         while True:
             if receive_task is None:
                 receive_task = asyncio.create_task(websocket.receive())
-            waiting = {receive_task} | ({turn_task} if turn_task else set())
+            waiting = {receive_task} | ({turn_task} if turn_task else set()) | speech.waiting()
             done, _ = await asyncio.wait(waiting, timeout=1.0, return_when=asyncio.FIRST_COMPLETED)
             raw = receive_task.result() if receive_task in done else None
             if receive_task in done:
@@ -233,7 +235,7 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                 if last_records and not await rag.revalidate(db, actor, last_records):
                     last_reply, last_records = UNKNOWN, ()
                     history.clear()
-                if raw is None and notice is None and not voice_changed and (turn_task is None or turn_task not in done):
+                if raw is None and notice is None and not voice_changed and not speech.playback_id and (turn_task is None or turn_task not in done):
                     await db.commit()
                     continue
                 try:
@@ -248,20 +250,37 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                         row.client_sequence = message.sequence
                         if message.type not in ('ping', 'session.start'):
                             last_interaction = utcnow()
-                        if message.type in ('interrupt', 'session.end'):
+                        if message.type in ('interrupt', 'session.end', 'text.input', 'repeat', 'slow_down', 'voice.select'):
+                            await speech.stop()
+                        if message.type == 'session.start':
+                            speech.enabled = 'pcm_v1' in message.payload.get('audio_capabilities', [])
+                        if message.type == 'voice.select':
+                            from app.modules.voice import service as voices
+                            pref = await voices.preference(db, actor, row.family_id)
+                            await voices.set_preference(db, actor, voices.Preference(family_id=row.family_id,
+                                voice_profile_id=message.payload.get('voice_profile_id'), cloud_tts_allowed=pref['cloud_tts_allowed']))
+                            chosen, _ = await voices.selected(db, actor, row.family_id)
+                            outgoing = [service.event(row, 'voice.selected', {'voice_profile_id': str(chosen.id) if chosen else None,
+                                'display_name': chosen.display_name if chosen else '念念普通声音'})]
+                        elif message.type in ('interrupt', 'session.end'):
                             if turn_task:
                                 turn_task.cancel()
                                 await asyncio.gather(turn_task, return_exceptions=True)
                                 turn_task = None
-                            last_reply = None
-                            last_records = ()
+                            # Starting device ASR also interrupts playback. Retain only a
+                            # completed reply so a spoken repeat can revalidate it below.
+                            # A new text turn already clears last_reply before generation.
+                            if message.type == 'session.end':
+                                last_reply = None
+                                last_records = ()
+                                last_daily = last_query = None
                             pending_topic = None
                             pending_signal_input = None
                             pending_sequence = None
                             pending_query_payload = None
-                            last_daily = last_query = None
                             outgoing = service.handle(row, message)
                         elif message.type == 'text.input':
+                            speech.speed = message.payload.get('speech_rate', 1.0)
                             if turn_task or not row.provider_metadata.get('identity_disclosed'):
                                 outgoing = [service.event(row, 'error', {'code': 'PROVIDER_TEMPORARILY_UNAVAILABLE', 'retryable': False})]
                             elif message.payload['text'].strip('。！! ') in ('今天少打扰我', '今天别打扰我', '今天别主动提醒我', '不要打扰', '我在忙', '我在休息'):
@@ -291,6 +310,7 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                                     conversation_id, message.payload['text'], f'turn-{message.sequence}', tuple(history),
                                     message.payload, getattr(websocket.app.state, 'weather_service', None), reminder_context))
                         elif message.type in ('repeat', 'slow_down'):
+                            speech.speed = message.payload.get('speech_rate', 0.8 if message.type == 'slow_down' else 1.0)
                             if turn_task or last_reply is None:
                                 outgoing = [service.event(row, 'error', {'code': 'PROVIDER_TEMPORARILY_UNAVAILABLE', 'retryable': False})]
                             elif last_daily and last_daily.kind in ('DATE', 'WEATHER', 'REMINDERS'):
@@ -371,6 +391,10 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                     if notice and raw is None and turn_task is None and not outgoing and await proactive.accept(db, row, notice, last_interaction):
                         outgoing = [service.event(row, 'assistant.text', {'text': proactive.INVITATION, 'source_labels': ['Mock']})]
                         last_interaction = utcnow()
+                    for item in outgoing:
+                        if item['type'] == 'assistant.text':
+                            await speech.begin(db, actor, row, item, last_records or (), identity=raw is not None and message.type == 'session.start')
+                    outgoing += await speech.drain(db, actor, row)
                     if permission_event:
                         outgoing.insert(0, permission_event)
                 except ProtocolError as error:
@@ -401,6 +425,7 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
         else:
             await websocket.close(code=4403)
     finally:
+        await speech.stop()
         tasks = [task for task in (receive_task, turn_task, listen_task) if task is not None]
         for task in tasks:
             task.cancel()

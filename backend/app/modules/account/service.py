@@ -88,6 +88,10 @@ async def erase_database(db, uid):
     Family locks serialize with shared writes and notification dispatch. Pending
     object keys stay private until a successful physical delete after PUT expiry.
     """
+    from app.modules.voice.service import invalidate_member
+    family_ids = (await db.scalars(select(FamilyMember.family_id).where(FamilyMember.user_id == uid))).all()
+    for family_id in family_ids:
+        await invalidate_member(db, family_id, uid)
     memories = select(Memory.id).where(Memory.subject_user_id == uid)
     conversations = select(Conversation.id).where(Conversation.owner_user_id == uid)
     reminders = select(Reminder.id).where(Reminder.owner_user_id == uid)
@@ -186,6 +190,11 @@ async def process_one(factory, storage, settings):
         # All previously authorized provider sends must finish/cancel before
         # final erasure can be confirmed. New turns fail account authentication.
         await send_gate(db, row.user_id)
+        from app.modules.voice.models import VoiceProfile
+        if await db.scalar(select(VoiceProfile.id).where(VoiceProfile.owner_user_id == row.user_id, VoiceProfile.status != 'DELETED').limit(1)):
+            row.retry_at, row.last_error_code = utcnow() + timedelta(seconds=60), 'VOICE_CLEANUP_PENDING'
+            await db.commit()
+            return True
         files = (await db.scalars(select(FileAsset).where(FileAsset.owner_user_id == row.user_id))).all()
         wait_until = max((f.created_at + timedelta(seconds=360) for f in files), default=utcnow())
         if wait_until > utcnow():

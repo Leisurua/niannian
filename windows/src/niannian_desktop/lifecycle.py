@@ -25,6 +25,9 @@ class DesktopLifecycle:
             return
         self._exit_requested = 'close' if close else 'logout'
         self._stop_polling()
+        panel = getattr(self, 'voice_panel', None)
+        if panel is not None:
+            panel.reset()
         self._clear_message_view()
         self._continue_exit()
 

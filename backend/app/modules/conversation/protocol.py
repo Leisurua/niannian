@@ -10,10 +10,10 @@ from uuid import UUID
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 ClientType = Literal['session.start', 'audio.chunk', 'audio.end', 'text.input',
-                     'interrupt', 'repeat', 'slow_down', 'session.end', 'ping']
+                     'interrupt', 'repeat', 'slow_down', 'session.end', 'ping', 'voice.select']
 ServerType = Literal['session.ready', 'asr.partial', 'asr.final', 'assistant.state',
                      'assistant.text', 'tts.start', 'tts.end', 'signal.created',
-                     'warning', 'error', 'pong', 'voice.permission']
+                     'warning', 'error', 'pong', 'voice.permission', 'tts.chunk', 'tts.error', 'voice.selected']
 BackendState = Literal['IDLE', 'LISTENING', 'THINKING', 'SPEAKING', 'WARNING', 'OFFLINE', 'ERROR']
 
 
@@ -28,10 +28,17 @@ class _Payload(BaseModel):
 class StartPayload(_Payload):
     client_session_id: str = Field(min_length=1, max_length=128)
     input_mode: Literal['VOICE', 'TEXT', 'LOCAL_WAKEWORD']
+    audio_capabilities: list[Literal['pcm_v1']] = Field(default_factory=list, max_length=1)
+    voice_profile_id: UUID | None = None
+
+
+class VoiceSelectPayload(_Payload):
+    voice_profile_id: UUID | None = None
 
 
 class TextPayload(_Payload):
     text: str = Field(min_length=1)
+    speech_rate: float = Field(default=1.0, ge=0.5, le=2.0)
     timezone: str = 'Asia/Shanghai'
     weather_city_id: int | None = Field(default=None, gt=0, le=2147483647, strict=True)
 
@@ -52,6 +59,10 @@ class TextPayload(_Payload):
 
 class EndPayload(_Payload):
     reason: Literal['USER', 'TIMEOUT', 'ERROR'] | None = None
+
+
+class PlaybackPayload(_Payload):
+    speech_rate: float = Field(default=1.0, ge=0.5, le=2.0)
 
 
 class ClientEnvelope(_Payload):
@@ -124,6 +135,10 @@ def parse_client_frame(
                 raise ProtocolError('WS_TEXT_TOO_LARGE')
         elif envelope.type == 'session.end':
             EndPayload.model_validate(envelope.payload)
+        elif envelope.type == 'voice.select':
+            VoiceSelectPayload.model_validate(envelope.payload)
+        elif envelope.type in ('repeat', 'slow_down'):
+            PlaybackPayload.model_validate(envelope.payload)
         else:
             _Payload.model_validate(envelope.payload)
     except ValidationError:

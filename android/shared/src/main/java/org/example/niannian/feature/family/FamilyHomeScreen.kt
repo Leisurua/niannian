@@ -910,6 +910,7 @@ internal fun FamilyDesignHome(
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         listOf(
+                                            HomeFeature.VOICES to "家人声音",
                                             HomeFeature.REMINDERS to "提醒管理",
                                             HomeFeature.MEMORIES to "记忆与照片",
                                             HomeFeature.MESSAGES to "家人留言",

@@ -31,6 +31,8 @@ from app.modules.account.api import router as account_router
 app.include_router(account_router)
 from app.modules.avatar.api import router as avatar_router
 app.include_router(avatar_router)
+from app.modules.voice.api import router as voice_router
+app.include_router(voice_router)
 app.include_router(family_router)
 app.include_router(consent_router)
 app.include_router(memory_router)

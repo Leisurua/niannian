@@ -22,6 +22,7 @@ from app.platform.resource_access import authorize, resolve_family
 class ConversationCreate(Input):
     family_id: UUID | None = None
     device_id: UUID | None = None
+    voice_profile_id: UUID | None = None
     input_mode: Literal['VOICE', 'TEXT', 'LOCAL_WAKEWORD']
 
 
@@ -75,6 +76,14 @@ async def create(db, actor, body, request_id):
         raise AppError('PROVIDER_TEMPORARILY_UNAVAILABLE', '服务端仅接收文字（可由设备语音识别生成），不接收音频。', 503)
     if body.device_id:
         await require_active_binding(db, body.device_id, actor.user_id)
+    if body.voice_profile_id:
+        from app.modules.voice import service as voices
+        selected = await voices.usable(db, actor, body.voice_profile_id)
+        if selected.family_id != fid:
+            raise AppError('VOICE_NOT_FOUND', '声音不属于当前家庭。', 404)
+        pref = await voices.preference(db, actor, fid)
+        await voices.set_preference(db, actor, voices.Preference(family_id=fid,
+            voice_profile_id=body.voice_profile_id, cloud_tts_allowed=pref['cloud_tts_allowed']))
     now = utcnow()
     row = Conversation(id=uuid7(), owner_user_id=actor.user_id, family_id=fid, device_binding_id=body.device_id,
         started_at=now, status='ACTIVE', summary_status='NOT_REQUESTED', backend_state='IDLE', input_mode='TEXT',

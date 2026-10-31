@@ -32,7 +32,7 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 
 internal enum class HomeFeature(val title: String) {
-    REMINDERS("生活提醒"), MEMORIES("家庭记忆"), CHAT("和念念聊聊"),
+    VOICES("家人声音"), REMINDERS("生活提醒"), MEMORIES("家庭记忆"), CHAT("和念念聊聊"),
     CONVERSATION("主动陪伴与交流回顾"), NOTIFICATIONS("家人通知"), MESSAGES("家人留言"), REPORTS("统计与周报")
 }
 
@@ -287,6 +287,9 @@ internal fun HomeFeatureSheet(feature: HomeFeature, state: CompanionState, model
                 else Modifier.verticalScroll(rememberScrollState())).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 if (family.isBlank()) Text("请先登录并确认加入家庭。") else when (feature) {
+                    HomeFeature.VOICES -> org.example.niannian.feature.voice.LocalVoiceProfiles.current?.let {
+                        org.example.niannian.feature.voice.FamilyVoicesPanel(it, family, state.userId, state.members)
+                    }
                     HomeFeature.REPORTS -> WeeklyReportPanel(models.tools, family, subjects, elder, unavailable,
                         state.permissions.toString() + state.selfPermissions.toString() + state.members.toString())
                     HomeFeature.REMINDERS -> ReminderPanel(models.reminders, family, state.userId, subjects, unavailable, models.onNotifications)
@@ -299,7 +302,7 @@ internal fun HomeFeatureSheet(feature: HomeFeature, state: CompanionState, model
                         var sent by remember(family, state.userId, initialTopic) { mutableStateOf(false) }
                         LaunchedEffect(family, state.userId) {
                             conversation.bind(family, state.userId)
-                            if (!unavailable) conversation.start()
+                            // Selection remains visible before explicitly starting the conversation.
                         }
                         LaunchedEffect(chat.connected) {
                             if (chat.connected && initialTopic != null && !sent && !unavailable) {

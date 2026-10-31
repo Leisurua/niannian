@@ -40,6 +40,8 @@ async def run_cycle():
         async with session_factory() as db:
             await accounts.maintenance(db, settings)
             await avatars.maintenance(db)
+            from app.modules.voice import service as voices
+            await voices.maintenance(db)
             await tick(db, settings)
             next_memory_scan = await maintenance(db, _memory_scan_after)
             await schedule_cleanup(db)
@@ -50,6 +52,10 @@ async def run_cycle():
             await metrics.maintenance(db)
             await db.commit()
             _memory_scan_after = next_memory_scan
+        from app.modules.voice.worker import run_one as run_voice
+        for _ in range(4):
+            if not await run_voice(session_factory, storage, settings):
+                break
         for _ in range(20):
             if not await run_one(session_factory, storage):
                 break

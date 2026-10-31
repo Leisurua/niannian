@@ -21,6 +21,7 @@ class ConversationModelTest {
         var finished: () -> Unit = {}
         var captured: () -> Unit = {}
         val spoken = mutableListOf<String>()
+        val speechRates = mutableListOf<Boolean>()
         var stops = 0
         var finishes = 0
         override fun listen(partial: (String) -> Unit, final: (String) -> Unit, failed: (String) -> Unit, captured: () -> Unit) {
@@ -28,7 +29,7 @@ class ConversationModelTest {
         }
         override fun finishListening() { finishes++ }
         override fun speak(text: String, slow: Boolean, started: () -> Unit, finished: () -> Unit, failed: (String) -> Unit) {
-            spoken.add(text); this.started = started; this.finished = finished; failure = failed
+            spoken.add(text); speechRates.add(slow); this.started = started; this.finished = finished; failure = failed
         }
         override fun stop() { stops++ }
         override fun close() { stop() }
@@ -40,12 +41,13 @@ class ConversationModelTest {
         var onClose: (Int) -> Unit = {}
         var closed = 0
         var failEnd = false
+        var ends = 0
         var waitStatus: CompletableDeferred<Unit>? = null
         var immediateReady = false
         var failSend = false
         override suspend fun create(family: String) = id
         override suspend fun status(id: String): String { waitStatus?.await(); return "ACTIVE" }
-        override suspend fun end(id: String) { if (failEnd) error("offline") }
+        override suspend fun end(id: String) { ends++; if (failEnd) error("offline") }
         override suspend fun connect(id: String, message: (String) -> Unit, closed: (Int) -> Unit): ConversationSocket {
             listener = message; onClose = closed
             if (immediateReady) message(frame(1))
@@ -400,6 +402,96 @@ class ConversationModelTest {
         gateway.listener(frame(3, "assistant.text", JSONObject().put("text", "重新验证后的回答"), gateway.sent.last().getLong("sequence"))); yield()
         assertEquals(listOf("重新验证后的回答"), voice.spoken)
         model.toggleSpeech(); assertFalse(model.state.value.speaking); assertFalse(model.state.value.voiceEnabled)
+        model.clear()
+    }
+
+    @Test fun recognizedControlsReplayThroughServerAndSetRateWithoutToggling() = runBlocking {
+        val gateway = Gateway(); val voice = Voice(); val model = ConversationModel(gateway, this)
+        model.attachVoice(voice); model.bind("family", "elder"); model.start(); yield()
+        gateway.listener(frame(1)); yield()
+        model.voiceEntry(); voice.final("你好")
+        var sequence = 2L
+        gateway.listener(frame(sequence++, "assistant.text", JSONObject().put("text", "第一条回答"),
+            gateway.sent.last().getLong("sequence"))); yield()
+        voice.started()
+        for ((command, slow) in listOf("再说一遍。" to false, "慢一点！" to true,
+            "慢一点" to true, "恢复语速" to false)) {
+            val oldStarted = voice.started; val oldFinished = voice.finished
+            model.voiceEntry()
+            val interruptSequence = gateway.sent.last().getLong("sequence")
+            voice.final(command)
+            assertEquals("repeat", gateway.sent.last().getString("type"))
+            assertEquals(slow, model.state.value.slowSpeech)
+            val replaySequence = gateway.sent.last().getLong("sequence")
+            // Old interrupt acknowledgements and local callbacks cannot reset the new replay.
+            gateway.listener(frame(sequence++, "assistant.state", JSONObject().put("state", "LISTENING"), interruptSequence)); yield()
+            oldStarted(); oldFinished()
+            assertTrue(model.state.value.busy); assertFalse(model.state.value.speaking)
+            val spokenBefore = voice.spoken.size
+            assertFalse(model.state.value.speechPending)
+            gateway.listener(frame(sequence++, "assistant.text", JSONObject().put("text", "服务器复核后的回答"), replaySequence)); yield()
+            assertEquals(spokenBefore + 1, voice.spoken.size)
+            assertEquals("服务器复核后的回答", voice.spoken.last())
+            assertEquals(slow, voice.speechRates.last())
+            voice.started()
+        }
+        assertEquals(1, gateway.sent.count { it.getString("type") == "text.input" })
+        model.clear()
+    }
+
+    @Test fun controlsWithoutPreviousAnswerStayLocalAndOrdinarySpeechStillChats() = runBlocking {
+        val gateway = Gateway(); val voice = Voice(); val model = ConversationModel(gateway, this)
+        model.attachVoice(voice); model.bind("family", "elder"); model.start(); yield()
+        gateway.listener(frame(1)); yield()
+        model.voiceEntry(); voice.final("再说一遍")
+        assertTrue(model.state.value.message.contains("还没有可重播"))
+        assertFalse(model.state.value.busy)
+        model.voiceEntry(); voice.final("慢一点")
+        assertTrue(model.state.value.slowSpeech)
+        assertTrue(voice.spoken.isEmpty())
+        assertFalse(gateway.sent.any { it.getString("type") in listOf("repeat", "text.input") })
+        model.voiceEntry(); voice.final("女儿让我慢一点走路")
+        assertEquals("text.input", gateway.sent.last().getString("type"))
+        assertEquals("女儿让我慢一点走路", gateway.sent.last().getJSONObject("payload").getString("text"))
+        model.clear()
+    }
+
+    @Test fun recognizedStopAndEndIgnoreLateResultsAndDoNotAskTheModel() = runBlocking {
+        for (command in listOf("停一下", "结束聊天")) {
+            val gateway = Gateway(); val voice = Voice(); val model = ConversationModel(gateway, this)
+            model.attachVoice(voice); model.bind("family", "elder"); model.start(); yield()
+            gateway.listener(frame(1)); yield()
+            model.voiceEntry(); val lateFinal = voice.final
+            voice.final(command); yield()
+            val sent = gateway.sent.size
+            lateFinal("迟到的识别结果")
+            assertEquals(sent, gateway.sent.size)
+            assertFalse(model.state.value.voiceActive); assertFalse(model.state.value.busy)
+            assertFalse(gateway.sent.any { it.getString("type") == "text.input" })
+            if (command == "结束聊天") {
+                assertEquals(1, gateway.ends); assertFalse(model.state.value.connected)
+            } else {
+                assertEquals("interrupt", gateway.sent.last().getString("type"))
+                assertTrue(model.state.value.connected)
+            }
+            model.clear()
+        }
+    }
+
+    @Test fun typedControlsUseTheSameDispatchAndDoNotEnableAudio() = runBlocking {
+        val gateway = Gateway(); val voice = Voice(); val model = ConversationModel(gateway, this)
+        model.attachVoice(voice); model.bind("family", "elder"); model.start(); yield()
+        gateway.listener(frame(1)); yield()
+        model.input("你好")
+        gateway.listener(frame(2, "assistant.text", JSONObject().put("text", "您好"),
+            gateway.sent.last().getLong("sequence"))); yield()
+        assertTrue(model.input("慢一点"))
+        assertEquals("repeat", gateway.sent.last().getString("type"))
+        gateway.listener(frame(3, "assistant.text", JSONObject().put("text", "复核后的文字"),
+            gateway.sent.last().getLong("sequence"))); yield()
+        assertTrue(model.state.value.slowSpeech)
+        assertFalse(model.state.value.voiceEnabled); assertTrue(voice.spoken.isEmpty())
+        assertEquals(1, gateway.sent.count { it.getString("type") == "text.input" })
         model.clear()
     }
 

@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import org.json.JSONObject
+import org.json.JSONArray
+import java.util.Base64
 import java.time.Instant
 import java.time.ZoneId
 import java.util.UUID
@@ -34,6 +36,7 @@ data class ConversationState(val family: String = "", val user: String = "", val
     val llmMode: String = "", val messages: List<ChatMessage> = emptyList(), val retryText: String = "",
     val recording: Boolean = false, val recognizing: Boolean = false, val speaking: Boolean = false,
     val voiceEnabled: Boolean = false, val partialTranscript: String = "", val slowSpeech: Boolean = false,
+    val voiceName: String = "念念普通声音", val voiceProfileId: String? = null,
     val voiceAllowed: Boolean = false, val speechPending: Boolean = false, val reminderRevision: Long = 0) {
     val companionPhase: CompanionPhase get() = when {
         !connected -> CompanionPhase.IDLE
@@ -61,6 +64,8 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
     private var deadline: Job? = null
     private var voiceDeadline: Job? = null
     private var voice: ConversationVoice? = null
+    private var voiceSelectionPending = false
+    private var playbackId: String? = null
     private var voiceGeneration = 0
     private var replyFloor = 0L
     private var interrupted = false
@@ -75,6 +80,7 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
     }
 
     private fun stopVoice() {
+        playbackId = null
         voiceGeneration++
         voiceDeadline?.cancel()
         voice?.stop()
@@ -104,9 +110,16 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
         current.value = ConversationState(family = family, user = user)
     }
 
+    fun selectVoice(id: String?, name: String) {
+        stopVoice()
+        current.value = current.value.copy(voiceProfileId = id, voiceName = name)
+        if (current.value.connected) voiceSelectionPending = send("voice.select", JSONObject().put("voice_profile_id", id ?: JSONObject.NULL))
+    }
+
     fun setWeatherCity(id: Int?) { weatherCityId = id?.takeIf { it > 0 } }
 
     fun start() {
+        voiceSelectionPending = false
         if (current.value.busy || current.value.connected || current.value.family.isEmpty()) return
         val stamp = ++generation
         current.value = current.value.copy(busy = true, reply = "", message = "正在连接…")
@@ -169,7 +182,7 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
             if (awaitingHandshake) require(type == "session.ready") else require(sequence == serverSequence + 1)
             serverSequence = sequence
             val payload = event.getJSONObject("payload")
-            if (type != "session.ready" && type != "pong" && type != "voice.permission") {
+            if (type !in listOf("session.ready", "pong", "voice.permission", "voice.selected", "tts.cancel")) {
                 if (event.has("in_reply_to")) {
                     val request = event.getLong("in_reply_to")
                     require(request in 1..clientSequence)
@@ -190,7 +203,9 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
                         current.value = current.value.copy(connected = true, busy = false, state = "LISTENING",
                             messages = emptyList(), message = "连接内的聊天记录仅临时显示；重新连接后请重新说明话题。")
                         awaitingHandshake = false
-                        send("session.start", JSONObject().put("client_session_id", UUID.randomUUID().toString()).put("input_mode", "TEXT"))
+                        send("session.start", JSONObject().put("client_session_id", UUID.randomUUID().toString()).put("input_mode", "TEXT")
+                            .put("audio_capabilities", JSONArray().put("pcm_v1"))
+                            .put("voice_profile_id", current.value.voiceProfileId ?: JSONObject.NULL))
                     }
                 }
                 "voice.permission" -> {
@@ -220,7 +235,44 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
                         messages = (current.value.messages + ChatMessage(false, text, labels)).takeLast(20),
                         reminderRevision = current.value.reminderRevision + if (payload.optBoolean("reminders_changed", false)) 1 else 0)
                     if (current.value.voiceEnabled && !interrupted && !current.value.recording && !current.value.recognizing
-                        && event.has("in_reply_to") && event.getLong("in_reply_to") == replyFloor) speak(text)
+                        && event.has("in_reply_to") && event.getLong("in_reply_to") == replyFloor
+                        && payload.optString("speech_mode", "device") == "device") speak(text)
+                }
+                "voice.selected" -> {
+                    voiceSelectionPending = false
+                    stopVoice()
+                    current.value = current.value.copy(voiceProfileId = payload.optString("voice_profile_id").takeUnless { it.isBlank() || it == "null" },
+                        voiceName = payload.optString("display_name", "念念普通声音"))
+                }
+                "tts.cancel" -> stopVoice()
+                "tts.start" -> {
+                    if (voiceSelectionPending || payload.optString("voice_profile_id") != current.value.voiceProfileId) return
+                    if (current.value.voiceAllowed && current.value.voiceEnabled && !interrupted && !current.value.recording && !current.value.recognizing) {
+                        require(payload.getInt("sample_rate") == 24000 && payload.getInt("channels") == 1)
+                        stopVoice()
+                        playbackId = payload.getString("playback_id")
+                        val stamp = voiceGeneration
+                        current.value = current.value.copy(speechPending = true)
+                        voice?.startPcm(
+                            { if (stamp == voiceGeneration) current.value = current.value.copy(speechPending = false, speaking = true) },
+                            { if (stamp == voiceGeneration) stopVoice() },
+                            { message -> if (stamp == voiceGeneration) voiceFailure(message) })
+                    }
+                }
+                "tts.chunk" -> if (payload.getString("playback_id") == playbackId) {
+                    val bytes = Base64.getDecoder().decode(payload.getString("audio"))
+                    require(bytes.size <= 8192 && bytes.size % 2 == 0)
+                    voice?.pcmChunk(bytes)
+                }
+                "tts.end" -> if (payload.getString("playback_id") == playbackId) voice?.endPcm()
+                "tts.error" -> {
+                    if (voiceSelectionPending || payload.optString("voice_profile_id") != current.value.voiceProfileId) return
+                    if (payload.optString("playback_id") == playbackId || playbackId == null) {
+                        stopVoice()
+                        current.value = current.value.copy(message = "家人声音暂不可用，已切换普通声音。")
+                        val fallback = payload.optString("fallback_text")
+                        if (current.value.voiceAllowed && current.value.voiceEnabled && !interrupted && fallback.isNotBlank()) speak(fallback)
+                    }
                 }
                 "warning" -> {
                     val category = payload.getString("reason_category")
@@ -260,8 +312,17 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
     fun input(text: String): Boolean {
         if (!current.value.connected || current.value.busy || current.value.recording || current.value.recognizing
             || text.isBlank() || text.length > 2000) return false
+        when (voiceCommand(text)) {
+            VoiceCommand.REPEAT -> { repeat(); return true }
+            VoiceCommand.SLOWER -> { setSpeechRate(true, replay = true); return true }
+            VoiceCommand.NORMAL_SPEED -> { setSpeechRate(false, replay = true); return true }
+            VoiceCommand.STOP -> { interrupt(); return true }
+            VoiceCommand.END -> { end(); return true }
+            null -> Unit
+        }
         stopVoice()
         val payload = JSONObject().put("text", text).put("timezone", ZoneId.systemDefault().id)
+            .put("speech_rate", if (current.value.slowSpeech) 0.8 else 1.0)
         weatherCityId?.let { payload.put("weather_city_id", it) }
         if (!send("text.input", payload)) return false
         replyFloor = clientSequence
@@ -280,13 +341,17 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
         interrupted = true
         if (send("interrupt")) {
             replyFloor = clientSequence
-            current.value = current.value.copy(reply = "", busy = false, state = "IDLE", message = "已停止。可以重新说话或打字。")
+            current.value = current.value.copy(busy = false, state = "IDLE", message = "已停止。可以重新说话或打字。")
         }
     }
     fun repeat() {
-        if (!current.value.busy && !current.value.recording && !current.value.recognizing) {
+        if (current.value.connected && !current.value.busy && !current.value.recording && !current.value.recognizing) {
             stopVoice()
-            if (send("repeat")) {
+            if (current.value.reply.isEmpty()) {
+                current.value = current.value.copy(state = "IDLE", message = "还没有可重播的回答，请先说话或打字。")
+                return
+            }
+            if (send("repeat", JSONObject().put("speech_rate", if (current.value.slowSpeech) 0.8 else 1.0))) {
                 replyFloor = clientSequence; interrupted = false
                 current.value = current.value.copy(busy = true, state = "THINKING", message = "正在准备重播…")
                 val stamp = generation
@@ -383,8 +448,14 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
     }
 
     fun toggleSpeechRate() {
-        current.value = current.value.copy(slowSpeech = !current.value.slowSpeech)
-        if (current.value.speaking || current.value.speechPending) repeat()
+        setSpeechRate(!current.value.slowSpeech, current.value.speaking || current.value.speechPending)
+    }
+
+    private fun setSpeechRate(slow: Boolean, replay: Boolean) {
+        current.value = current.value.copy(slowSpeech = slow,
+            state = if (current.value.busy) "THINKING" else current.value.state,
+            message = if (slow) "已设为慢速朗读。" else "已恢复正常语速。")
+        if (replay && current.value.reply.isNotEmpty()) repeat()
     }
 
     private fun updateVoicePermission(allowed: Boolean) {

@@ -37,8 +37,10 @@ x-websocket-channels:
       $ref: '#/components/schemas/WebSocketClientMessage'
     serverMessages:
       $ref: '#/components/schemas/WebSocketServerMessage'
-    description: Implemented authenticated owner-only TEXT/state channel. Android device ASR sends its final transcript as
-      text.input and device TTS reads assistant.text. Raw audio is not uploaded; Audio/ASR/TTS names in message enums remain
+    description: Implemented authenticated owner-only TEXT/state channel. Android dispatches exact speech/text control
+      commands locally, sends other final transcripts as text.input and device TTS reads assistant.text.
+      Repeat and speech-rate replay use repeat; stop uses interrupt and end uses the existing REST end operation.
+      Raw audio is not uploaded; Audio/ASR/TTS names in message enums remain
       reserved or rejected as unavailable. Initial session.ready payload includes llm_mode (mock or real) and voice_allowed
       (boolean, owner's explicit self VOICE consent). voice.permission carries allowed (boolean) when this consent changes
       or expires; the server rechecks it each loop (at most one second idle wait). Clients stop device speech on denial. Permission
@@ -48,6 +50,9 @@ x-websocket-channels:
       replay input. Solicited events carry in_reply_to with the originating client sequence, including asynchronous turn results
       and interrupt acknowledgements. The initial ready, unsolicited invitations and protocol rejection errors may omit it.
       Clients validate server sequence continuity before discarding events older than the latest input or interrupt.
+      interrupt cancels pending generation but retains the last completed reply and its permission dependencies within
+      this connection, allowing a spoken repeat after device ASR starts. New text generation clears replay eligibility;
+      cancelled unfinished output is never replayable. repeat/slow_down revalidate memory permissions before publishing.
       text.input payload accepts text plus optional timezone (valid IANA name, default Asia/Shanghai) and
       weather_city_id (public Open-Meteo city ID, positive integer up to 2147483647). Daily date/time, today's
       forecast and owner reminders use deterministic data queries, bypassing RAG and the LLM in both real and Mock modes.
@@ -2531,6 +2536,381 @@ paths:
                       - AVAILABLE
                       - MOCK
                       - DISABLED
+  /voice-profiles:
+    get:
+      tags:
+      - Family voices
+      summary: Listing
+      operationId: listVoiceProfiles
+      parameters:
+      - name: family_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Family Id
+      - name: available
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Available
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyVoiceHTTPValidationError'
+    post:
+      tags:
+      - Family voices
+      summary: Create
+      operationId: createVoiceProfile
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FamilyVoiceCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyVoiceHTTPValidationError'
+  /voice-preferences:
+    get:
+      tags:
+      - Family voices
+      summary: Preference
+      operationId: getVoicePreference
+      parameters:
+      - name: family_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Family Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyVoiceHTTPValidationError'
+    put:
+      tags:
+      - Family voices
+      summary: Set Preference
+      operationId: setVoicePreference
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FamilyVoicePreference'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyVoiceHTTPValidationError'
+  /voice-profiles/{profile_id}:
+    get:
+      tags:
+      - Family voices
+      summary: Detail
+      operationId: getVoiceProfile
+      parameters:
+      - name: profile_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Profile Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyVoiceHTTPValidationError'
+    delete:
+      tags:
+      - Family voices
+      summary: Revoke
+      operationId: revokeVoiceProfile
+      parameters:
+      - name: profile_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Profile Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyVoiceHTTPValidationError'
+  /voice-profiles/{profile_id}/sample:
+    put:
+      tags:
+      - Family voices
+      summary: Upload
+      operationId: uploadVoiceSample
+      parameters:
+      - name: profile_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Profile Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyVoiceHTTPValidationError'
+    get:
+      tags:
+      - Family voices
+      summary: Content
+      operationId: downloadVoiceSample
+      parameters:
+      - name: profile_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Profile Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyVoiceHTTPValidationError'
+  /voice-profiles/{profile_id}/approve:
+    post:
+      tags:
+      - Family voices
+      summary: Approve
+      operationId: approveVoiceProfile
+      parameters:
+      - name: profile_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Profile Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyVoiceHTTPValidationError'
+  /voice-profiles/{profile_id}/activate:
+    post:
+      tags:
+      - Family voices
+      summary: Activate
+      operationId: activateVoiceProfile
+      parameters:
+      - name: profile_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Profile Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyVoiceHTTPValidationError'
+  /voice-profiles/{profile_id}/preview:
+    get:
+      tags:
+      - Family voices
+      summary: Content
+      operationId: previewVoiceProfile
+      parameters:
+      - name: profile_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Profile Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyVoiceHTTPValidationError'
 components:
   securitySchemes:
     bearerAuth:
@@ -4513,6 +4893,7 @@ components:
             - slow_down
             - session.end
             - ping
+            - voice.select
     WebSocketServerMessage:
       allOf:
       - $ref: '#/components/schemas/WebSocketEnvelope'
@@ -4533,6 +4914,9 @@ components:
             - assistant.text
             - tts.start
             - tts.end
+            - tts.chunk
+            - tts.error
+            - voice.selected
             - signal.created
             - warning
             - error
@@ -4687,3 +5071,76 @@ components:
                   - string
                   - 'null'
                   format: uuid
+    FamilyVoiceCreate:
+      properties:
+        family_id:
+          type: string
+          format: uuid
+          title: Family Id
+        owner_user_id:
+          type: string
+          format: uuid
+          title: Owner User Id
+        display_name:
+          type: string
+          maxLength: 60
+          minLength: 1
+          title: Display Name
+      additionalProperties: false
+      type: object
+      required:
+      - family_id
+      - owner_user_id
+      - display_name
+      title: Create
+    FamilyVoiceHTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/FamilyVoiceValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    FamilyVoicePreference:
+      properties:
+        family_id:
+          type: string
+          format: uuid
+          title: Family Id
+        voice_profile_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Voice Profile Id
+        cloud_tts_allowed:
+          type: boolean
+          title: Cloud Tts Allowed
+      additionalProperties: false
+      type: object
+      required:
+      - family_id
+      - cloud_tts_allowed
+      title: Preference
+    FamilyVoiceValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError

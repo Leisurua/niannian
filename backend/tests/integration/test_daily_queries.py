@@ -57,7 +57,9 @@ def test_voice_reminder_done_later_and_worker_use_same_persistent_execution(syst
         assert '没有重复更改' in again['text'] and not again.get('reminders_changed')
         later = ask(ws, cid, 6, '第二项二十分钟后再提醒我', timezone='UTC')
         assert later['reminders_changed'] is True and '再提醒' in later['text']
-        ws.send_json(ws_frame(cid, 'repeat', 7))
+        ws.send_json(ws_frame(cid, 'interrupt', 7))
+        assert ws.receive_json()['in_reply_to'] == 7
+        ws.send_json(ws_frame(cid, 'repeat', 8))
         assert ws.receive_json()['payload']['text'] == later['text']
         assert ws.receive_json()['payload']['state'] == 'IDLE'
     with engine.connect() as connection:
@@ -76,6 +78,27 @@ def test_voice_reminder_done_later_and_worker_use_same_persistent_execution(syst
     with engine.connect() as connection:
         assert connection.execute(text("SELECT count(*) FROM reminder_execution WHERE feedback_status='PENDING'")).scalar() == 1
         assert connection.execute(text('SELECT count(*) FROM reminder_execution')).scalar() == 2
+
+
+def test_spoken_replay_after_interrupt_refreshes_daily_query(system, monkeypatch):
+    client, _, _, _ = system
+    home = household(client)
+    cid = start(client, home)
+    now = utcnow()
+    monkeypatch.setattr(daily, 'utcnow', lambda: now)
+    with client.websocket_connect('/v1/ws/conversations/' + cid, headers=home[4]) as ws:
+        handshake(ws, cid)
+        original = ask(ws, cid, 2, '现在几点', timezone='UTC')
+        ws.send_json(ws_frame(cid, 'interrupt', 3))
+        assert ws.receive_json()['in_reply_to'] == 3
+        monkeypatch.setattr(daily, 'utcnow', lambda: now + timedelta(hours=1))
+        ws.send_json(ws_frame(cid, 'repeat', 4))
+        assert ws.receive_json()['payload']['state'] == 'THINKING'
+        refreshed = ws.receive_json()
+        assert refreshed['in_reply_to'] == 4
+        assert refreshed['payload']['source_labels'] == original['source_labels']
+        assert refreshed['payload']['text'] != original['text']
+        assert ws.receive_json()['payload']['state'] == 'IDLE'
 
 
 def test_dates_and_forecast_bypass_unavailable_llm_and_missing_city_is_explicit(system, monkeypatch):

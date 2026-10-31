@@ -733,3 +733,7 @@ CHECK 限制状态为 UPLOADING、QUEUED、STYLIZING、PREPARING、RENDERING、R
 迁移 `20261024_interaction_stats` 新增，模型为 `modules/report/models.py`。主键 `(conversation_id, sequence)` 保证同一成功轮次只记录一次；字段 `family_id`、`owner_user_id`、`consent_id` 关联当前家庭、长辈和本人统计授权，`occurred_at` 是服务端完成时间，`duration_seconds` 为 0—300 秒，`emotions`、`topics` 是固定分类代码数组，`simulated` 标记 Mock，`retention_until` 用于到期过滤和 worker 清理。没有原文、摘要文本、自由主题或音频字段。索引为 `(family_id, owner_user_id, occurred_at)`。
 
 同一迁移将 `INTERACTION_STATS` 加入 consent scope；已有授权不会自动开启统计。删除统计时更新 conversation.provider_metadata 中的 `stats_cleared_at`，阻止删除前已经在途的回复重新写回记录。保留期与访问条件见 [security](security.md)，统计口径见 [ai](ai.md)。
+
+## 家人音色
+
+voice_profile 保存每次制作版本、家庭/声音本人/录入者、样本哈希与私有对象键、本人批准时间、状态、供方工作空间/模型/音色句柄、到期和失败原因。每个家庭与声音本人只有一个 ACTIVE 版本；新版本启用后撤回旧版本并迁移选择。voice_preference 以家庭和老人账号为键，保存音色选择及 cloud_tts_allowed。task_outbox 增加 VOICE_GENERATE、VOICE_CLEANUP；声音原文和会话合成音频不写数据库。

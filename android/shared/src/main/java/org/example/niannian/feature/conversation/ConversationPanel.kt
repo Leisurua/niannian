@@ -150,9 +150,13 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
                     "mock" -> "闲聊为 Mock 演示 · 日期、天气和提醒查询使用实际数据"
                     else -> "连接后可说话或打字"
                 }, color = MaterialTheme.colorScheme.primary)
+                org.example.niannian.feature.voice.LocalVoiceProfiles.current?.let {
+                    org.example.niannian.feature.voice.VoicePicker(it, model, familyId, userId)
+                }
                 Text("我是 AI，不是真实家人。会话回顾需要本人明确授权；不会自动联系家人。", fontSize = 18.sp)
                 Text("可以问“今天几号”“今天会下雨吗”“今天有什么安排”，再说“第一项完成了”或“第一项稍后处理”。天气使用首页选择的城市。", fontSize = 18.sp)
-                Text("点击说话会使用设备语音服务，可能联网处理声音和朗读内容。应用不保存录音；识别文字交给 AI。请勿说出密码或验证码。", fontSize = 18.sp)
+                Text("点击说话后可说“再说一遍”“慢一点”“恢复语速”“停一下”或“结束聊天”。播放时不收音，请先点“打断并说话”；也可以直接点停止。", fontSize = 18.sp)
+                Text("点击说话会使用设备语音服务，可能联网处理声音和朗读内容。应用不保存录音；控制口令直接执行，其他文字用于查询或 AI 对话。请勿说出密码或验证码。", fontSize = 18.sp)
                 Column(Modifier.fillMaxWidth().heightIn(max = 360.dp).verticalScroll(chatScroll),
                     verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     state.messages.forEach { item ->
