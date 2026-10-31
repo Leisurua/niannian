@@ -28,7 +28,7 @@ fun FamilyVoicesPanel(model: VoiceProfilesModel, family: String, user: String, m
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
-    val recorder = remember { VoiceRecorder() }
+    val recorder = remember(context) { VoiceRecorder(context.applicationContext) }
     val player = remember { PcmPlayer() }
     var recording by remember { mutableStateOf(false) }
     var bytes by remember { mutableStateOf<ByteArray?>(null) }

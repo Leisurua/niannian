@@ -1,5 +1,8 @@
 package org.example.niannian.feature.voice
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
 import android.media.*
 import android.os.Handler
 import android.os.Looper
@@ -67,20 +70,31 @@ class PcmPlayer {
     }
 }
 
-class VoiceRecorder {
+class VoiceRecorder(private val context: Context) {
     @Volatile private var active = false
     @Volatile private var recorder: AudioRecord? = null
     private var thread: Thread? = null
     private var result: ByteArray? = null
     fun start() {
         check(!active)
+        if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            throw SecurityException("请先允许麦克风权限。")
+        }
         val minimum = AudioRecord.getMinBufferSize(24000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         require(minimum > 0)
         val input = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, 24000,
             AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(minimum, 8192))
-        require(input.state == AudioRecord.STATE_INITIALIZED)
+        if (input.state != AudioRecord.STATE_INITIALIZED) {
+            input.release()
+            error("录音设备无法初始化。")
+        }
         recorder = input; result = null; active = true
-        input.startRecording()
+        try {
+            input.startRecording()
+        } catch (error: Exception) {
+            active = false; recorder = null; input.release()
+            throw error
+        }
         thread = Thread {
             val bytes = ByteArrayOutputStream()
             try {
