@@ -5,7 +5,7 @@ info:
   description: Current REST operations implemented by NianNian. Public DTOs are not ORM entities. Authentication is Demo-only;
     conversation input is TEXT with explicit Mock or configured real LLM mode. Family device registration, human text messages
     and recipient receipts are implemented. Weather, consented interaction statistics, account ZIP export and account deletion with authenticated receipts are implemented. External-copy completion requires verified operator evidence;
-    see roadmap.md. GET /health, /docs and /openapi.json are unversioned runtime endpoints. Provider metadata, vectors, raw
+    see roadmap.md. GET /health, /health/live, /health/ready, /metrics, /docs and /openapi.json are unversioned runtime endpoints. Provider metadata, vectors, raw
     audio and transcripts are not exposed as public resource content.
 servers:
 - url: /v1

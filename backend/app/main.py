@@ -2,12 +2,13 @@ import logging
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from app.platform.config import get_settings
 from app.platform.errors import AppError, app_error_response, error_response
 from app.platform.logging import configure_logging, log_event
 from app.platform.request_id import RequestIdMiddleware
+from app.platform.metrics import RequestMetrics, RequestMetricsMiddleware
 
 
 settings = get_settings()
@@ -16,6 +17,9 @@ logger = logging.getLogger("nianian.api")
 
 app = FastAPI(title="NianNian API", version="0.1.0", docs_url="/docs", redoc_url="/redoc")
 app.add_middleware(RequestIdMiddleware)
+request_metrics = RequestMetrics()
+app.state.request_metrics = request_metrics
+app.add_middleware(RequestMetricsMiddleware, metrics=request_metrics)
 
 from app.modules.auth.api import router as auth_router
 from app.modules.family.api import router as family_router
@@ -103,6 +107,32 @@ async def handle_unexpected_error(request: Request, exc: Exception) -> JSONRespo
     )
 
 
+async def live_payload(request: Request) -> dict[str, str]:
+    return {"status": "ok", "environment": settings.app_env, "request_id": request.state.request_id}
+
+
 @app.get("/health", tags=["system"])
 async def health(request: Request) -> dict[str, str]:
-    return {"status": "ok", "environment": settings.app_env, "request_id": request.state.request_id}
+    return await live_payload(request)
+
+
+@app.get("/health/live", tags=["system"])
+async def live(request: Request) -> dict[str, str]:
+    return await live_payload(request)
+
+
+@app.get("/health/ready", tags=["system"])
+async def ready(request: Request):
+    from app.platform.health import readiness
+    is_ready, components = await readiness(request.app, settings)
+    payload = {"status": "ready" if is_ready else "not_ready", "environment": settings.app_env,
+               "components": components, "request_id": request.state.request_id}
+    return JSONResponse(payload, status_code=200 if is_ready else 503)
+
+
+@app.get('/metrics', tags=['system'], response_class=PlainTextResponse)
+async def metrics(request: Request):
+    from app.platform.health import readiness
+    from app.platform.metrics import exposition
+    is_ready, components = await readiness(request.app, settings)
+    return exposition(request.app.state.request_metrics.snapshot(), is_ready, components)

@@ -15,8 +15,8 @@ done
 [[ -n "${host}" && -f "${certificate}" ]] || die "Host and certificate are required."
 curl_args=(--fail --silent --show-error --max-time 10 --cacert "${certificate}")
 response="$(curl "${curl_args[@]}" --resolve "${host}:${https_port}:127.0.0.1" \
-  "https://${host}:${https_port}/health")"
-grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' <<<"${response}" || die "Unexpected HTTPS health response."
+  "https://${host}:${https_port}/health/ready")"
+grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"' <<<"${response}" || die "Unexpected HTTPS readiness response."
 websocket_status="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 10 \
   --cacert "${certificate}" --http1.1 --header 'Connection: Upgrade' --header 'Upgrade: websocket' \
   --header 'Sec-WebSocket-Version: 13' --header 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \

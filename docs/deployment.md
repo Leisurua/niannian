@@ -2,7 +2,7 @@
 
 ## 账户生命周期运维
 
-升级 API/worker 前，在 `backend/` 运行 `python -m alembic upgrade head`（当前头 `20261101_report_semantics`，包含账户生命周期、家人音色、主动求助及主题分类来源迁移），随后重启二者。当前入口是 REST API，字段和凭证找回方式见 [OpenAPI](openapi.yaml)；Android/Windows 尚未增加账户管理界面。导出文件含本人资料，客户端应通过系统文件保存器交由本人选择位置；删除前先保存独立回执凭证，受理后按已有退出流程清理本地会话和缓存。
+升级 API/worker 前，在 `backend/` 运行 `python -m alembic upgrade head`（当前头 `20261101_operational_readiness`，包含账户生命周期、家人音色、主动求助、主题分类来源及 worker 心跳迁移），随后重启二者。当前入口是 REST API，字段和凭证找回方式见 [OpenAPI](openapi.yaml)；Android/Windows 尚未增加账户管理界面。导出文件含本人资料，客户端应通过系统文件保存器交由本人选择位置；删除前先保存独立回执凭证，受理后按已有退出流程清理本地会话和缓存。
 
 可配置 `BACKUP_RETENTION_DAYS=30`、`AUDIT_RETENTION_DAYS=90`、`TASK_RETENTION_DAYS=7`、`ACCOUNT_EXPORT_MAX_BYTES=104857600`。`BACKUP_DIRECTORY` 默认为空；只有显式指定的私有目录会启用自动备份期限清理。备份文件须命名为 `niannian-backup-YYYYMMDDTHHMMSSZ.dump`、`.sql.gz`、`.tar.gz` 或 `.zip`，时间为备份快照的 UTC 时间，不因复制而改写；写入完成后才使用该名称。清理不递归、不跟随符号链接/目录联接、不删除其他文件；目录必须仅由可信运维账号写入。此功能不自动创建备份。
 
@@ -55,7 +55,7 @@ python -m app --reload
 python -m app.worker.main --serve
 ```
 
-API 根地址 `http://127.0.0.1:8000`；`/docs`、`/openapi.json` 查看当前运行接口。`/health` 只检查 API 活性，不证明数据库、存储或 worker 正常。摘要、通知和索引需要 worker 实际运行，`--once` 可执行一次周期。Demo 登录支持 demo-child、demo-elder、demo-caregiver、demo-other；通过正常客户端/API 建家并授权，不运行依赖未实现表的 seed。
+API 根地址 `http://127.0.0.1:8000`；`/docs`、`/openapi.json` 查看当前运行接口。`/health` 与 `/health/live` 只检查 API 进程；`/health/ready` 检查数据库、当前迁移头、私有存储和 worker 持久心跳，并附带 task_outbox 的等待、运行、重试和 DEAD 数量。任一依赖不可用或 worker 心跳超过 `WORKER_STALE_SECONDS` 时返回 503；DEAD 任务显示 degraded，但不把仍能接收请求的 API 判为未就绪。`/metrics` 输出无用户/路径标签的 Prometheus 文本，包括请求量、5xx、延迟、依赖状态、心跳年龄及任务积压；Linux Compose 以 ready 和 worker healthcheck 标记异常，实际通知策略由部署侧监控配置。容器内可运行 `python -m app.worker.main --healthcheck` 单独检查 worker。摘要、通知和索引需要 worker 实际运行，`--once` 可执行一次周期。Demo 登录支持 demo-child、demo-elder、demo-caregiver、demo-other；通过正常客户端/API 建家并授权，不运行依赖未实现表的 seed。
 
 APP_ENV 从进程环境选择 dev/test/demo，应用读取 `backend/config/<环境>.env`，再加载忽略提交的根 `.env`；环境变量优先。demo 要求 demo_data=true 且 provider_mode=mock、Embedding 为 Mock；test 禁止真实外部 LLM，但允许显式启用本地 Embedding 做离线验证。填入供应商密钥不会自动启用真实 AI。
 
@@ -298,7 +298,7 @@ docker compose --env-file infra/linux/.env -f infra/linux/docker-compose.yml dow
 
 - 登录不可用：检查 APP_ENV、Mock/Demo 配置和签名密钥；API 与 worker 必须使用同一配置。
 - 文字正常而照片失败：检查 S3_ENDPOINT、客户端可达的 S3_PUBLIC_ENDPOINT、私有桶凭据及 PUBLIC_BASE_URL。
-- 索引/摘要/通知不更新：检查 worker 和 task_outbox；失败会重试或进入 DEAD，不能只看 `/health`。
+- 索引/摘要/通知不更新：检查 `/health/ready` 的 worker、tasks 组件和 task_outbox；失败会重试或进入 DEAD。
 - Linux API 未启动：先查看 migrate、api 日志；Android 连不上时先核对 HTTPS/回环限制和端口可达性。
 
 开发验证统一用 `scripts/verify.py`，只运行关联范围；测试库及真实 MinIO 参数见 [测试说明](../tests/README.md)。没有执行的真机、供应商或部署检查如实写未验证，不新建多份报告。

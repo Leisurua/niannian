@@ -69,6 +69,8 @@ class Settings(BaseSettings):
     backup_directory: str | None = None
     audit_retention_days: int = Field(default=90, ge=7, le=365)
     task_retention_days: int = Field(default=7, ge=1, le=30)
+    worker_heartbeat_seconds: int = Field(default=5, ge=1, le=30)
+    worker_stale_seconds: int = Field(default=45, ge=10, le=300)
     account_export_max_bytes: int = Field(default=104857600, ge=1048576, le=1073741824)
     avatar_generation_enabled: bool = False
     avatar_image_provider: Literal['qwen', 'doubao'] = 'qwen'
@@ -87,6 +89,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def keep_demo_fictional(self) -> "Settings":
+        if self.worker_stale_seconds < self.worker_heartbeat_seconds * 2:
+            raise ValueError('WORKER_STALE_SECONDS must be at least twice WORKER_HEARTBEAT_SECONDS')
         if self.avatar_image_base_url:
             url = urlsplit(self.avatar_image_base_url)
             if url.scheme != 'https' or not url.hostname or url.username or url.password or url.query or url.fragment:

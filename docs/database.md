@@ -700,7 +700,11 @@ UNIQUE `(message_id, recipient_member_id)`，索引 `(recipient_member_id, messa
 
 ## 迁移和生命周期
 
-保留现有全部 Alembic 历史，当前迁移头为 `20261026_avatar_jobs`。从 backend/ 运行 `python -m alembic upgrade head`；修改数据库时新增兼容迁移，不因为文档整理重写旧迁移或删除已有数据。普通功能修改不要求空库回退演练。
+保留现有全部 Alembic 历史，当前迁移头为 `20261101_operational_readiness`。从 backend/ 运行 `python -m alembic upgrade head`；修改数据库时新增兼容迁移，不因为文档整理重写旧迁移或删除已有数据。普通功能修改不要求空库回退演练。
+
+### service_heartbeat
+
+每种长运行服务只保留当前实例的 `instance_id`、`started_at` 和 `last_seen_at`。普通 worker 每隔数秒 UPSERT `service=worker`；正常退出仅在实例仍为本人时删除，避免旧实例覆盖或删除新实例心跳。`/health/ready` 和容器 healthcheck 只公开状态与心跳年龄，不公开实例标识。
 
 撤权/删除先隐藏，后台清理向量、对象和通知；已删除行、外部字节和副本的清理是不同步骤。账户删除/导出和保留期规则见 [security](security.md)，未覆盖的外部副本和端侧入口见 [roadmap](roadmap.md)。
 
