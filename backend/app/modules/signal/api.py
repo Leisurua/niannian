@@ -18,6 +18,22 @@ class SignalActionInput(BaseModel):
     expected_status: SignalStatus
 
 
+class HelpRequestInput(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    family_id: UUID
+    source: Literal['BUTTON', 'VOICE', 'BLE']
+    kind: Literal['CONTACT_FAMILY', 'PHYSICAL_DISCOMFORT'] = 'CONTACT_FAMILY'
+
+
+@router.post('/help-requests', status_code=201, operation_id='createElderHelpRequest')
+async def create_help_request(body: HelpRequestInput, request: Request, response: Response,
+    idempotency_key: str = Header(), actor=Depends(current_identity), db=Depends(transaction)):
+    response.headers['Cache-Control'] = 'no-store'
+    return await service.create_help_request(
+        db, actor, body, idempotency_key, request.state.request_id, get_settings()
+    )
+
+
 @router.post('/{event_id}/actions', operation_id='handleSignalEvent')
 async def handle_action(event_id: UUID, body: SignalActionInput, request: Request, response: Response,
     idempotency_key: str = Header(), actor=Depends(current_identity), db=Depends(transaction)):

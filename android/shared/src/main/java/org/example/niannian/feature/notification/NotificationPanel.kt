@@ -49,15 +49,18 @@ fun NotificationPanel(model: NotificationModel, family: String, user: String, su
     var quietEnd by remember(state.quietEnd) { mutableStateOf(state.quietEnd) }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(if (elder) "家人的处理进度" else "家人关注事件", fontSize = 24.sp)
-            Text("前台每 30 秒同步。识别提示不代表事实，处理结果由家属核实。")
+            Text(if (elder) "我的求助与家人处理进度" else "家人关注事件", fontSize = 24.sp)
+            Text(if (elder) "前台每 30 秒同步。这里显示求助是否发出，以及家人确认关注、联系或解决的进度。"
+                else "前台每 30 秒同步。识别提示不代表事实，处理结果由家属核实。")
             if (!elder) subjects.forEach { (id, name) -> OutlinedButton(onClick = { selected = id }, enabled = !state.busy) { Text(name) } }
+            if (elder) Button(onClick = { model.requestHelp() }, enabled = !state.busy) { Text("请家人尽快联系我") }
             Text(state.message)
             Button(onClick = { model.refresh() }, enabled = !state.busy) { Text("刷新关注事件") }
             if (state.loaded && state.items.isEmpty() && state.detail.isEmpty()) Text("当前没有可查看的关注事件。")
             state.items.forEach { item ->
                 Text(item.explanation, fontSize = 20.sp)
                 Text("处理状态：${signalStatusLabel(item.eventStatus)}")
+                if (item.failureCode.isNotBlank()) Text(helpFailureLabel(item.failureCode), color = MaterialTheme.colorScheme.error)
                 if (!elder && item.deliveries.isEmpty()) Text("暂无已发布的通知，可直接处理事件")
                 item.deliveries.forEach { Text(it) }
                 Button(onClick = { model.read(item) }, enabled = !state.busy) { Text("查看事件") }
@@ -67,6 +70,7 @@ fun NotificationPanel(model: NotificationModel, family: String, user: String, su
                 Text("处理状态：${signalStatusLabel(event.status)}", fontSize = 20.sp)
                 if (event.actionedAt.isNotBlank()) Text("最近处理：${event.actionedAt}")
                 if (event.resolvedAt.isNotBlank()) Text("解决时间：${event.resolvedAt}")
+                if (event.failureCode.isNotBlank()) Text(helpFailureLabel(event.failureCode), color = MaterialTheme.colorScheme.error)
                 event.history.forEach { Text(it) }
                 if ("ACKNOWLEDGE" in event.actions) Button(onClick = { model.handle("ACKNOWLEDGE") }, enabled = !state.busy) { Text("确认关注") }
                 if (event.canHandle && event.status in listOf("ACKNOWLEDGED", "CONTACTED")) {
@@ -119,6 +123,12 @@ fun NotificationPanel(model: NotificationModel, family: String, user: String, su
             confirmButton = { TextButton(onClick = { confirmation = null; model.handle(action) }) { Text("确认保存") } },
             dismissButton = { TextButton(onClick = { confirmation = null }) { Text("取消") } })
     }
+}
+
+private fun helpFailureLabel(code: String) = when (code) {
+    "NO_AUTHORIZED_RECIPIENT" -> "暂时没有已获授权且可接收通知的家人。"
+    "ALL_NOTIFICATION_CHANNELS_FAILED" -> "所有通知渠道均未成功，请改用电话或当面联系。"
+    else -> "通知暂未成功，请改用电话或当面联系。"
 }
 
 fun signalStatusLabel(status: String) = when (status) {

@@ -44,6 +44,7 @@ class SignalEvent(Base):
     last_action_by: Mapped[UUID | None] = mapped_column(ForeignKey('user.id', ondelete='SET NULL'))
     last_action_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     resolution_code: Mapped[str | None] = mapped_column(String(32))
+    failure_code: Mapped[str | None] = mapped_column(String(64))
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     retention_until: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

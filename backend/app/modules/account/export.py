@@ -87,7 +87,7 @@ async def build_export(db, actor, storage, settings, request_id):
     data['collections']['family_contact'] = [dict(family_id=row.family_id, **contact_view(row))
         for row in await rows(FamilyContact, FamilyContact.user_id == uid)]
     await add(SignalEvent, (SignalEvent.owner_user_id == uid) & SignalEvent.deleted_at.is_(None) & (SignalEvent.retention_until > now),
-        'id family_id type severity status detected_at resolved_at resolution_code')
+        'id family_id type severity status detected_at resolved_at resolution_code failure_code')
     await add(FamilyMessage, FamilyMessage.sender_user_id == uid, 'id family_id destination_role priority text created_at')
     await add(MessageDelivery, MessageDelivery.recipient_member_id.in_(select(FamilyMember.id).where(FamilyMember.user_id == uid)),
         'message_id received_at read_at')

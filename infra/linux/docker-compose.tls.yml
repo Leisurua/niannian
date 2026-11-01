@@ -1,0 +1,20 @@
+name: niannian-linux
+
+services:
+  gateway:
+    image: nginx:1.27.4-alpine
+    ports:
+      - "0.0.0.0:${HTTPS_PORT:-443}:443"
+      - "0.0.0.0:${S3_HTTPS_PORT:-9443}:9443"
+    volumes:
+      - ./tls/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ${TLS_CERT_FILE}:/etc/nginx/tls/fullchain.pem:ro
+      - ${TLS_KEY_FILE}:/etc/nginx/tls/private.key:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - backend

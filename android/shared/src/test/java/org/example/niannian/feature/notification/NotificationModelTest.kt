@@ -54,6 +54,12 @@ class NotificationModelTest {
             }
             return event().put("actioned_at", "2026-10-23T04:00:00Z")
         }
+        override suspend fun help(body: JSONObject): JSONObject {
+            assertEquals("family", body.getString("family_id"))
+            assertEquals("BUTTON", body.getString("source"))
+            eventStatus = "VALIDATED"; canHandle = false
+            return event()
+        }
     }
     @Test fun refreshAndReadShowOnlyCurrentAuthorizedFamily() = runBlocking {
         val gateway = Gateway(); val model = NotificationModel(gateway, this)
@@ -185,6 +191,17 @@ class NotificationModelTest {
         assertEquals("CONTACTED", model.state.value.event!!.status)
         gateway.fail = true; model.refresh(); yield()
         assertTrue(model.state.value.items.isEmpty()); assertNull(model.state.value.event)
+        model.clear()
+    }
+    @Test fun elderCanSubmitHelpAndSeeProgressWithoutReadingFamilyPreferences() = runBlocking {
+        val gateway = Gateway(); val model = NotificationModel(gateway, this)
+        model.bind("family", "elder", "elder"); model.refresh(); yield()
+        assertTrue(model.state.value.loaded)
+        assertEquals(1, model.state.value.items.size)
+        model.requestHelp(); yield()
+        assertEquals("VALIDATED", model.state.value.event!!.status)
+        assertTrue(model.state.value.event!!.actions.isEmpty())
+        assertTrue(model.state.value.message.contains("正在通知"))
         model.clear()
     }
 }

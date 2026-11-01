@@ -15,13 +15,16 @@ interface NotificationGateway {
     suspend fun call(path: String, method: String = "GET", body: JSONObject? = null, version: Long? = null): JSONObject
     suspend fun read(id: String, key: String): JSONObject
     suspend fun act(id: String, body: JSONObject, key: String): JSONObject
+    suspend fun help(body: JSONObject): JSONObject
 }
 
 data class InboxItem(val id: String, val eventId: String, val status: String, val channel: String,
-    val summary: String, val explanation: String, val eventStatus: String = "", val deliveries: List<String> = emptyList())
+    val summary: String, val explanation: String, val eventStatus: String = "", val deliveries: List<String> = emptyList(),
+    val failureCode: String = "")
 data class EventContact(val name: String, val phone: String, val emergency: Boolean)
 data class SignalDetail(val id: String, val status: String, val canHandle: Boolean, val actionedAt: String,
-    val resolvedAt: String, val contacts: List<EventContact> = emptyList(), val history: List<String> = emptyList()) {
+    val resolvedAt: String, val contacts: List<EventContact> = emptyList(), val history: List<String> = emptyList(),
+    val failureCode: String = "") {
     val actions: List<String> get() = if (!canHandle) emptyList() else when (status) {
         "VALIDATED", "NOTIFIED", "NOTIFICATION_FAILED" -> listOf("ACKNOWLEDGE", "FALSE_POSITIVE")
         "ACKNOWLEDGED" -> listOf("CONTACT", "FALSE_POSITIVE", "RESOLVE")
@@ -124,7 +127,8 @@ class NotificationModel(private val gateway: NotificationGateway, private val sc
                 "$channel：$result"
             }
             values.add(InboxItem(item?.getString("id").orEmpty(), eventId, status,
-                item?.getString("channel").orEmpty(), summary, explanation, event.getString("status"), deliveries))
+                item?.getString("channel").orEmpty(), summary, explanation, event.getString("status"), deliveries,
+                event.optString("failure_code")))
         }
         if (stamp == generation) {
             if (preference != null) setting(preference)
@@ -187,7 +191,20 @@ class NotificationModel(private val gateway: NotificationGateway, private val sc
                 val phone = it.getString("phone"); require(phone.matches(Regex("\\+[1-9][0-9]{6,14}")))
                 EventContact(it.getString("display_name"), phone, it.getBoolean("emergency")) } },
             (0 until history.length()).map { index -> history.getJSONObject(index).let {
-                "${it.optString("actor_display_name", "家庭成员")} · ${signalActionLabel(it.getString("action"))} · ${it.getString("occurred_at")}" } }))
+                "${it.optString("actor_display_name", "家庭成员")} · ${signalActionLabel(it.getString("action"))} · ${it.getString("occurred_at")}" } },
+            detail.optString("failure_code")))
+    }
+    fun requestHelp(source: String = "BUTTON", kind: String = "CONTACT_FAMILY") = action { stamp ->
+        require(source in listOf("BUTTON", "VOICE", "BLE"))
+        require(kind in listOf("CONTACT_FAMILY", "PHYSICAL_DISCOMFORT"))
+        val family = current.value.family
+        val result = gateway.help(JSONObject().put("family_id", family).put("source", source).put("kind", kind))
+        if (stamp != generation) return@action
+        openedEvent = result.getString("id")
+        showEvent(result, openedEvent!!)
+        current.value = current.value.copy(message = if (result.optString("failure_code").isBlank())
+            "求助已保存，正在通知已获授权的家人。" else "求助已保存，但暂未通知成功；请使用电话或当面联系。")
+        expire(stamp)
     }
     fun handle(actionName: String) {
         val event = current.value.event ?: return

@@ -331,6 +331,52 @@ def test_wss_to_inapp_minimal_event_and_idempotent_read(system):
         assert conn.execute(text('SELECT source_message_id FROM signal_event')).scalar() is None
 
 
+def test_elder_help_button_progress_idempotency_and_family_handling(system):
+    client, engine, factory, _ = system
+    home = household(client)
+    grant(client, home, 'NOTIFICATION_TO_FAMILY')
+    pref(client, home)
+    path = '/v1/signal-events/help-requests'
+    body = {'family_id': home[0], 'source': 'BUTTON', 'kind': 'CONTACT_FAMILY'}
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        replies = list(pool.map(lambda _: post(client, path, home[4], body, key='elder-help-once'), range(2)))
+    assert [reply.status_code for reply in replies] == [201, 201]
+    assert replies[0].json()['id'] == replies[1].json()['id']
+    event_id = replies[0].json()['id']
+    asyncio.run(run_maintenance(factory))
+    assert replies[0].json()['status'] == 'VALIDATED'
+    assert replies[0].json()['can_handle'] is False
+    assert 'reason' not in replies[0].json()
+    assert post(client, path, home[4], body | {'source': 'VOICE'}, key='elder-help-once').status_code == 409
+    assert post(client, path, home[2], body, key='not-an-elder').status_code == 403
+    drain(factory)
+    owner = client.get('/v1/signal-events/' + event_id, headers=home[4]).json()
+    assert owner['status'] == 'NOTIFIED' and owner['can_handle'] is False
+    family_detail = client.get('/v1/signal-events/' + event_id, headers=home[2]).json()
+    assert family_detail['can_handle'] is True and family_detail['recommended_action'] == 'CONTACT_FAMILY_NOW'
+    handled = post(client, '/v1/signal-events/' + event_id + '/actions', home[2],
+        {'action': 'ACKNOWLEDGE', 'expected_status': 'NOTIFIED'}, key='help-ack')
+    assert handled.status_code == 200
+    owner = client.get('/v1/signal-events/' + event_id, headers=home[4]).json()
+    assert owner['status'] == 'ACKNOWLEDGED' and owner['actioned_at']
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM signal_event WHERE trigger_category='ELDER_HELP_BUTTON'")).scalar() == 1
+        assert conn.execute(text("SELECT count(*) FROM audit_log WHERE action='ELDER_HELP_REQUESTED'")).scalar() == 1
+
+
+def test_elder_help_without_authorized_recipient_records_failure(system):
+    client, engine, _, _ = system
+    home = household(client)
+    response = post(client, '/v1/signal-events/help-requests', home[4],
+        {'family_id': home[0], 'source': 'BLE', 'kind': 'CONTACT_FAMILY'}, key='offline-button')
+    assert response.status_code == 201
+    assert response.json()['status'] == 'NOTIFICATION_FAILED'
+    assert response.json()['failure_code'] == 'NO_AUTHORIZED_RECIPIENT'
+    assert client.get('/v1/signal-events/' + response.json()['id'], headers=home[2]).status_code == 404
+    with engine.connect() as conn:
+        assert conn.execute(text('SELECT count(*) FROM notification')).scalar() == 0
+
+
 def test_health_requires_its_own_scope_and_never_diagnoses(system):
     client, engine, factory, _ = system
     home, cid, _, events = setup_event(system, utterance='我胸口有点不舒服。')
@@ -403,15 +449,17 @@ def test_concurrent_dedup_and_changed_category_severity(system):
         assert conn.execute(text('SELECT count(*) FROM notification')).scalar() == 3
 
 
-def test_forged_candidates_and_emergency_never_create_events(system):
+def test_forged_candidates_are_rejected_but_explicit_voice_help_creates_event(system):
     client, engine, factory, _ = system
     home = household(client); grant(client, home, 'NOTIFICATION_TO_FAMILY')
     cid = start(client, home)
     assert emit(factory, home, cid, mutate=lambda cs: (cs[0].model_copy(update={'source_message_id':uuid4()}),)) == []
     assert emit(factory, home, cid, '验证码是什么东西？') == []
-    assert emit(factory, home, cid, '救命，帮我叫人。') == []
+    emergency = emit(factory, home, cid, '救命，帮我叫人。')
+    assert len(emergency) == 1 and emergency[0]['type'] == 'EMERGENCY'
     with engine.connect() as conn:
-        assert conn.execute(text('SELECT count(*) FROM signal_event')).scalar() == 0
+        assert conn.execute(text('SELECT count(*) FROM signal_event')).scalar() == 1
+        assert conn.execute(text('SELECT count(*) FROM notification')).scalar() == 1
 
 
 class FailedPush(MockPush):
@@ -885,3 +933,8 @@ def test_external_delivery_persistence_receipts_and_no_duplicate_send(system, mo
         assert len(sent) == (1 if outcome == 'crash' else 2)
         with engine.connect() as conn:
             assert conn.execute(text("SELECT count(*) FROM notification WHERE error_code='DELIVERY_UNKNOWN'")).scalar() == (1 if outcome == 'crash' else 2)
+
+
+async def run_maintenance(factory):
+    async with factory() as db, db.begin():
+        await signals.maintenance(db)

@@ -2,7 +2,7 @@
 
 ## 账户生命周期运维
 
-升级 API/worker 前，在 `backend/` 运行 `python -m alembic upgrade head`（当前头 `20261026_avatar_jobs`，包含账户生命周期迁移），随后重启二者。当前入口是 REST API，字段和凭证找回方式见 [OpenAPI](openapi.yaml)；Android/Windows 尚未增加账户管理界面。导出文件含本人资料，客户端应通过系统文件保存器交由本人选择位置；删除前先保存独立回执凭证，受理后按已有退出流程清理本地会话和缓存。
+升级 API/worker 前，在 `backend/` 运行 `python -m alembic upgrade head`（当前头 `20261101_elder_help_requests`，包含账户生命周期、家人音色及主动求助迁移），随后重启二者。当前入口是 REST API，字段和凭证找回方式见 [OpenAPI](openapi.yaml)；Android/Windows 尚未增加账户管理界面。导出文件含本人资料，客户端应通过系统文件保存器交由本人选择位置；删除前先保存独立回执凭证，受理后按已有退出流程清理本地会话和缓存。
 
 可配置 `BACKUP_RETENTION_DAYS=30`、`AUDIT_RETENTION_DAYS=90`、`TASK_RETENTION_DAYS=7`、`ACCOUNT_EXPORT_MAX_BYTES=104857600`。`BACKUP_DIRECTORY` 默认为空；只有显式指定的私有目录会启用自动备份期限清理。备份文件须命名为 `niannian-backup-YYYYMMDDTHHMMSSZ.dump`、`.sql.gz`、`.tar.gz` 或 `.zip`，时间为备份快照的 UTC 时间，不因复制而改写；写入完成后才使用该名称。清理不递归、不跟随符号链接/目录联接、不删除其他文件；目录必须仅由可信运维账号写入。此功能不自动创建备份。
 
@@ -184,7 +184,9 @@ THA3 代码为 MIT，模型权重为 CC BY 4.0；上游示例角色有各自许�
 
 家属首页点击“开启本机后台通知”，Android 13 及以上需允许系统通知，并在对应长辈的通知偏好保留“应用内”。应用使用系统 JobScheduler 持久任务，关闭界面或进程回收后仍可联网补拉；重启手机后任务由系统恢复，登录凭证继续加密保存。前台每 30 秒同步，后台任务最短周期 15 分钟，实际执行会受 Doze、网络和厂商省电策略影响，不能作为即时或紧急送达保证，参见 [Android 调度接口](https://developer.android.com/reference/android/app/job/JobInfo.Builder#setPeriodic(long))。系统“强行停止”后需重新打开应用；禁用本机通知或退出登录会取消任务及通知。此功能无需 ntfy 或 Twilio 配置。
 
-通知栏仅显示通用 AI 提示，关注识别仍为 Mock。点击可冷启动或复用家属界面，先核对接收账号并经 API 重新验证授权，再直接进入对应事件处理；读取只标记已读，处理必须由家属明确提交。断网、撤权、渠道关闭、免打扰或事件已处理时，下次同步会移除旧提示，已知旧提示不会反复响铃。老人首页“家人的处理进度”在前台每 30 秒同步本人事件状态，点击可查看谁在何时确认关注、人工记录联系、误报或解决；处理记录不代表平台验证电话已接通。无新增数据库迁移，升级 API 和两个 APK 后使用。当前未连接 Android 设备，关闭界面收通知、点击及跨端交互仍需真机验证。
+通知栏仅显示通用 AI 提示，关注识别方式按各事件标注为规则、语义线索或 Mock。点击可冷启动或复用家属界面，先核对接收账号并经 API 重新验证授权，再直接进入对应事件处理；读取只标记已读，处理必须由家属明确提交。断网、撤权、渠道关闭、免打扰或事件已处理时，下次同步会移除旧提示，已知旧提示不会反复响铃。老人首页“家人的处理进度”在前台每 30 秒同步本人事件状态，点击可查看谁在何时确认关注、人工记录联系、误报或解决；处理记录不代表平台验证电话已接通。本次需先执行主动求助迁移，再升级 API、worker 和两个 APK。主动求助接口接受 BUTTON/VOICE/BLE 来源，当前新接通的是 Android 按钮；这不代表 BLE 硬件或完整语音求助已验收。关闭界面收通知、点击及跨端交互需在指定设备分别验证。
+
+老人端首页“请家人尽快联系我”调用 `POST /v1/signal-events/help-requests`，复用同一通知/处理状态。请求按幂等键只创建一次；老人能看到待通知、家人已确认、已联系、已解决、误报或通知失败。按钮不会自动呼叫急救服务；无已授权接收人或所有通知渠道失败时保留明确失败原因，并提示改用电话或当面联系。
 
 双方在家庭设置的“我的联系方式与紧急联系”登记本人号码（E.164，如带 +86 国家区号），可单独允许号码分享、登记为紧急联系人或删除。号码加密保存；退出/移除成员时删除。长辈可在此处逐人授予或撤回关注通知、健康信息授权。管理员可邀请紧急联系人并授予处理权限。事件中的拨号、短信入口使用当前获准分享的号码，打开系统拨号/短信编辑器，由用户完成发送；不会据此标记联系成功。号码为本人声明，尚未做运营商验证。
 
@@ -262,7 +264,18 @@ bash infra/linux/deploy.sh --host <局域网IP或DNS>
 
 首次生成权限 600 的 `infra/linux/.env` 和随机本机凭据，构建后端及固定版本 MinIO/mc，先迁移，再启动 API、worker、PostgreSQL/pgvector 和私有桶。更新时再次运行脚本即可；已有 `.env` 不覆盖，换地址时编辑 NIANNIAN_HOST。
 
-默认 API 为 8000、S3 为 9000；PostgreSQL 不映射主机端口，MinIO 控制台 9001 只绑定回环。端口可在该 `.env` 修改。默认 HTTP/WS 供可信内网 Windows 演示；Android 局域网连接需另外配置 HTTPS API。公网部署还需 TLS 和访问限制，不直接暴露演示凭据或管理端口。
+默认 API 为 8000、S3 为 9000；PostgreSQL 不映射主机端口，MinIO 控制台 9001 只绑定回环。端口可在该 `.env` 修改。首次部署现在同时生成联系人数据专用 Fernet 密钥；升级旧 `.env` 时需按“外部关注通知”一节补充 `CONTACT_ENCRYPTION_KEY`。
+
+Windows 与 Android 共用后端时使用 HTTPS/WSS。准备覆盖目标主机名的 PEM 完整证书链和未加密私钥，然后运行：
+
+```bash
+bash infra/linux/deploy-tls.sh \
+  --host api.example.test \
+  --certificate /absolute/path/fullchain.pem \
+  --private-key /absolute/path/private.key
+```
+
+TLS 部署将原始 API/MinIO 端口限制到 Linux 回环，通过 nginx 暴露 `https://主机:443`、`wss://主机:443` 和照片端点 `https://主机:9443`；脚本会核对证书主机名、证书/私钥是否匹配、HTTPS 健康接口及私有桶 403。Android 和 Windows 均填写同一个 HTTPS API 地址，照片预签名地址由服务端自动返回 9443 端点。自签或私有 CA 证书只有在指定平板和 Windows 已信任该 CA 后才可使用；不要关闭 Android 证书验证或放开任意局域网明文 HTTP。
 
 ```bash
 docker compose --env-file infra/linux/.env -f infra/linux/docker-compose.yml ps

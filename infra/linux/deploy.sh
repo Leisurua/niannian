@@ -19,6 +19,11 @@ random_hex() {
   fi
 }
 
+random_fernet() {
+  command -v openssl >/dev/null 2>&1 || die "openssl is required to generate CONTACT_ENCRYPTION_KEY."
+  openssl rand 32 | openssl base64 -A | tr '+/' '-_'
+}
+
 detect_host() {
   local candidate
   candidate="$(hostname -I 2>/dev/null | awk '{print $1}')"
@@ -57,6 +62,7 @@ if [[ ! -f "${env_file}" ]]; then
     -e "s/MINIO_ROOT_USER=GENERATED_BY_DEPLOY_SCRIPT/MINIO_ROOT_USER=niannian$(random_hex 8)/" \
     -e "s/MINIO_ROOT_PASSWORD=GENERATED_BY_DEPLOY_SCRIPT/MINIO_ROOT_PASSWORD=$(random_hex 24)/" \
     -e "s/AUTH_SIGNING_KEY=GENERATED_BY_DEPLOY_SCRIPT/AUTH_SIGNING_KEY=$(random_hex 32)/" \
+    -e "s|CONTACT_ENCRYPTION_KEY=GENERATED_BY_DEPLOY_SCRIPT|CONTACT_ENCRYPTION_KEY=$(random_fernet)|" \
     "${env_file}"
   chmod 600 "${env_file}"
   printf 'Created private configuration: %s\n' "${env_file}"

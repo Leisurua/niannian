@@ -1792,6 +1792,33 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SignalEventPage'
+  /signal-events/help-requests:
+    post:
+      tags:
+      - SignalEvents
+      operationId: createElderHelpRequest
+      description: Creates one idempotent elder-originated help event for button, voice or future BLE entry points. It never calls emergency services automatically.
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HelpRequestInput'
+      responses:
+        '201':
+          description: Persisted help request and its current notification status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignalEventDetailResponse'
+        '403':
+          description: Caller is not the active elder in this family
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Idempotency key was reused with different content
   /signal-events/{event_id}:
     parameters:
     - $ref: '#/components/parameters/EventId'
@@ -4621,6 +4648,11 @@ components:
           $ref: '#/components/schemas/SignalStatus'
         recommended_action:
           type: string
+        failure_code:
+          type: string
+          enum:
+          - NO_AUTHORIZED_RECIPIENT
+          - ALL_NOTIFICATION_CHANNELS_FAILED
         created_at:
           $ref: '#/components/schemas/Timestamp'
     SignalActionInput:
@@ -4639,8 +4671,29 @@ components:
           - RESOLVE
         expected_status:
           $ref: '#/components/schemas/SignalStatus'
+    HelpRequestInput:
+      type: object
+      additionalProperties: false
+      required:
+      - family_id
+      - source
+      properties:
+        family_id:
+          $ref: '#/components/schemas/Id'
+        source:
+          type: string
+          enum:
+          - BUTTON
+          - VOICE
+          - BLE
+        kind:
+          type: string
+          default: CONTACT_FAMILY
+          enum:
+          - CONTACT_FAMILY
+          - PHYSICAL_DISCOMFORT
     SignalEventDetailResponse:
-      description: The elder owner can read their own minimal event status, action times and family action history. Owner responses omit family-only reasons, conversation identifiers and contact numbers, and always set can_handle to false. Current source and membership remain required.
+      description: The elder owner can read their own minimal event status, action times and family action history. Owner responses omit family-only reasons, conversation identifiers and contact numbers, and always set can_handle to false. Current family membership remains required; conversation-originated events also require their current source, while explicit elder help requests do not require a conversation.
       allOf:
       - $ref: '#/components/schemas/SignalEventResponse'
       - type: object

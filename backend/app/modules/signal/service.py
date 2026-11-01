@@ -27,7 +27,9 @@ COPY = {
     'EMOTION_EXPRESSION': ('有情绪相关表达，仅为交流观察线索。', 'OFFER_COMPANIONSHIP'),
     'MISS_FAMILY': ('老人表达了思念或联系家人的意愿。', 'OFFER_FAMILY_CONTACT'),
     'IMPORTANT_MEMORY': ('有待核实的往事线索，不代表已确认的家庭事实。', 'OFFER_MEMORY_REVIEW'),
+    'EMERGENCY': ('老人主动发出求助请求，请尽快人工联系并核实。', 'CONTACT_FAMILY_NOW'),
 }
+HELP_TRIGGERS = frozenset({'ELDER_HELP_BUTTON', 'ELDER_HELP_VOICE', 'ELDER_HELP_BLE'})
 
 
 def dedupe_key(fid, owner, kind, category, severity, now):
@@ -77,7 +79,7 @@ async def record_turn(db, actor, conversation_id, request_id, text, candidates, 
         if not recipients:
             continue
         rule = evaluate(text)
-        severity = rule.severity if candidate.type == 'SCAM_RISK' else 'L1'
+        severity = rule.severity if candidate.type == 'SCAM_RISK' else ('L3' if candidate.type == 'EMERGENCY' else 'L1')
         key = dedupe_key(locked_source['family_id'], actor.user_id, candidate.type, candidate.trigger_category, severity, now)
         old = await db.scalar(select(SignalEvent).where(SignalEvent.dedupe_key == key,
             SignalEvent.deleted_at.is_(None), SignalEvent.retention_until > now))
@@ -108,6 +110,8 @@ def snapshot(row):
 
 
 def recognition_mode(row):
+    if row.trigger_category in HELP_TRIGGERS:
+        return 'RULE'
     return next((mode for mode, version in POLICIES.items() if version == row.policy_version), 'MOCK')
 
 
@@ -119,14 +123,18 @@ async def internal_metadata(db, event_id):
 async def accessible(db, row, actor, *, owner_status=False):
     if not row or row.deleted_at or row.retention_until <= utcnow() or row.type not in COPY:
         return False
-    source = await conversation.signal_source(db, row.source_conversation_id) if row.source_conversation_id else None
-    if not source or source['family_id'] != row.family_id or source['owner_user_id'] != row.owner_user_id:
+    if row.source_conversation_id:
+        source = await conversation.signal_source(db, row.source_conversation_id)
+        if not source or source['family_id'] != row.family_id or source['owner_user_id'] != row.owner_user_id:
+            return False
+    elif row.trigger_category not in HELP_TRIGGERS:
         return False
     await db.refresh(row)
     if row.deleted_at or row.retention_until <= utcnow() or row.status in ('WITHHELD','DETECTED'):
         return False
     try:
         if owner_status and actor.user_id == row.owner_user_id:
+            await family.context(db, actor.user_id, row.family_id)
             return True
         await recipient(db, row.family_id, row.owner_user_id, actor.user_id, row.type)
         return True
@@ -150,6 +158,7 @@ async def delivery_outcome(db, event_id, outcome):
     row = await db.get(SignalEvent, event_id, populate_existing=True)
     if row and not row.deleted_at and row.retention_until > utcnow() and row.status in ('VALIDATED','NOTIFIED','NOTIFICATION_FAILED'):
         row.status = outcome
+        row.failure_code = 'ALL_NOTIFICATION_CHANNELS_FAILED' if outcome == 'NOTIFICATION_FAILED' else None
         if outcome == 'NOTIFIED' and not row.notified_at:
             row.notified_at = utcnow()
 
@@ -165,11 +174,20 @@ def view(row, *, owner=False, detail=False):
     if not owner:
         result.update(reason={'category': row.trigger_category, 'display_text': COPY[row.type][0]}, recommended_action=COPY[row.type][1])
         if detail:
-            result.update(source_conversation_id=str(row.source_conversation_id), occurred_at=iso_utc(row.detected_at))
+            result['occurred_at'] = iso_utc(row.detected_at)
+            if row.source_conversation_id:
+                result['source_conversation_id'] = str(row.source_conversation_id)
             if row.last_action_at:
                 result.update(actioned_at=iso_utc(row.last_action_at), last_action_by=str(row.last_action_by) if row.last_action_by else None)
             if row.resolved_at:
                 result.update(resolved_at=iso_utc(row.resolved_at), resolution_code=row.resolution_code)
+    elif detail:
+        if row.last_action_at:
+            result['actioned_at'] = iso_utc(row.last_action_at)
+        if row.resolved_at:
+            result['resolved_at'] = iso_utc(row.resolved_at)
+    if row.failure_code:
+        result['failure_code'] = row.failure_code
     return result
 
 
@@ -199,6 +217,45 @@ async def detail(db, actor, event_id, request_id):
         from app.modules.notification.contacts import event_contacts
         result['contacts'] = await event_contacts(db, actor, row)
     return result
+
+
+async def create_help_request(db, actor, body, key, request_id, settings):
+    _, member = await family.context(db, actor.user_id, body.family_id)
+    if member.role != 'ELDER':
+        raise AppError('PERMISSION_DENIED', '只有当前家庭的长辈可以发起主动求助。', 403)
+    idem = audit.Idempotency(key, 'elder-help:' + str(body.family_id), body.model_dump(mode='json'))
+    previous = await idem.previous(db, actor.user_id, settings.idempotency_seconds)
+    if previous:
+        row = await db.get(SignalEvent, previous)
+        if not await accessible(db, row, actor, owner_status=True):
+            raise AppError('SIGNAL_NOT_FOUND', '求助记录不存在或已不可用。', 404)
+        return view(row, owner=True, detail=True) | {'can_handle': False}
+
+    kind = 'PHYSICAL_DISCOMFORT' if body.kind == 'PHYSICAL_DISCOMFORT' else 'EMERGENCY'
+    recipients = []
+    for uid in await family.active_subjects(db, body.family_id):
+        try:
+            await recipient(db, body.family_id, actor.user_id, uid, kind)
+            recipients.append(uid)
+        except AppError:
+            continue
+    now = utcnow()
+    row = SignalEvent(id=uuid7(), owner_user_id=actor.user_id, family_id=body.family_id,
+        type=kind, severity='L3', evidence_summary=COPY[kind][0], rule_id='ELDER_HELP_REQUEST',
+        rule_version=RULE_VERSION, policy_version=POLICIES['RULE'],
+        trigger_category='ELDER_HELP_' + body.source, consent_check_result='ALLOWED' if recipients else 'DENIED',
+        status='VALIDATED' if recipients else 'NOTIFICATION_FAILED',
+        failure_code=None if recipients else 'NO_AUTHORIZED_RECIPIENT', detected_at=now,
+        validated_at=now, retention_until=now + timedelta(days=7))
+    db.add(row)
+    await db.flush()
+    if recipients:
+        from app.modules.notification.service import create_for_event
+        await create_for_event(db, snapshot(row), recipients)
+    await audit.record(db, actor.user_id, 'ELDER_HELP_REQUESTED', 'SIGNAL', row.id, row.family_id,
+        request_id, metadata={**idem.metadata, 'source': body.source, 'kind': body.kind,
+            'recipient_count': len(recipients)})
+    return view(row, owner=True, detail=True) | {'can_handle': False}
 
 
 async def action_history(db, event_id):
@@ -271,6 +328,12 @@ async def maintenance(db):
     rows = (await db.scalars(select(SignalEvent).order_by(SignalEvent.family_id, SignalEvent.id))).all()
     for row in rows:
         source = await conversation.signal_source(db, row.source_conversation_id) if row.source_conversation_id else None
+        if not source and row.trigger_category in HELP_TRIGGERS:
+            try:
+                await family.context(db, row.owner_user_id, row.family_id)
+                source = True
+            except AppError:
+                pass
         if row.deleted_at or row.retention_until <= utcnow() or not source:
             row.deleted_at = row.deleted_at or utcnow()
             await enqueue(db, 'SIGNAL_CLEANUP', row.family_id, row.id, 1)

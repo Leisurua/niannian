@@ -594,6 +594,7 @@ UNIQUE `(message_id, recipient_member_id)`，索引 `(recipient_member_id, messa
 | `last_action_by` | `UUID` | NULL | → user.id，ON DELETE SET NULL |
 | `last_action_at` | `TIMESTAMP WITH TIME ZONE` | NULL | — |
 | `resolution_code` | `VARCHAR(32)` | NULL | — |
+| `failure_code` | `VARCHAR(64)` | NULL | 无授权接收人或全部通知渠道失败 |
 | `resolved_at` | `TIMESTAMP WITH TIME ZONE` | NULL | — |
 | `retention_until` | `TIMESTAMP WITH TIME ZONE` | NOT NULL | — |
 | `deleted_at` | `TIMESTAMP WITH TIME ZONE` | NULL | — |
@@ -737,3 +738,5 @@ CHECK 限制状态为 UPLOADING、QUEUED、STYLIZING、PREPARING、RENDERING、R
 ## 家人音色
 
 voice_profile 保存每次制作版本、家庭/声音本人/录入者、样本哈希与私有对象键、本人批准时间、状态、供方工作空间/模型/音色句柄、到期和失败原因。每个家庭与声音本人只有一个 ACTIVE 版本；新版本启用后撤回旧版本并迁移选择。voice_preference 以家庭和老人账号为键，保存音色选择及 cloud_tts_allowed。task_outbox 增加 VOICE_GENERATE、VOICE_CLEANUP；声音原文和会话合成音频不写数据库。
+
+主动求助由 `20261101_elder_help_requests` 在线性迁移链中增加 `signal_event.failure_code`，前置为 `20261029_family_voices`。按钮事件不依赖会话，仍核对当前家庭成员、通知授权和原保留期；定期清理不能按“无会话来源”提前删除主动求助。
