@@ -136,6 +136,8 @@ fun signalStatusLabel(status: String) = when (status) {
     "CONTACTED" -> "已联系（人工记录）"
     "RESOLVED" -> "已解决（人工确认）"
     "FALSE_POSITIVE" -> "已标记误报"
-    "VALIDATED", "NOTIFIED", "NOTIFICATION_FAILED" -> "待确认关注"
+    "VALIDATED" -> "已保存，等待通知"
+    "NOTIFIED" -> "待确认关注"
+    "NOTIFICATION_FAILED" -> "通知未成功，请另行联系"
     else -> "待刷新核对"
 }
