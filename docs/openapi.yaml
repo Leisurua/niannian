@@ -379,7 +379,7 @@ paths:
       - Reports
       summary: Statistics
       operationId: getStatistics
-      description: Aggregates retained authorized data over local dates [start, end). Returns period, interaction (sessions, turns, active_seconds, days, hourly_turns, night_turns, emotions, repeated_topics, simulated_turns), reminders, attention, missing_data, collection_enabled, generated_at, notice and methodology. Requires REPORT_READ plus shared INTERACTION_STATS for family readers; X-Access-Reason must be FAMILY_CHECK_IN or FOLLOW_UP. Reminder and signal scopes are checked independently. No-store.
+      description: Aggregates retained authorized data over local dates [start, end). Returns period, interaction (sessions, turns, active_seconds, days, hourly_turns, night_turns, emotions, repeated_topics, simulated_turns, unclassified_topic_turns, topic_classification), reminders, attention, missing_data, collection_enabled, generated_at, notice and methodology. topic_classification counts RULE, LOCAL_SEMANTIC and RULE_FALLBACK turns; repeated_topics merges supported semantic topic codes across distinct conversations, never raw transcripts or vectors. Requires REPORT_READ plus shared INTERACTION_STATS for family readers; X-Access-Reason must be FAMILY_CHECK_IN or FOLLOW_UP. Reminder and signal scopes are checked independently. No-store.
       parameters:
       - name: family_id
         in: query

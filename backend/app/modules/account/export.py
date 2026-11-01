@@ -71,7 +71,7 @@ async def build_export(db, actor, storage, settings, request_id):
             ended_at=row.ended_at, status=row.status, summary=await readable(db, row)))
     data['collections']['conversation'] = conversations
     await add(InteractionMetric, (InteractionMetric.owner_user_id == uid) & (InteractionMetric.retention_until > now),
-        'conversation_id sequence family_id occurred_at duration_seconds emotions topics simulated retention_until')
+        'conversation_id sequence family_id occurred_at duration_seconds emotions topics topic_method topic_model_version simulated retention_until')
     await add(ProactivePreference, ProactivePreference.owner_user_id == uid,
         'family_id timezone window_start window_end quiet_start quiet_end daily_cap version confirmed_version paused_on')
     await add(ProactiveDailyCounter, ProactiveDailyCounter.owner_user_id == uid, 'family_id local_date used_count')

@@ -20,7 +20,8 @@ from app.platform.resource_access import authorize
 NOTICE = '交流观察线索：仅反映系统中可用的交流与反馈记录，不用于判断疾病、心理状态、睡眠质量或认知能力。'
 METHOD = ('互动次数为有成功文字交互的不同会话数，轮次按服务端完成时间归属。活跃交流时长为回复耗时与同会话内不超过五分钟的相邻轮次间隔之和，'
           '每轮最多计五分钟，不是录音时长。夜间为所选时区 22:00—06:00。情绪只识别有限的第一人称明确表达，未识别不代表没有相关感受。'
-          '重复主题按本地固定词组及同义词分类，计算不同会话数；同一会话多次提及只计一次，不能等同于完整语义相似度分析。')
+          '主题先过滤否定、引用、转述和假设；使用本地规则及已启用的本地语义模型对齐七类预定义主题，低分或歧义不强行归类。'
+          '重复主题计算不同会话数，同一会话多次提及只计一次；不生成任意新主题，不能据此判断记忆力。分类来源分别列出，旧记录不补录。')
 
 
 def period(start, end, timezone_name, *, now=None):
@@ -76,6 +77,8 @@ async def build(db, actor, fid, owner, start, end, timezone_name):
     else:
         missing.append('长辈尚未开启或已撤回本人互动统计，交流指标没有可用数据。')
     interaction = metrics.aggregate(rows, start, end, zone)
+    if interaction['topic_classification']['RULE_FALLBACK']:
+        missing.append('部分主题语义推理不可用，已明确按本地规则分类；未分类不代表没有相关内容。')
     if not rows:
         missing.append('本期没有可用互动记录；不能据此判断是否进行过交流。')
     if interaction['simulated_turns']:
@@ -138,6 +141,8 @@ def narrative(report):
     lines.append('情绪相关明确表达（轮次）：' + '、'.join(f'{key} {value}' for key, value in count['emotions'].items()) + '。')
     lines.append('重复主题：' + ('；'.join(f"{item['topic']}涉及 {item['sessions']} 次交流" for item in count['repeated_topics']) or '未观察到可分类的跨会话重复主题') + '。')
     lines.append(f"未分类主题：{count['unclassified_topic_turns']} 轮。")
+    methods = count['topic_classification']
+    lines.append(f"主题分类来源：本地语义 {methods['LOCAL_SEMANTIC']} 轮、规则 {methods['RULE']} 轮、语义不可用回退 {methods['RULE_FALLBACK']} 轮。")
     for day in count['days']:
         if day['turns']:
             lines.append(f"{day['date']}：{day['turns']} 轮，首次 {day['first_interaction'][11:16]}，末次 {day['last_interaction'][11:16]}。")

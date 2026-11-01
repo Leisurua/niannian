@@ -2,7 +2,7 @@
 
 ## 账户生命周期运维
 
-升级 API/worker 前，在 `backend/` 运行 `python -m alembic upgrade head`（当前头 `20261101_elder_help_requests`，包含账户生命周期、家人音色及主动求助迁移），随后重启二者。当前入口是 REST API，字段和凭证找回方式见 [OpenAPI](openapi.yaml)；Android/Windows 尚未增加账户管理界面。导出文件含本人资料，客户端应通过系统文件保存器交由本人选择位置；删除前先保存独立回执凭证，受理后按已有退出流程清理本地会话和缓存。
+升级 API/worker 前，在 `backend/` 运行 `python -m alembic upgrade head`（当前头 `20261101_report_semantics`，包含账户生命周期、家人音色、主动求助及主题分类来源迁移），随后重启二者。当前入口是 REST API，字段和凭证找回方式见 [OpenAPI](openapi.yaml)；Android/Windows 尚未增加账户管理界面。导出文件含本人资料，客户端应通过系统文件保存器交由本人选择位置；删除前先保存独立回执凭证，受理后按已有退出流程清理本地会话和缓存。
 
 可配置 `BACKUP_RETENTION_DAYS=30`、`AUDIT_RETENTION_DAYS=90`、`TASK_RETENTION_DAYS=7`、`ACCOUNT_EXPORT_MAX_BYTES=104857600`。`BACKUP_DIRECTORY` 默认为空；只有显式指定的私有目录会启用自动备份期限清理。备份文件须命名为 `niannian-backup-YYYYMMDDTHHMMSSZ.dump`、`.sql.gz`、`.tar.gz` 或 `.zip`，时间为备份快照的 UTC 时间，不因复制而改写；写入完成后才使用该名称。清理不递归、不跟随符号链接/目录联接、不删除其他文件；目录必须仅由可信运维账号写入。此功能不自动创建备份。
 
@@ -100,6 +100,8 @@ $env:PYTHONPATH = "backend"
 ```
 
 根 `.env` 设置 `EMBEDDING_PROVIDER=local`、`EMBEDDING_MODEL_PATH=模型目录的绝对路径`，重启 API 和 worker。两者必须读取相同文件；运行时 `local_files_only=True`，不下载、不外发输入。模型缺失、超时或非法向量会失败，不回退为 Mock；会话沿用无可用记忆兜底，索引任务按现有 outbox 重试/DEAD 处理。可设置 `EMBEDDING_THREADS=2`、`EMBEDDING_TIMEOUT_SECONDS=8`（上限 10 秒）、`EMBEDDING_MIN_RELEVANCE=0.5`。默认演示配置仍为 Mock，`LLM_PROVIDER` 与向量模式独立。
+
+启用本地 Embedding 后，新获准统计轮次自动使用同一个 BGE 模型识别周报主题，无需另开服务。周报保留固定主题标签，按不同会话合并；原文与向量不落库。报告会分别显示语义、规则和推理失败回退的轮数，历史数据不会补录；分类前后均检查本人互动统计授权。
 
 首次启用后，worker 每 15 秒扫描一批最多 100 条源记忆，自动补建获准的当前模型索引；未补建完成的旧 Mock 向量不参与新检索。每轮最多执行 20 项后台任务，大库需要多个周期；可用 `python -m app.worker.main --once` 执行一次。只读查询不改变记忆确认状态，也不会自动为老人授权；必须有本人对自己的相应 scope 显式授权。
 

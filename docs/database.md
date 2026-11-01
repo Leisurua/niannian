@@ -731,7 +731,7 @@ CHECK 限制状态为 UPLOADING、QUEUED、STYLIZING、PREPARING、RENDERING、R
 
 ### interaction_metric
 
-迁移 `20261024_interaction_stats` 新增，模型为 `modules/report/models.py`。主键 `(conversation_id, sequence)` 保证同一成功轮次只记录一次；字段 `family_id`、`owner_user_id`、`consent_id` 关联当前家庭、长辈和本人统计授权，`occurred_at` 是服务端完成时间，`duration_seconds` 为 0—300 秒，`emotions`、`topics` 是固定分类代码数组，`simulated` 标记 Mock，`retention_until` 用于到期过滤和 worker 清理。没有原文、摘要文本、自由主题或音频字段。索引为 `(family_id, owner_user_id, occurred_at)`。
+迁移 `20261024_interaction_stats` 新增，模型为 `modules/report/models.py`。主键 `(conversation_id, sequence)` 保证同一成功轮次只记录一次；字段 `family_id`、`owner_user_id`、`consent_id` 关联当前家庭、长辈和本人统计授权，`occurred_at` 是服务端完成时间，`duration_seconds` 为 0—300 秒，`emotions`、`topics` 是固定分类代码数组，`simulated` 标记 Mock，`retention_until` 用于到期过滤和 worker 清理。迁移 `20261101_report_semantics` 新增 `topic_method VARCHAR(16)`（RULE / LOCAL_SEMANTIC / RULE_FALLBACK，历史默认 RULE）和可空 `topic_model_version VARCHAR(64)`（本地模型指纹）。没有原文、摘要文本、自由主题或音频字段。 不保存本轮文本或语义向量，分类来源随原指标一起撤权删除及到期清理。索引为 `(family_id, owner_user_id, occurred_at)`。
 
 同一迁移将 `INTERACTION_STATS` 加入 consent scope；已有授权不会自动开启统计。删除统计时更新 conversation.provider_metadata 中的 `stats_cleared_at`，阻止删除前已经在途的回复重新写回记录。保留期与访问条件见 [security](security.md)，统计口径见 [ai](ai.md)。
 
