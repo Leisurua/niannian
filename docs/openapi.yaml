@@ -54,7 +54,14 @@ x-websocket-channels:
       this connection, allowing a spoken repeat after device ASR starts. New text generation clears replay eligibility;
       cancelled unfinished output is never replayable. repeat/slow_down revalidate memory permissions before publishing.
       text.input payload accepts text plus optional timezone (valid IANA name, default Asia/Shanghai) and
-      weather_city_id (public Open-Meteo city ID, positive integer up to 2147483647). Daily date/time, today's
+      weather_city_id (public Open-Meteo city ID, positive integer up to 2147483647). Unsolicited proactive invitations
+      are assistant.text with proactive_invitation_id (UUID), expires_at (timestamp) and speech_mode=none.
+      Android and Windows display explicit ACCEPT, DECLINE and PAUSE_TODAY controls. A response uses text.input
+      with text and paired proactive_invitation_id/proactive_response fields. The server revalidates the current
+      confirmed preference, time window, pause and reserved quota before one-time acceptance; stale/replayed
+      responses return PROACTIVE_INVITATION_EXPIRED. ACCEPT starts an ordinary current-provider turn; DECLINE
+      does not call a provider. Invites require a connected idle session and never wake the app or microphone.
+      Daily date/time, today's
       forecast and owner reminders use deterministic data queries, bypassing RAG and the LLM in both real and Mock modes.
       Their source_labels identify server time, Open-Meteo forecast or owner reminder records/feedback.
       Today's plans include recurring occurrences before worker execution and postponed items due today, scoped to

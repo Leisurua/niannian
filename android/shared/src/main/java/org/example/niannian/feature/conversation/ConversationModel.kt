@@ -12,6 +12,7 @@ import kotlinx.coroutines.delay
 import org.json.JSONObject
 import org.json.JSONArray
 import java.util.Base64
+import org.example.niannian.core.common.parseApiInstant
 import java.time.Instant
 import java.time.ZoneId
 import java.util.UUID
@@ -37,6 +38,7 @@ data class ConversationState(val family: String = "", val user: String = "", val
     val recording: Boolean = false, val recognizing: Boolean = false, val speaking: Boolean = false,
     val voiceEnabled: Boolean = false, val partialTranscript: String = "", val slowSpeech: Boolean = false,
     val voiceName: String = "念念普通声音", val voiceProfileId: String? = null,
+    val proactiveInvitationId: String = "", val proactiveInvitationText: String = "",
     val voiceAllowed: Boolean = false, val speechPending: Boolean = false, val reminderRevision: Long = 0) {
     val companionPhase: CompanionPhase get() = when {
         !connected -> CompanionPhase.IDLE
@@ -63,6 +65,7 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
     private var job: Job? = null
     private var deadline: Job? = null
     private var voiceDeadline: Job? = null
+    private var invitationDeadline: Job? = null
     private var voice: ConversationVoice? = null
     private var voiceSelectionPending = false
     private var playbackId: String? = null
@@ -89,6 +92,7 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
     }
 
     fun clear() {
+        clearInvitation()
         generation++
         stopVoice()
         job?.cancel()
@@ -158,6 +162,7 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
     }
 
     private fun disconnected(code: Int) {
+        clearInvitation()
         generation++
         stopVoice()
         deadline?.cancel()
@@ -226,6 +231,19 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
                 "assistant.text" -> {
                     val text = payload.getString("text")
                     require(text.length <= 2000)
+                    if (payload.has("proactive_invitation_id")) {
+                        val id = payload.getString("proactive_invitation_id")
+                        require(UUID.fromString(id).toString() == id)
+                        val remaining = java.time.Duration.between(Instant.now(), parseApiInstant(payload.getString("expires_at"))).toMillis().coerceAtMost(300000)
+                        if (remaining <= 0 || current.value.busy || current.value.voiceActive) return
+                        clearInvitation()
+                        current.value = current.value.copy(proactiveInvitationId = id, proactiveInvitationText = text)
+                        invitationDeadline = tasks.launch {
+                            delay(remaining)
+                            if (current.value.proactiveInvitationId == id) clearInvitation()
+                        }
+                        return
+                    }
                     val labels = payload.optJSONArray("source_labels")?.let { values ->
                         require(values.length() <= 5)
                         (0 until values.length()).map { values.getString(it).also { label -> require(label.length <= 60) } }
@@ -291,7 +309,7 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
                     deadline?.cancel()
                     stopVoice()
                     current.value = current.value.copy(busy = false, state = "IDLE",
-                        message = "暂时无法完成，请稍后重新发送。")
+                        message = if (payload.optString("code") == "PROACTIVE_INVITATION_EXPIRED") "邀请已过期或设置已变化。您仍可直接说话或打字。" else "暂时无法完成，请稍后重新发送。")
                 }
                 "pong" -> Unit
                 else -> error("Unsupported event")
@@ -303,13 +321,26 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
 
     private fun send(type: String, payload: JSONObject = JSONObject()): Boolean {
         if (!current.value.connected) return false
+        if (type !in listOf("ping", "session.start")) clearInvitation()
         val frame = JSONObject().put("type", type).put("conversation_id", current.value.id)
             .put("sequence", ++clientSequence).put("occurred_at", Instant.now().toString()).put("payload", payload)
         if (socket?.send(frame.toString()) != true) { disconnected(0); return false }
         return true
     }
 
-    fun input(text: String): Boolean {
+    private fun clearInvitation() {
+        invitationDeadline?.cancel()
+        current.value = current.value.copy(proactiveInvitationId = "", proactiveInvitationText = "")
+    }
+
+    fun respondToInvitation(action: String): Boolean {
+        require(action in listOf("ACCEPT", "DECLINE", "PAUSE_TODAY"))
+        val id = current.value.proactiveInvitationId
+        if (id.isBlank()) return false
+        return input(when (action) { "ACCEPT" -> "我愿意聊一会儿"; "DECLINE" -> "暂时不聊"; else -> "今天少打扰我" }, id, action)
+    }
+
+    fun input(text: String, invitationId: String? = null, invitationResponse: String? = null): Boolean {
         if (!current.value.connected || current.value.busy || current.value.recording || current.value.recognizing
             || text.isBlank() || text.length > 2000) return false
         when (voiceCommand(text)) {
@@ -324,6 +355,7 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
         val payload = JSONObject().put("text", text).put("timezone", ZoneId.systemDefault().id)
             .put("speech_rate", if (current.value.slowSpeech) 0.8 else 1.0)
         weatherCityId?.let { payload.put("weather_city_id", it) }
+        if (invitationId != null) payload.put("proactive_invitation_id", invitationId).put("proactive_response", invitationResponse)
         if (!send("text.input", payload)) return false
         replyFloor = clientSequence
         interrupted = false

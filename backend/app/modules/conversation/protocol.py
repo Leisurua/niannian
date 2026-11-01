@@ -41,6 +41,15 @@ class TextPayload(_Payload):
     speech_rate: float = Field(default=1.0, ge=0.5, le=2.0)
     timezone: str = 'Asia/Shanghai'
     weather_city_id: int | None = Field(default=None, gt=0, le=2147483647, strict=True)
+    proactive_invitation_id: UUID | None = None
+    proactive_response: Literal['ACCEPT', 'DECLINE', 'PAUSE_TODAY'] | None = None
+
+    @field_validator('proactive_response')
+    @classmethod
+    def paired_response(cls, value, info):
+        if value is not None and info.data.get('proactive_invitation_id') is None:
+            raise ValueError('Invitation required')
+        return value
 
     @field_validator('timezone')
     @classmethod
@@ -131,6 +140,8 @@ def parse_client_frame(
                 raise ProtocolError('WS_AUDIO_DISABLED')
         elif envelope.type == 'text.input':
             text = TextPayload.model_validate(envelope.payload)
+            if (text.proactive_invitation_id is None) != (text.proactive_response is None):
+                raise ProtocolError('WS_INVALID_PAYLOAD')
             if len(text.text) > limits.max_text_chars:
                 raise ProtocolError('WS_TEXT_TOO_LARGE')
         elif envelope.type == 'session.end':

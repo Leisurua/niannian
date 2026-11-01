@@ -15,10 +15,12 @@ from app.modules.family import service as family
 from app.modules.conversation.models import Conversation
 from app.modules.conversation.proactive_models import ProactivePreference, ProactiveDailyCounter
 from app.platform.errors import AppError
-from app.platform.identifiers import utcnow
+from app.platform.identifiers import utcnow, uuid7
 from app.platform.resource_access import authorize, check_version
 
-INVITATION = 'Mock · 要不要聊聊今天想做的事？不想聊可以说“今天少打扰我”，或点“今天少打扰我”。'
+INVITATION = '我是念念 AI。要不要聊聊今天想做的事？您可以选择聊一会儿、暂时不聊，或今天少打扰。'
+OPENING = '我愿意聊一会儿。请用一句简短、温和的问题，和我聊聊今天想做的事，不要替我编造经历。'
+INVITATION_LIFETIME = timedelta(minutes=5)
 
 
 class PreferenceInput(Input):
@@ -148,8 +150,6 @@ async def snapshot(db, conversation, now, *, reserved=False, last_interaction=No
 
 
 async def tick(db, settings, now=None):
-    if settings.provider_mode != 'mock':
-        return
     now = now or utcnow()
     await db.execute(delete(ProactiveDailyCounter).where(ProactiveDailyCounter.updated_at <= now - timedelta(hours=48)))
     conversations = (await db.scalars(select(Conversation).where(Conversation.status == 'ACTIVE',
@@ -184,12 +184,12 @@ async def tick(db, settings, now=None):
             payload=json.dumps(dict(version=preference.version, stamp=now.isoformat()))))
 
 
-async def accept(db, conversation, payload, last_interaction):
+async def accept(db, conversation, payload, last_interaction, *, maximum_age=timedelta(seconds=30)):
     try:
         message = json.loads(payload)
         stamp = datetime.fromisoformat(message['stamp'])
         now = utcnow()
-        if stamp.tzinfo is None or not timedelta(0) <= now - stamp <= timedelta(seconds=30):
+        if stamp.tzinfo is None or not timedelta(0) <= now - stamp <= maximum_age:
             return False
         data = await snapshot(db, conversation, now, reserved=True, last_interaction=last_interaction)
         if not data:
@@ -200,3 +200,16 @@ async def accept(db, conversation, payload, last_interaction):
             and conversation.backend_state in ('IDLE', 'LISTENING'))
     except (AppError, ValueError, TypeError, KeyError):
         return False
+
+
+def invitation(payload, last_interaction):
+    """Connection-local invitation; never starts a provider or microphone."""
+    return dict(id=str(uuid7()), notice=payload, last_interaction=last_interaction,
+        expires_at=utcnow() + INVITATION_LIFETIME)
+
+
+async def respond(db, conversation, pending, invitation_id):
+    if not pending or pending['id'] != str(invitation_id) or utcnow() >= pending['expires_at']:
+        return False
+    return await accept(db, conversation, pending['notice'], pending['last_interaction'],
+        maximum_age=INVITATION_LIFETIME)

@@ -144,6 +144,14 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
                     enabled = state.connected && (state.busy || state.voiceActive || permissionSession != null),
                     modifier = Modifier.weight(1f).heightIn(min = 56.dp)) { Text("停止", fontSize = 20.sp) }
             }
+            if (state.proactiveInvitationId.isNotBlank()) {
+                Text(state.proactiveInvitationText, fontSize = 22.sp,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                Text("选择聊一会儿后才生成回答；邀请不会自动收音或朗读。", fontSize = 18.sp)
+                Control("聊一会儿", !unavailable && !state.busy) { model.respondToInvitation("ACCEPT") }
+                Control("暂时不聊", !unavailable && !state.busy) { model.respondToInvitation("DECLINE") }
+                Control("今天少打扰我", !unavailable && !state.busy) { model.respondToInvitation("PAUSE_TODAY") }
+            }
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(when (state.llmMode) {
                     "real" -> "AI 对话 · 支持语音和文字"

@@ -98,3 +98,14 @@ def test_flood_budget_stays_bounded_and_recovers_at_window_boundary():
         budget.take(0.5)
     with pytest.raises(ValueError, match='monotonic'):
         budget.take(float('nan'))
+
+
+@pytest.mark.parametrize('payload', [
+    {'text': '聊聊', 'proactive_response': 'ACCEPT'},
+    {'text': '聊聊', 'proactive_invitation_id': str(OTHER)},
+    {'text': '聊聊', 'proactive_invitation_id': str(OTHER), 'proactive_response': 'AUTO_RECORD'},
+])
+def test_invitation_response_requires_matching_explicit_action_fields(payload):
+    with pytest.raises(ProtocolError):
+        parse_client_frame(frame(type='text.input', payload=payload), conversation_id=CONVERSATION,
+            last_sequence=0, limits=LIMITS)
