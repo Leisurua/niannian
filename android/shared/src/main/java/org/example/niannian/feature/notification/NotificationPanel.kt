@@ -53,6 +53,9 @@ fun NotificationPanel(model: NotificationModel, family: String, user: String, su
             Text("前台每 30 秒同步。识别提示不代表事实，处理结果由家属核实。")
             if (!elder) subjects.forEach { (id, name) -> OutlinedButton(onClick = { selected = id }, enabled = !state.busy) { Text(name) } }
             Text(state.message)
+            if (elder) Button(onClick = { model.requestHelp() }, enabled = !state.busy,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("向家人求助", fontSize = 24.sp) }
             Button(onClick = { model.refresh() }, enabled = !state.busy) { Text("刷新关注事件") }
             if (state.loaded && state.items.isEmpty() && state.detail.isEmpty()) Text("当前没有可查看的关注事件。")
             state.items.forEach { item ->
@@ -64,6 +67,11 @@ fun NotificationPanel(model: NotificationModel, family: String, user: String, su
             }
             if (state.detail.isNotEmpty()) Text(state.detail, fontSize = 20.sp)
             state.event?.let { event ->
+                if (event.helpMessage.isNotBlank()) {
+                    Text(event.helpMessage, fontSize = 20.sp)
+                    event.deliveries.forEach { Text(it) }
+                    Text("电话回执见上方；是否联系到本人仍需核实，家属人工联系记录见下方。")
+                }
                 Text("处理状态：${signalStatusLabel(event.status)}", fontSize = 20.sp)
                 if (event.actionedAt.isNotBlank()) Text("最近处理：${event.actionedAt}")
                 if (event.resolvedAt.isNotBlank()) Text("解决时间：${event.resolvedAt}")
@@ -126,6 +134,8 @@ fun signalStatusLabel(status: String) = when (status) {
     "CONTACTED" -> "已联系（人工记录）"
     "RESOLVED" -> "已解决（人工确认）"
     "FALSE_POSITIVE" -> "已标记误报"
-    "VALIDATED", "NOTIFIED", "NOTIFICATION_FAILED" -> "待确认关注"
+    "VALIDATED" -> "已记录，通知等待发送"
+    "NOTIFIED" -> "通知已发布，等待家人确认"
+    "NOTIFICATION_FAILED" -> "通知异常，请查看发送结果并联系身边的人"
     else -> "待刷新核对"
 }

@@ -22,6 +22,7 @@ from app.platform.tasks import enqueue
 POLICY_VERSION = 'w7-mock-1.0.0'
 POLICIES = {'MOCK': POLICY_VERSION, 'SEMANTIC': 'signals-semantic-1.0.0', 'RULE': 'signals-rule-1.0.0'}
 COPY = {
+    'EMERGENCY': ('老人主动请求帮助，请尽快核实并联系。', 'CONTACT_ELDER'),
     'SCAM_RISK': ('交流中出现需核实的敏感操作组合，请先联系家人核实。', 'PAUSE_AND_VERIFY_WITH_FAMILY'),
     'PHYSICAL_DISCOMFORT': ('老人提到身体不舒服，可主动关心并提供联系帮助。', 'CHECK_IN_AND_OFFER_CONTACT'),
     'EMOTION_EXPRESSION': ('有情绪相关表达，仅为交流观察线索。', 'OFFER_COMPANIONSHIP'),
@@ -65,7 +66,7 @@ async def record_turn(db, actor, conversation_id, request_id, text, candidates, 
         return []
     now, events = utcnow(), []
     for candidate in expected:
-        if candidate.type not in COPY:
+        if candidate.type not in COPY or candidate.type == 'EMERGENCY':
             continue
         recipients = []
         for uid in await family.active_subjects(db, locked_source['family_id']):
@@ -108,7 +109,17 @@ def snapshot(row):
 
 
 def recognition_mode(row):
+    from app.modules.signal.help import is_request
+    if is_request(row):
+        return 'EXPLICIT'
     return next((mode for mode, version in POLICIES.items() if version == row.policy_version), 'MOCK')
+
+
+async def event_source(db, row):
+    from app.modules.signal import help
+    if help.is_request(row):
+        return await help.source(db, row)
+    return await conversation.signal_source(db, row.source_conversation_id) if row.source_conversation_id else None
 
 
 async def internal_metadata(db, event_id):
@@ -119,7 +130,7 @@ async def internal_metadata(db, event_id):
 async def accessible(db, row, actor, *, owner_status=False):
     if not row or row.deleted_at or row.retention_until <= utcnow() or row.type not in COPY:
         return False
-    source = await conversation.signal_source(db, row.source_conversation_id) if row.source_conversation_id else None
+    source = await event_source(db, row)
     if not source or source['family_id'] != row.family_id or source['owner_user_id'] != row.owner_user_id:
         return False
     await db.refresh(row)
@@ -156,8 +167,9 @@ async def delivery_outcome(db, event_id, outcome):
 
 def view(row, *, owner=False, detail=False):
     mode = recognition_mode(row)
-    prefix = {'MOCK': 'Mock · ', 'SEMANTIC': 'AI 语义线索 · ', 'RULE': '规则提示 · '}[mode]
-    summary = prefix + (('安全提示已记录，请先联系家人核实。' if row.type == 'SCAM_RISK'
+    prefix = {'MOCK': 'Mock · ', 'SEMANTIC': 'AI 语义线索 · ', 'RULE': '规则提示 · ', 'EXPLICIT': '主动求助 · '}[mode]
+    summary = prefix + (('您的求助已记录，可查看通知结果和家人的处理进度。' if mode == 'EXPLICIT'
+        else '安全提示已记录，请先联系家人核实。' if row.type == 'SCAM_RISK'
         else '您的关注提示已记录，可查看家人的处理进度。') if owner else COPY[row.type][0])
     result = dict(id=str(row.id), owner_user_id=str(row.owner_user_id), family_id=str(row.family_id),
         type=row.type, severity=row.severity, summary=summary, status=row.status,
@@ -165,7 +177,8 @@ def view(row, *, owner=False, detail=False):
     if not owner:
         result.update(reason={'category': row.trigger_category, 'display_text': COPY[row.type][0]}, recommended_action=COPY[row.type][1])
         if detail:
-            result.update(source_conversation_id=str(row.source_conversation_id), occurred_at=iso_utc(row.detected_at))
+            result.update(source_conversation_id=str(row.source_conversation_id) if row.source_conversation_id else None,
+                occurred_at=iso_utc(row.detected_at))
             if row.last_action_at:
                 result.update(actioned_at=iso_utc(row.last_action_at), last_action_by=str(row.last_action_by) if row.last_action_by else None)
             if row.resolved_at:
@@ -187,6 +200,9 @@ async def detail(db, actor, event_id, request_id):
         raise AppError('SIGNAL_NOT_FOUND', '提示不存在或无权查看。', 404)
     await audit.record(db, actor.user_id, 'SIGNAL_READ', 'SIGNAL', row.id, row.family_id, request_id)
     result = view(row, owner=actor.user_id == row.owner_user_id, detail=True)
+    from app.modules.signal import help
+    if help.is_request(row):
+        result.update(await help.progress(db, row))
     result['can_handle'] = actor.user_id != row.owner_user_id and await can_handle(db, actor, row)
     if actor.user_id == row.owner_user_id:
         result['history'] = await action_history(db, row.id)
@@ -270,7 +286,7 @@ async def listing(db, actor, filters, limit, cursor, settings, request_id):
 async def maintenance(db):
     rows = (await db.scalars(select(SignalEvent).order_by(SignalEvent.family_id, SignalEvent.id))).all()
     for row in rows:
-        source = await conversation.signal_source(db, row.source_conversation_id) if row.source_conversation_id else None
+        source = await event_source(db, row)
         if row.deleted_at or row.retention_until <= utcnow() or not source:
             row.deleted_at = row.deleted_at or utcnow()
             await enqueue(db, 'SIGNAL_CLEANUP', row.family_id, row.id, 1)

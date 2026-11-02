@@ -4,6 +4,18 @@ from uuid import uuid4
 import pytest
 from app.modules.conversation.service import scam_warning
 from app.modules.safety.rules import WARNING
+from app.modules.safety.rules import explicit_help
+
+
+@pytest.mark.parametrize('text', ['我要向家人求助', '我要联系急救', '救命，帮我叫人。', '念念，请帮我叫人！', '帮我联系家人'])
+def test_explicit_help_commands(text):
+    assert explicit_help(text)
+
+
+@pytest.mark.parametrize('text', ['不要帮我叫人', '我刚才说了救命', '他说“帮我叫人”', '如果我要向家人求助怎么办？',
+    '救命是什么意思', '我胸口有点不舒服', '我想女儿了', '我要向家人求助吗？'])
+def test_non_commands_never_send_help(text):
+    assert not explicit_help(text)
 
 
 @pytest.mark.parametrize(('utterance', 'category'), [

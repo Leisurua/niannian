@@ -1792,6 +1792,47 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SignalEventPage'
+  /signal-events/help-requests:
+    post:
+      tags: [SignalEvents]
+      operationId: requestElderHelp
+      description: Active elder requests help for themselves. Reuses authorized recipients, channels and quiet hours.
+        Same key replays the original event for seven days; different keys or button/voice requests within 120 seconds reuse one event.
+        No authorized recipient or no channel is persisted as NOTIFICATION_FAILED with an explanation.
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [family_id]
+              properties:
+                family_id:
+                  $ref: '#/components/schemas/Id'
+      responses:
+        '200':
+          description: Persisted help event with current progress; Cache-Control no-store
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SignalEventDetailResponse'
+                - type: object
+                  required: [duplicate]
+                  properties:
+                    duplicate:
+                      type: boolean
+        '403':
+          description: Only the elder can request help for themselves
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Request expired or idempotency key reused with different input
+        '422':
+          description: Invalid family ID, idempotency key or additional fields
   /signal-events/{event_id}:
     parameters:
     - $ref: '#/components/parameters/EventId'
@@ -4609,7 +4650,7 @@ components:
           $ref: '#/components/schemas/SignalType'
         recognition_mode:
           type: string
-          enum: [MOCK, RULE, SEMANTIC]
+          enum: [MOCK, RULE, SEMANTIC, EXPLICIT]
           description: Persisted recognition source; independent of notification transport and delivery status.
         severity:
           $ref: '#/components/schemas/SignalSeverity'
@@ -4646,7 +4687,35 @@ components:
       - type: object
         properties:
           source_conversation_id:
-            $ref: '#/components/schemas/Id'
+            type: [string, 'null']
+            format: uuid
+          help_message:
+            type: string
+            description: Explicit help only; current delivery limitations and fallback guidance, without recipient identity.
+          contact_result:
+            type: string
+            enum: [UNKNOWN]
+            description: No current provider receipt proves contact with the intended person; manual handling is recorded separately in history.
+          deliveries:
+            type: array
+            description: Explicit help only. Current authorized channels; omits recipient IDs, numbers and provider message IDs.
+            items:
+              type: object
+              properties:
+                channel:
+                  type: string
+                  enum: [IN_APP, PUSH, SMS, PHONE]
+                status:
+                  type: string
+                  enum: [PENDING, QUEUED, SENT, DELIVERED, READ, FAILED, CANCELLED]
+                simulated:
+                  type: boolean
+                delivery_status:
+                  type: [string, 'null']
+                error_code:
+                  type: [string, 'null']
+                deferred:
+                  type: boolean
           occurred_at:
             $ref: '#/components/schemas/Timestamp'
           actioned_at:

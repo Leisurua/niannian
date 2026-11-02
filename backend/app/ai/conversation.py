@@ -22,7 +22,7 @@ REAL_IDENTITY = '你好，我是念念 AI，不是真实家人。闲聊文字会
 UNKNOWN = '我不确定，可以问问家人。当前没有可用且获准引用的家庭记忆。'
 UNAVAILABLE = '我现在没法回答，稍后再试或问问家人。'
 CHAT = '这是 Mock 演示回复。我在这里陪您，可以聊聊今天想做的事。'
-HELP = '如需帮助，请直接联系身边的人或家人。电话尚未开放；关注提示需单独授权，推送仅为 Mock 模拟。'
+HELP = '如需帮助，请联系身边的人，或点击“向家人求助”、明确说“我要向家人求助”。通知需当前授权，发送结果以实际记录为准。'
 SYSTEM_UNKNOWN = '我现在没有可核实的天气、时间安排或提醒信息，请查看相应页面或问问家人。'
 REPLIES = frozenset((IDENTITY, UNKNOWN, UNAVAILABLE, CHAT, HELP, SYSTEM_UNKNOWN, WARNING, EMERGENCY_COPY))
 

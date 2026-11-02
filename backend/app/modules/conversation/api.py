@@ -17,6 +17,7 @@ from app.modules.audit import service as audit
 from app.modules.auth.service import authenticate
 from app.modules.conversation import service, summary as recap, proactive, daily
 from app.modules.weather.service import WeatherService
+from app.modules.safety.rules import explicit_help
 from app.platform.identifiers import utcnow
 from app.modules.conversation.protocol import InputLimits, MessageBudget, ProtocolError, parse_client_frame
 from app.platform.authentication import current_identity
@@ -283,6 +284,18 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                             speech.speed = message.payload.get('speech_rate', 1.0)
                             if turn_task or not row.provider_metadata.get('identity_disclosed'):
                                 outgoing = [service.event(row, 'error', {'code': 'PROVIDER_TEMPORARILY_UNAVAILABLE', 'retryable': False})]
+                            elif explicit_help(message.payload['text']):
+                                from app.modules.signal import help
+                                result = await help.request(db, actor, row.family_id,
+                                    f'ws-help:{conversation_id}:{message.sequence}', f'turn-{message.sequence}', origin='VOICE')
+                                last_reply, last_records = result['help_message'], ()
+                                last_daily = last_query = None
+                                last_source_labels = ['主动求助']
+                                row.backend_state = 'IDLE'
+                                outgoing = [service.event(row, 'signal.created', dict(signal_event_id=result['id'],
+                                    type='EMERGENCY', severity=result['severity'])),
+                                    service.event(row, 'assistant.text', {'text': last_reply, 'source_labels': last_source_labels}),
+                                    service.event(row, 'assistant.state', {'state': 'IDLE'})]
                             elif message.payload['text'].strip('。！! ') in ('今天少打扰我', '今天别打扰我', '今天别主动提醒我', '不要打扰', '我在忙', '我在休息'):
                                 try:
                                     await proactive.command(db, actor, row.family_id, actor.user_id, 'pause', {},
