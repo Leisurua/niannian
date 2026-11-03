@@ -18,6 +18,19 @@ class SignalActionInput(BaseModel):
     expected_status: SignalStatus
 
 
+class HelpRequestInput(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    family_id: UUID
+
+
+@router.post('/help-requests', operation_id='requestElderHelp')
+async def request_help(body: HelpRequestInput, request: Request, response: Response,
+    idempotency_key: str = Header(), actor=Depends(current_identity), db=Depends(transaction)):
+    from app.modules.signal import help
+    response.headers['Cache-Control'] = 'no-store'
+    return await help.request(db, actor, body.family_id, idempotency_key, request.state.request_id)
+
+
 @router.post('/{event_id}/actions', operation_id='handleSignalEvent')
 async def handle_action(event_id: UUID, body: SignalActionInput, request: Request, response: Response,
     idempotency_key: str = Header(), actor=Depends(current_identity), db=Depends(transaction)):

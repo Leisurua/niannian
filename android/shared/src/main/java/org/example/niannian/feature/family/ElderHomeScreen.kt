@@ -233,6 +233,12 @@ internal fun ElderDesignHome(
                 )
 
                 Column(Modifier.padding(horizontal = 24.dp, vertical = 12.dp)) {
+                    org.example.niannian.feature.notification.ElderHelpCard(models.notifications,
+                        family = homeFamily(state), user = state.userId,
+                        unavailable = state.offline || state.error.isNotBlank() || homeFamily(state).isBlank(),
+                        onVoice = { chatTopic = null; startWithVoice = true; feature = HomeFeature.CHAT },
+                        onProgress = { feature = HomeFeature.NOTIFICATIONS })
+                    Spacer(Modifier.height(12.dp))
                     HomeWeatherCard("${state.userId}:${homeFamily(state)}:${state.userId}", textScale)
                 }
 

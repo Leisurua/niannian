@@ -104,5 +104,6 @@ fun FamilyRepository.notificationGateway(): NotificationGateway {
                     repository.call(path, method, body, false, version)
         override suspend fun read(id: String, key: String) = repository.markNotificationRead(id, key)
         override suspend fun act(id: String, body: JSONObject, key: String) = repository.handleSignal(id, body, key)
+        override suspend fun help(family: String, key: String) = repository.requestHelp(family, key)
     }
 }

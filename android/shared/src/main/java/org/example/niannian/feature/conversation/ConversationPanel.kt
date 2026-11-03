@@ -112,6 +112,7 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
     Card(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("念念 AI 陪伴", fontSize = 26.sp)
+            Text("需要家人帮助时，点说话并说“我要向家人求助”。发送和处理结果以实际记录为准。", fontSize = 18.sp)
             val phase = state.companionPhase
             val canSpeak = state.connected && !unavailable && permissionSession == null
             Row(verticalAlignment = Alignment.CenterVertically) {
