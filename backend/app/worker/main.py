@@ -1,6 +1,7 @@
 import logging
 import argparse
 import asyncio
+from uuid import uuid4
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -85,6 +86,38 @@ async def notification_loop():
             delay = 15
 
 
+async def heartbeat_loop():
+    from app.platform.db import session_factory
+    from app.platform.health import record_worker, retire_worker
+    from app.platform.identifiers import utcnow
+    settings = get_settings()
+    instance_id, started_at = str(uuid4()), utcnow()
+    logger = logging.getLogger('nianian.worker')
+    try:
+        while True:
+            try:
+                async with session_factory() as db:
+                    await record_worker(db, instance_id, started_at)
+                    await db.commit()
+            except Exception:
+                log_event(logger, logging.ERROR, 'WORKER_HEARTBEAT_FAILED', error_code='DATABASE_UNAVAILABLE')
+            await asyncio.sleep(settings.worker_heartbeat_seconds)
+    finally:
+        try:
+            async with session_factory() as db:
+                await retire_worker(db, instance_id)
+                await db.commit()
+        except Exception:
+            pass
+
+
+async def healthcheck():
+    from app.platform.db import session_factory
+    from app.platform.health import worker_is_fresh
+    async with session_factory() as db:
+        return await worker_is_fresh(db, get_settings().worker_stale_seconds)
+
+
 async def serve():
     scheduler = AsyncIOScheduler()
     async def safe_cycle():
@@ -95,12 +128,14 @@ async def serve():
     scheduler.add_job(safe_cycle, 'interval', seconds=15, max_instances=1, coalesce=True)
     scheduler.start()
     notifications = asyncio.create_task(notification_loop())
+    heartbeat = asyncio.create_task(heartbeat_loop())
     try:
         await safe_cycle()
         await asyncio.Event().wait()
     finally:
         notifications.cancel()
-        await asyncio.gather(notifications, return_exceptions=True)
+        heartbeat.cancel()
+        await asyncio.gather(notifications, heartbeat, return_exceptions=True)
         scheduler.shutdown(wait=False)
 
 
@@ -109,11 +144,18 @@ def main() -> None:
     parser.add_argument('--once', action='store_true', help='Run a single database cycle')
     parser.add_argument('--serve', action='store_true', help='Run the 15-second scheduler')
     parser.add_argument('--avatar', action='store_true', help='Run the dedicated photo/THA3 worker')
+    parser.add_argument('--healthcheck', action='store_true', help='Exit successfully when the worker heartbeat is fresh')
     args = parser.parse_args()
     settings = get_settings()
     configure_logging(settings.log_level)
-    log_event(logging.getLogger("nianian.worker"), logging.INFO, "WORKER_READY")
     configure_event_loop()
+    if args.healthcheck:
+        try:
+            healthy = asyncio.run(healthcheck())
+        except Exception:
+            healthy = False
+        raise SystemExit(0 if healthy else 1)
+    log_event(logging.getLogger("nianian.worker"), logging.INFO, "WORKER_READY")
     if args.avatar:
         from app.modules.avatar.worker import serve as avatar_serve
         asyncio.run(avatar_serve(once=args.once))

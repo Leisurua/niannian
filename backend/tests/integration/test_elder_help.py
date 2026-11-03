@@ -153,7 +153,8 @@ def test_phone_receipt_evidence_never_advances_family_contact_state(system):
         from sqlalchemy import select
         async with factory() as db:
             notice = await db.scalar(select(Notification).where(Notification.signal_event_id == UUID(event['id'])))
-            notice.status = 'SENT'
+            # Each simulated receipt represents an independent call.
+            notice.status, notice.provider_status = 'SENT', 'queued'
             apply_receipt(notice, status)
             await db.commit()
     for status in ('completed', 'no-answer', 'busy'):

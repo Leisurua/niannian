@@ -20,6 +20,7 @@ dependencies = [
   "APScheduler==3.11.3",
   "anyio==4.15.1",
   "httpx==0.28.1",
+  "cryptography==46.0.3",
   "fastembed==0.9.1",
 ]
 

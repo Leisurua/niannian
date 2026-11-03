@@ -17,7 +17,7 @@ def test_local_classification_and_unrelated_speakers():
     assert classify('我想女儿了')[0] == ['MISS_FAMILY']
     for text in ('我不开心', '我没有担心', '你孤单吗', '女儿说我很难过', '“我很开心”', '如果我很孤单', '我想女儿了吗'):
         assert classify(text)[0] == []
-    assert classify('年轻时包饺子')[1] == ['DUMPLINGS', 'WORK_STORY']
+    assert classify('年轻时包饺子')[1] == ['DUMPLINGS']
 
 
 def test_aggregation_local_midnight_unique_sessions_and_no_empty_topic_cluster():

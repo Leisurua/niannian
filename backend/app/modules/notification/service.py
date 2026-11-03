@@ -6,7 +6,10 @@ from sqlalchemy import delete, select
 
 from app.integrations.contracts import PushRequest
 from app.integrations.mock import MockPush
-from app.integrations.notifications import ExternalNotifications, DeliveryFailure, provider_name
+from app.integrations.notifications import (
+    TWILIO_FAILURE_STATUSES, TWILIO_STATUSES, TWILIO_TERMINAL_STATUSES,
+    DeliveryFailure, ExternalNotifications, provider_name,
+)
 from app.modules.audit import service as audit
 from app.modules.auth.service import codec
 from app.modules.notification.models import Notification, NotificationAttempt
@@ -79,6 +82,27 @@ async def detail(db, actor, notification_id, request_id, *, read_key=None, setti
     else:
         await audit.record(db, actor.user_id, 'NOTIFICATION_DETAIL', 'NOTIFICATION', row.id, request_id=request_id)
     return view(row) | dict(family_id=str(source['family_id']), owner_user_id=str(source['owner_user_id']))
+
+
+async def acknowledge_delivery(db, actor, notification_id, key, settings, request_id):
+    row = await db.get(Notification, notification_id)
+    source = await context(db, row, for_delivery=False) if row and row.recipient_user_id == actor.user_id else None
+    if not source:
+        raise AppError('NOTIFICATION_NOT_FOUND', '通知不存在或无权查看。', 404)
+    await db.refresh(row)
+    if row.deleted_at or row.retention_until <= utcnow() or row.status == 'CANCELLED':
+        raise AppError('NOTIFICATION_NOT_FOUND', '通知不存在或无权查看。', 404)
+    if row.channel != 'PUSH' or row.provider != 'ntfy' or row.status not in ('SENT', 'DELIVERED', 'READ'):
+        raise AppError('RESOURCE_STATE_CONFLICT', '当前通知不能确认设备送达。', 409)
+    idem = audit.Idempotency(key, 'notification-delivery:' + str(row.id), {})
+    if not row.delivered_at and not await idem.previous(db, actor.user_id, settings.idempotency_seconds):
+        if row.status == 'SENT':
+            row.status = 'DELIVERED'
+        row.delivered_at = utcnow()
+        row.provider_status = 'device-acknowledged'
+        await audit.record(db, actor.user_id, 'NOTIFICATION_DEVICE_DELIVERED', 'NOTIFICATION', row.id,
+            request_id=request_id, metadata=idem.metadata)
+    return view(row)
 
 
 async def mobile_inbox(db, actor, limit, cursor, settings, request_id):
@@ -307,8 +331,7 @@ async def dispatch_external(factory, task_id, token, notification_id, prepared):
 
 
 async def refresh_receipt(db, row):
-    if row.provider != 'twilio' or row.status not in ('SENT', 'READ') or row.provider_status in (
-            'delivered', 'completed', 'busy', 'no-answer', 'failed', 'undelivered', 'canceled'):
+    if row.provider != 'twilio' or row.status not in ('SENT', 'READ') or row.provider_status in TWILIO_TERMINAL_STATUSES:
         return
     settings = get_settings()
     if not settings.notification_external_enabled:
@@ -322,24 +345,45 @@ async def refresh_receipt(db, row):
             status = await ExternalNotifications(settings).status(row.channel, attempt.provider_message_id)
     except Exception:
         return  # Read-only polling retries on the next maintenance cycle.
-    if status not in ('queued', 'accepted', 'sending', 'sent', 'delivered', 'undelivered',
-            'scheduled', 'canceled', 'failed', 'ringing', 'in-progress', 'completed', 'busy', 'no-answer'):
+    if status not in TWILIO_STATUSES:
         return
     apply_receipt(row, status)
     await aggregate(db, row.signal_event_id)
 
 
 def apply_receipt(row, status):
+    if row.provider_status in TWILIO_TERMINAL_STATUSES:
+        return  # Late and repeated receipts cannot change a final provider outcome.
     row.provider_status = status
     if status == 'delivered' and row.channel == 'SMS':
         row.delivered_at = row.delivered_at or utcnow()
         if row.status != 'READ':
             row.status = 'DELIVERED'
-    elif status in ('failed', 'undelivered', 'canceled', 'busy', 'no-answer'):
+    elif status in TWILIO_FAILURE_STATUSES:
         row.error_code = 'PROVIDER_DELIVERY_FAILED'
         if row.status != 'READ':
             row.status = 'FAILED'
     # A completed voice call may be voicemail. It never becomes CONTACTED/RESOLVED.
+
+
+async def apply_twilio_callback(db, sid, status):
+    attempt = await db.scalar(select(NotificationAttempt).where(NotificationAttempt.provider == 'twilio',
+        NotificationAttempt.provider_message_id == sid, NotificationAttempt.status == 'SUCCEEDED')
+        .order_by(NotificationAttempt.attempt_no.desc()).limit(1))
+    if attempt is None:
+        return False
+    row = await db.get(Notification, attempt.notification_id)
+    if not await context(db, row, for_delivery=False):
+        return False
+    # Authorization holds the family lock used by dispatch, polling and revocation.
+    await db.refresh(row)
+    channel = 'SMS' if sid.startswith('SM') else 'PHONE'
+    if (row.deleted_at or row.retention_until <= utcnow() or row.provider != 'twilio'
+            or row.channel != channel or row.status not in ('SENT', 'DELIVERED', 'READ', 'FAILED')):
+        return False
+    apply_receipt(row, status)
+    await aggregate(db, row.signal_event_id)
+    return True
 
 
 async def invalidate(db, fid, owner, grantee, scope):

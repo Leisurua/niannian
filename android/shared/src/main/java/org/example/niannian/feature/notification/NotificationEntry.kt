@@ -77,6 +77,10 @@ fun NotificationEntry(repository: FamilyRepository, launch: NotificationLaunch?,
         if (launch.recipient != user) { error = "此通知属于其他账号，请切换到接收通知的账号后再打开。"; return@LaunchedEffect }
         try {
             require(UUID.fromString(launch.id).toString() == launch.id)
+            if (launch.providerPush) try {
+                repository.acknowledgeNotificationDelivery(launch.id, UUID.randomUUID().toString())
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { /* A receipt failure must not block authorized event access. */ }
             val value = repository.call("/v1/notifications/${launch.id}")
             if (repository.savedUserId() != user) return@LaunchedEffect
             route = NotificationRoute(value.getString("family_id"), value.getString("owner_user_id"))
@@ -105,6 +109,10 @@ fun ElderSignalProgress(model: NotificationModel?, onOpen: () -> Unit) {
     Card(Modifier.fillMaxWidth().padding(top = 12.dp)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("家人的处理进度", style = MaterialTheme.typography.titleLarge)
+            Text("需要帮助时，可请已获授权的家人尽快联系。发送失败请使用电话或当面联系。")
+            Button(onClick = { model.requestHelp() }, enabled = state.loaded && !state.busy && state.family.isNotBlank(),
+                modifier = Modifier.heightIn(min = 56.dp)) { Text("请家人尽快联系我") }
+            if (state.message.isNotBlank()) Text(state.message)
             state.items.take(3).forEach { Text(signalStatusLabel(it.eventStatus), style = MaterialTheme.typography.bodyLarge) }
             if (!state.loaded || state.busy) Text("正在核对处理进度，请保持网络连接。")
             else if (state.items.isEmpty()) Text("当前没有关注提示。")

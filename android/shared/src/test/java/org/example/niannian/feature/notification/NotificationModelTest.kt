@@ -194,7 +194,6 @@ class NotificationModelTest {
         assertTrue(model.state.value.items.isEmpty()); assertNull(model.state.value.event)
         model.clear()
     }
-
     @Test fun helpRetryKeepsKeyAndLateResponseCannotRestoreAnotherFamily() = runBlocking {
         val gateway = Gateway(); gateway.fail = true
         val model = NotificationModel(gateway, this)

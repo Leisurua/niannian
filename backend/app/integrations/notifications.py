@@ -1,13 +1,20 @@
 """Explicitly enabled ntfy and Twilio transports; no automatic retry of external sends."""
 import re
 import ssl
+import base64
+import hashlib
+import hmac
 from dataclasses import dataclass
 from uuid import UUID
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 import httpx
 
 MESSAGE = '念念 AI 提醒：有一条关注提示，请打开念念应用查看当前获授权的详情。'
+TWILIO_STATUSES = ('queued', 'accepted', 'sending', 'sent', 'delivered', 'undelivered',
+                   'scheduled', 'canceled', 'failed', 'ringing', 'in-progress', 'completed', 'busy', 'no-answer')
+TWILIO_FAILURE_STATUSES = frozenset(('failed', 'undelivered', 'canceled', 'busy', 'no-answer'))
+TWILIO_TERMINAL_STATUSES = TWILIO_FAILURE_STATUSES | {'delivered', 'completed'}
 
 
 def notification_link(notification_id, recipient_id):
@@ -89,6 +96,10 @@ class ExternalNotifications:
                     return Receipt('ntfy', identifier, 'accepted')
                 kind = 'Messages' if channel == 'SMS' else 'Calls'
                 data = {'To': destination, 'From': settings.twilio_from_number}
+                if settings.twilio_status_callback_url:
+                    data['StatusCallback'] = settings.twilio_status_callback_url
+                    if channel == 'PHONE':
+                        data['StatusCallbackMethod'] = 'POST'
                 if channel == 'SMS':
                     data['Body'] = MESSAGE
                 else:
@@ -102,8 +113,7 @@ class ExternalNotifications:
                 if not re.fullmatch(('SM' if channel == 'SMS' else 'CA') + r'[0-9a-fA-F]{32}', identifier):
                     raise DeliveryFailure('DELIVERY_UNKNOWN')
                 status = value.get('status', 'queued')
-                if status not in ('queued', 'accepted', 'sending', 'sent', 'delivered', 'failed', 'undelivered',
-                        'scheduled', 'canceled', 'ringing', 'in-progress', 'completed', 'busy', 'no-answer'):
+                if status not in TWILIO_STATUSES:
                     status = 'accepted'
                 return Receipt('twilio', identifier, status)
         except DeliveryFailure:
@@ -134,3 +144,34 @@ class ExternalNotifications:
             if value.get('sid') != identifier or value.get('account_sid') != self.settings.twilio_account_sid:
                 raise DeliveryFailure('INVALID_RECEIPT')
             return value['status']
+
+
+def verified_twilio_callback(settings, signature, body):
+    if (not settings.notification_external_enabled or settings.app_env != 'dev'
+            or not settings.twilio_auth_token or not settings.twilio_account_sid
+            or not settings.twilio_status_callback_url or len(body) > 8192):
+        raise DeliveryFailure('INVALID_WEBHOOK')
+    try:
+        pairs = parse_qsl(body.decode('ascii'), keep_blank_values=True, strict_parsing=True,
+                          encoding='utf-8', errors='strict', max_num_fields=32)
+    except (UnicodeError, ValueError):
+        raise DeliveryFailure('INVALID_WEBHOOK') from None
+    params = dict(pairs)
+    if len(params) != len(pairs):
+        raise DeliveryFailure('INVALID_WEBHOOK')
+    value = settings.twilio_status_callback_url + ''.join(key + params[key] for key in sorted(params))
+    expected = base64.b64encode(hmac.new(settings.twilio_auth_token.encode(), value.encode(), hashlib.sha1).digest()).decode()
+    if not isinstance(signature, str) or not signature.isascii() or not hmac.compare_digest(expected, signature):
+        raise DeliveryFailure('INVALID_WEBHOOK')
+    message = bool(params.get('MessageSid'))
+    call = bool(params.get('CallSid'))
+    if message == call:
+        raise DeliveryFailure('INVALID_WEBHOOK')
+    sid = params.get('MessageSid') if message else params.get('CallSid')
+    status = params.get('MessageStatus') if message else params.get('CallStatus')
+    if (params.get('AccountSid') != settings.twilio_account_sid
+            or not sid or not re.fullmatch(('SM' if message else 'CA') + r'[0-9a-fA-F]{32}', sid)
+            or (message and params.get('CallStatus')) or (call and params.get('MessageStatus'))
+            or status not in TWILIO_STATUSES):
+        raise DeliveryFailure('INVALID_WEBHOOK')
+    return {'sid': sid, 'status': status}

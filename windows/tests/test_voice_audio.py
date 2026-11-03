@@ -31,3 +31,25 @@ def test_voice_socket_rejects_old_sequence_and_other_conversation():
         with pytest.raises(ValueError):
             socket.validate(invalid)
     assert socket.validate(frame(5))['sequence'] == 5
+
+
+def test_proactive_invitation_never_plays_audio_before_explicit_response():
+    from datetime import datetime, timedelta, timezone
+    from types import SimpleNamespace
+    from niannian_desktop.conversation import ConversationPanel
+    spoken, displayed, sent = [], [], []
+    panel = SimpleNamespace(connection=SimpleNamespace(floor=0, sequence=5),
+        voice_allowed=True, slow=False, invitation=None, playback=None,
+        audio=SimpleNamespace(speak=lambda *args: spoken.append(args), stop=lambda: None),
+        clear_invitation=lambda: None, append=displayed.append,
+        invitation_row=SimpleNamespace(pack=lambda **kw: None), after=lambda *args: 'timer',
+        command=lambda *args: sent.append(args))
+    invitation = '0192f1e4-6ed8-7c21-a4c1-5d58db7c3002'
+    ConversationPanel.receive(panel, dict(type='assistant.text', in_reply_to=1, payload=dict(text='聊一会儿？',
+        proactive_invitation_id=invitation, expires_at=(datetime.now(timezone.utc) + timedelta(minutes=4)).isoformat())))
+    assert not spoken and panel.invitation == invitation
+    ConversationPanel.respond_invitation(panel, 'ACCEPT')
+    assert sent[0][1]['proactive_invitation_id'] == invitation
+    assert sent[0][1]['proactive_response'] == 'ACCEPT' and not spoken
+    ConversationPanel.receive(panel, dict(type='assistant.text', in_reply_to=2, payload={'text': '今天想做什么？'}))
+    assert spoken == [('今天想做什么？', False)]

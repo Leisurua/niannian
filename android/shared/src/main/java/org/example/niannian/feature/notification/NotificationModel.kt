@@ -20,11 +20,12 @@ interface NotificationGateway {
 }
 
 data class InboxItem(val id: String, val eventId: String, val status: String, val channel: String,
-    val summary: String, val explanation: String, val eventStatus: String = "", val deliveries: List<String> = emptyList())
+    val summary: String, val explanation: String, val eventStatus: String = "", val deliveries: List<String> = emptyList(),
+    val failureCode: String = "")
 data class EventContact(val name: String, val phone: String, val emergency: Boolean)
 data class SignalDetail(val id: String, val status: String, val canHandle: Boolean, val actionedAt: String,
     val resolvedAt: String, val contacts: List<EventContact> = emptyList(), val history: List<String> = emptyList(),
-    val helpMessage: String = "", val deliveries: List<String> = emptyList()) {
+    val failureCode: String = "", val helpMessage: String = "", val deliveries: List<String> = emptyList()) {
     val actions: List<String> get() = if (!canHandle) emptyList() else when (status) {
         "VALIDATED", "NOTIFIED", "NOTIFICATION_FAILED" -> listOf("ACKNOWLEDGE", "FALSE_POSITIVE")
         "ACKNOWLEDGED" -> listOf("CONTACT", "FALSE_POSITIVE", "RESOLVE")
@@ -116,7 +117,8 @@ class NotificationModel(private val gateway: NotificationGateway, private val sc
                 deliveryLabel(notice)
             }
             values.add(InboxItem(item?.getString("id").orEmpty(), eventId, status,
-                item?.getString("channel").orEmpty(), summary, explanation, event.getString("status"), deliveries))
+                item?.getString("channel").orEmpty(), summary, explanation, event.getString("status"), deliveries,
+                event.optString("failure_code")))
         }
         if (stamp == generation) {
             if (preference != null) setting(preference)
@@ -180,7 +182,8 @@ class NotificationModel(private val gateway: NotificationGateway, private val sc
                 EventContact(it.getString("display_name"), phone, it.getBoolean("emergency")) } },
             (0 until history.length()).map { index -> history.getJSONObject(index).let {
                 "${it.optString("actor_display_name", "家庭成员")} · ${signalActionLabel(it.getString("action"))} · ${it.getString("occurred_at")}" } },
-            detail.optString("help_message"), (detail.optJSONArray("deliveries") ?: JSONArray()).let { entries ->
+            detail.optString("failure_code"), detail.optString("help_message"),
+            (detail.optJSONArray("deliveries") ?: JSONArray()).let { entries ->
                 (0 until entries.length()).map { deliveryLabel(entries.getJSONObject(it)) }
             }))
     }

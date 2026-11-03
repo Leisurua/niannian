@@ -3,7 +3,7 @@ package org.example.niannian.feature.notification
 import java.net.URI
 import java.util.UUID
 
-data class NotificationLaunch(val id: String, val recipient: String)
+data class NotificationLaunch(val id: String, val recipient: String, val providerPush: Boolean = false)
 
 fun validatedNotificationLaunch(id: String?, recipient: String?): NotificationLaunch? = runCatching {
     require(id != null && recipient != null)
@@ -19,7 +19,7 @@ fun parseNotificationLink(raw: String?): NotificationLaunch? = runCatching {
     require(uri.rawQuery == null && uri.rawFragment == null && uri.rawPath == uri.path)
     val parts = uri.path.split('/')
     require(parts.size == 3 && parts[0].isEmpty())
-    validatedNotificationLaunch(parts[1], parts[2])
+    validatedNotificationLaunch(parts[1], parts[2])?.copy(providerPush = true)
 }.getOrNull()
 
 fun validPushSubscription(raw: String?): String? = runCatching {

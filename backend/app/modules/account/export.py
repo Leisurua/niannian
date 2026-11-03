@@ -24,6 +24,7 @@ from app.modules.reminder.models import Reminder, ReminderExecution
 from app.modules.report.models import InteractionMetric
 from app.modules.signal.models import SignalEvent
 from app.modules.avatar.models import AvatarJob
+from app.modules.voice.models import VoiceProfile, VoicePreference
 from app.platform.errors import AppError
 from app.platform.identifiers import utcnow
 
@@ -35,10 +36,10 @@ def too_large():
 async def build_export(db, actor, storage, settings, request_id):
     uid, now = actor.user_id, utcnow()
     await lock_families(db, uid)
-    data = dict(format_version=1, generated_at=now, user=actor.user, collections={},
-        scope='本人资料、授权、本人业务内容和已发送留言；不批量导出其他主体的家庭内容。',
+    data = dict(format_version=2, generated_at=now, user=actor.user, collections={},
+        scope='本人资料、授权、本人业务内容、本人声音和已发送留言；不批量导出其他主体的家庭内容。',
         excluded=['访问/刷新令牌、邀请码和凭证摘要', '供应商内部标识、向量和运维元数据',
-            '已删除、撤回或到期的内容', '未持久化的逐字稿与录音', '其他主体的业务内容'])
+            '已删除、撤回或到期的内容', '会话中未持久化的逐字稿与录音', '其他主体的业务内容'])
     budget = settings.account_export_max_bytes
 
     async def rows(model, condition):
@@ -71,7 +72,7 @@ async def build_export(db, actor, storage, settings, request_id):
             ended_at=row.ended_at, status=row.status, summary=await readable(db, row)))
     data['collections']['conversation'] = conversations
     await add(InteractionMetric, (InteractionMetric.owner_user_id == uid) & (InteractionMetric.retention_until > now),
-        'conversation_id sequence family_id occurred_at duration_seconds emotions topics simulated retention_until')
+        'conversation_id sequence family_id occurred_at duration_seconds emotions topics topic_method topic_model_version simulated retention_until')
     await add(ProactivePreference, ProactivePreference.owner_user_id == uid,
         'family_id timezone window_start window_end quiet_start quiet_end daily_cap version confirmed_version paused_on')
     await add(ProactiveDailyCounter, ProactiveDailyCounter.owner_user_id == uid, 'family_id local_date used_count')
@@ -87,7 +88,7 @@ async def build_export(db, actor, storage, settings, request_id):
     data['collections']['family_contact'] = [dict(family_id=row.family_id, **contact_view(row))
         for row in await rows(FamilyContact, FamilyContact.user_id == uid)]
     await add(SignalEvent, (SignalEvent.owner_user_id == uid) & SignalEvent.deleted_at.is_(None) & (SignalEvent.retention_until > now),
-        'id family_id type severity status detected_at resolved_at resolution_code')
+        'id family_id type severity status detected_at resolved_at resolution_code failure_code')
     await add(FamilyMessage, FamilyMessage.sender_user_id == uid, 'id family_id destination_role priority text created_at')
     await add(MessageDelivery, MessageDelivery.recipient_member_id.in_(select(FamilyMember.id).where(FamilyMember.user_id == uid)),
         'message_id received_at read_at')
@@ -111,6 +112,24 @@ async def build_export(db, actor, storage, settings, request_id):
                 entries.append((asset, f'avatars/{job.id}/{name}'))
     data['collections']['file_asset'] = [dict(id=f.id, memory_id=f.memory_id, mime_type=f.mime_type,
         archive_path=path) for f, path in entries]
+    voice_entries = []
+    data['collections']['voice_profile'] = []
+    profiles = await rows(VoiceProfile, (VoiceProfile.owner_user_id == uid)
+        & ~VoiceProfile.status.in_(('REVOKED', 'DELETED'))
+        & or_(VoiceProfile.expires_at.is_(None), VoiceProfile.expires_at > now))
+    for profile in profiles:
+        value = {name: getattr(profile, name) for name in (
+            'id', 'family_id', 'display_name', 'status', 'version', 'provider_model',
+            'approved_at', 'created_at', 'expires_at', 'error_code')}
+        if profile.sample_key:
+            value['sample_archive_path'] = f'voices/{profile.id}/sample.wav'
+            voice_entries.append((profile.sample_key, value['sample_archive_path']))
+        if profile.preview_key:
+            value['preview_archive_path'] = f'voices/{profile.id}/preview.wav'
+            voice_entries.append((profile.preview_key, value['preview_archive_path']))
+        data['collections']['voice_profile'].append(value)
+    await add(VoicePreference, VoicePreference.owner_user_id == uid,
+        'family_id voice_profile_id cloud_tts_allowed')
     payload = json.dumps(jsonable_encoder(data), ensure_ascii=False).encode('utf-8')
     size = len(payload)
     if size + sum(f.size_bytes for f, _ in entries) > budget:
@@ -121,6 +140,12 @@ async def build_export(db, actor, storage, settings, request_id):
         for asset, archive_path in entries:
             # Storage failure aborts the export; never return an incomplete ZIP.
             content = await storage.read(asset.object_key + '.safe', max(settings.file_max_size_bytes, 24 * 1024 * 1024))
+            size += len(content)
+            if size > budget:
+                raise too_large()
+            archive.writestr(archive_path, content)
+        for object_key, archive_path in voice_entries:
+            content = await storage.read(object_key, 3_000_000)
             size += len(content)
             if size > budget:
                 raise too_large()

@@ -18,9 +18,10 @@ from app.modules.account.models import AccountDeletion, ProviderCopy
 from app.modules.avatar.models import AvatarJob
 
 from app.modules.voice.models import VoiceProfile, VoicePreference
+from app.platform.health import ServiceHeartbeat
 
 DOMAIN_MODELS = (
-    VoiceProfile, VoicePreference,
+    VoiceProfile, VoicePreference, ServiceHeartbeat,
     User, Family, AuditLog, FamilyMember, FamilyInvitation, Consent, DeviceBinding,
     DeviceSession, Memory, FileAsset, Reminder, ReminderExecution, Conversation,
     MemoryChunk, MemoryEmbedding, Task, ProactivePreference, ProactiveDailyCounter,

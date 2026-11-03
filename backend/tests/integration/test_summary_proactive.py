@@ -337,3 +337,71 @@ def test_listener_failure_closes_and_releases_socket_lease(system, monkeypatch):
     assert not api._connections
     with client.websocket_connect('/v1/ws/conversations/' + cid, headers=home[4]) as ws:
         handshake(ws, cid)
+
+
+@pytest.mark.parametrize('response', ['ACCEPT', 'DECLINE', 'PAUSE_TODAY', 'STALE', 'CHANGED', 'EXPIRED'])
+def test_invitation_is_silent_and_only_current_acceptance_calls_model(system, monkeypatch, response):
+    from types import SimpleNamespace
+    from app.ai.conversation import AIOrchestrator, MockConversationLLM
+    from app.main import app
+    from app.modules.conversation import api
+
+    class CountingLLM(MockConversationLLM):
+        calls = 0
+        async def generate(self, request):
+            self.calls += 1
+            return await super().generate(request)
+
+    client, engine, factory, _ = system
+    home = household(client); path, body, version = preferences(client, home)
+    post(client, path + '/confirm', home[4], {'version': version})
+    cid = start(client, home)
+    old = utcnow() - timedelta(hours=1)
+    monkeypatch.setattr(api, 'utcnow', lambda: old)
+    with engine.begin() as conn:
+        conn.execute(text('UPDATE conversation SET started_at=:old WHERE id=:id'), {'old': old, 'id': cid})
+    llm = CountingLLM()
+    monkeypatch.setattr(app.state, 'conversation_orchestrator', AIOrchestrator(llm=llm), raising=False)
+    async def tick():
+        async with factory() as db:
+            # Scheduling must work independently of the Mock/real provider profile.
+            await proactive.tick(db, SimpleNamespace(provider_mode='real'))
+            await db.commit()
+    with client.websocket_connect('/v1/ws/conversations/' + cid, headers=home[4]) as ws:
+        handshake(ws, cid)
+        asyncio.run(tick())
+        invitation = ws.receive_json()['payload']
+        assert invitation['text'] == proactive.INVITATION
+        assert invitation['speech_mode'] == 'none' and llm.calls == 0
+        assert 'Mock' not in invitation['source_labels']
+        if response == 'EXPIRED':
+            current = proactive.utcnow()
+            monkeypatch.setattr(proactive, 'utcnow', lambda: current + timedelta(minutes=6))
+        if response == 'CHANGED':
+            assert client.put(path, headers={**home[2], 'If-Match': str(version)}, json=body | {'daily_cap': 0}).status_code == 200
+        invitation_id = str(UUID(int=1)) if response == 'STALE' else invitation['proactive_invitation_id']
+        action = response if response in ('ACCEPT', 'DECLINE', 'PAUSE_TODAY') else 'ACCEPT'
+        # Invitation actions must not be reinterpreted as commands from the accompanying text.
+        payload = dict(text='我要向家人求助', proactive_invitation_id=invitation_id, proactive_response=action)
+        ws.send_json(ws_frame(cid, 'text.input', 2, payload))
+        first = ws.receive_json()
+        if response == 'ACCEPT':
+            assert first['payload']['state'] == 'THINKING'
+            reply = ws.receive_json()
+            assert reply['type'] == 'assistant.text' and reply['in_reply_to'] == 2
+            assert llm.calls == 1
+        elif response in ('STALE', 'CHANGED', 'EXPIRED'):
+            assert first['type'] == 'error' and first['payload']['code'] == 'PROACTIVE_INVITATION_EXPIRED'
+        else:
+            assert first['type'] == 'assistant.text'
+            if response == 'DECLINE':
+                assert first['payload']['speech_mode'] == 'none'
+        assert ws.receive_json()['type'] == 'assistant.state'
+        assert llm.calls == int(response == 'ACCEPT')
+        # A second click on the same invitation cannot start another turn.
+        ws.send_json(ws_frame(cid, 'text.input', 3, payload))
+        assert ws.receive_json()['payload']['code'] == 'PROACTIVE_INVITATION_EXPIRED'
+        assert ws.receive_json()['type'] == 'assistant.state'
+    assert bool(client.get(path, headers=home[4]).json()['paused_on']) == (response == 'PAUSE_TODAY')
+    with engine.connect() as conn:
+        assert conn.execute(text('SELECT sum(used_count) FROM proactive_daily_counter')).scalar() == 1

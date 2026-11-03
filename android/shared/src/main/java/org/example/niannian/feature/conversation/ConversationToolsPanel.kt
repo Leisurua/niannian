@@ -39,7 +39,7 @@ fun ConversationToolsPanel(model: ConversationToolsModel, family: String, subjec
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("主动陪伴与会话回顾", fontSize = 24.sp)
-            Text("Mock · 仅在线文字邀请；不会后台唤醒、播音或通知家人。")
+            Text("仅在已连接的聊天页面静默邀请；选择聊一会儿后使用当前模型，按已有语音授权朗读。不会后台唤醒或自动收音。")
             if (!elder) subjects.forEach { (id, name) -> OutlinedButton(onClick = { selected = id }, enabled = enabled) { Text(name) } }
             if (selected.isEmpty()) Text("当前没有可选择的长辈。")
             Button(onClick = { model.refresh() }, enabled = enabled && selected.isNotEmpty(), modifier = Modifier.fillMaxWidth().heightIn(min = if (elder) 64.dp else 48.dp)) { Text("读取当前设置") }

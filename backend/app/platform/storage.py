@@ -55,6 +55,9 @@ class S3Storage:
     async def write(self, key, data, mime):
         await self._call('put_object', Key=key, Body=data, ContentType=mime)
 
+    async def health(self):
+        await self._call('head_bucket')
+
     async def delete(self, key):
         await self._call('delete_object', Key=key)
 

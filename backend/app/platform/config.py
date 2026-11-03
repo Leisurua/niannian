@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     twilio_account_sid: str | None = Field(default=None, repr=False)
     twilio_auth_token: str | None = Field(default=None, repr=False)
     twilio_from_number: str | None = Field(default=None, repr=False)
+    twilio_status_callback_url: str | None = None
     contact_encryption_key: SecretStr = Field(default=SecretStr(''), repr=False)
     s3_endpoint: str = "http://localhost:9000"
     s3_public_endpoint: str | None = None
@@ -69,6 +70,8 @@ class Settings(BaseSettings):
     backup_directory: str | None = None
     audit_retention_days: int = Field(default=90, ge=7, le=365)
     task_retention_days: int = Field(default=7, ge=1, le=30)
+    worker_heartbeat_seconds: int = Field(default=5, ge=1, le=30)
+    worker_stale_seconds: int = Field(default=45, ge=10, le=300)
     account_export_max_bytes: int = Field(default=104857600, ge=1048576, le=1073741824)
     avatar_generation_enabled: bool = False
     avatar_image_provider: Literal['qwen', 'doubao'] = 'qwen'
@@ -87,6 +90,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def keep_demo_fictional(self) -> "Settings":
+        if self.worker_stale_seconds < self.worker_heartbeat_seconds * 2:
+            raise ValueError('WORKER_STALE_SECONDS must be at least twice WORKER_HEARTBEAT_SECONDS')
         if self.avatar_image_base_url:
             url = urlsplit(self.avatar_image_base_url)
             if url.scheme != 'https' or not url.hostname or url.username or url.password or url.query or url.fragment:
@@ -105,6 +110,11 @@ class Settings(BaseSettings):
             import re
             if not re.fullmatch(r'AC[0-9a-fA-F]{32}', self.twilio_account_sid):
                 raise ValueError('Invalid Twilio account SID')
+        if self.twilio_status_callback_url:
+            url = urlsplit(self.twilio_status_callback_url)
+            if (url.scheme != 'https' or not url.hostname or url.username or url.password or url.query or url.fragment
+                    or url.path != '/v1/notification-webhooks/twilio'):
+                raise ValueError('TWILIO_STATUS_CALLBACK_URL must be the public HTTPS Twilio webhook URL')
         if self.app_env == "demo" and (not self.demo_data or self.provider_mode != "mock"):
             raise ValueError("demo requires fictional data and mock providers")
         if self.app_env == "test" and self.provider_mode != "mock":

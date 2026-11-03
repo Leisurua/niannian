@@ -2,7 +2,7 @@
 
 ## 账户生命周期运维
 
-升级 API/worker 前，在 `backend/` 运行 `python -m alembic upgrade head`（当前头 `20261026_avatar_jobs`，包含账户生命周期迁移），随后重启二者。当前入口是 REST API，字段和凭证找回方式见 [OpenAPI](openapi.yaml)；Android/Windows 尚未增加账户管理界面。导出文件含本人资料，客户端应通过系统文件保存器交由本人选择位置；删除前先保存独立回执凭证，受理后按已有退出流程清理本地会话和缓存。
+升级 API/worker 前，在 `backend/` 运行 `python -m alembic upgrade head`（当前头 `20261101_operational_readiness`，包含账户生命周期、家人音色、主动求助、主题分类来源及 worker 心跳迁移），随后重启二者。当前入口是 REST API，字段和凭证找回方式见 [OpenAPI](openapi.yaml)；Android/Windows 尚未增加账户管理界面。导出文件含本人资料，客户端应通过系统文件保存器交由本人选择位置；删除前先保存独立回执凭证，受理后按已有退出流程清理本地会话和缓存。
 
 可配置 `BACKUP_RETENTION_DAYS=30`、`AUDIT_RETENTION_DAYS=90`、`TASK_RETENTION_DAYS=7`、`ACCOUNT_EXPORT_MAX_BYTES=104857600`。`BACKUP_DIRECTORY` 默认为空；只有显式指定的私有目录会启用自动备份期限清理。备份文件须命名为 `niannian-backup-YYYYMMDDTHHMMSSZ.dump`、`.sql.gz`、`.tar.gz` 或 `.zip`，时间为备份快照的 UTC 时间，不因复制而改写；写入完成后才使用该名称。清理不递归、不跟随符号链接/目录联接、不删除其他文件；目录必须仅由可信运维账号写入。此功能不自动创建备份。
 
@@ -55,7 +55,7 @@ python -m app --reload
 python -m app.worker.main --serve
 ```
 
-API 根地址 `http://127.0.0.1:8000`；`/docs`、`/openapi.json` 查看当前运行接口。`/health` 只检查 API 活性，不证明数据库、存储或 worker 正常。摘要、通知和索引需要 worker 实际运行，`--once` 可执行一次周期。Demo 登录支持 demo-child、demo-elder、demo-caregiver、demo-other；通过正常客户端/API 建家并授权，不运行依赖未实现表的 seed。
+API 根地址 `http://127.0.0.1:8000`；`/docs`、`/openapi.json` 查看当前运行接口。`/health` 与 `/health/live` 只检查 API 进程；`/health/ready` 检查数据库、当前迁移头、私有存储和 worker 持久心跳，并附带 task_outbox 的等待、运行、重试和 DEAD 数量。任一依赖不可用或 worker 心跳超过 `WORKER_STALE_SECONDS` 时返回 503；DEAD 任务显示 degraded，但不把仍能接收请求的 API 判为未就绪。`/metrics` 输出无用户/路径标签的 Prometheus 文本，包括请求量、5xx、延迟、依赖状态、心跳年龄及任务积压；Linux Compose 以 ready 和 worker healthcheck 标记异常，实际通知策略由部署侧监控配置。容器内可运行 `python -m app.worker.main --healthcheck` 单独检查 worker。摘要、通知和索引需要 worker 实际运行，`--once` 可执行一次周期。Demo 登录支持 demo-child、demo-elder、demo-caregiver、demo-other；通过正常客户端/API 建家并授权，不运行依赖未实现表的 seed。
 
 APP_ENV 从进程环境选择 dev/test/demo，应用读取 `backend/config/<环境>.env`，再加载忽略提交的根 `.env`；环境变量优先。demo 要求 demo_data=true 且 provider_mode=mock、Embedding 为 Mock；test 禁止真实外部 LLM，但允许显式启用本地 Embedding 做离线验证。填入供应商密钥不会自动启用真实 AI。
 
@@ -83,6 +83,12 @@ Android 以 demo-elder 登录并加入家庭，点击“开始聊天”，输入
 
 语音在老人端使用手机已安装的中文语音识别与 TTS 服务，无须配置后端 ASR/TTS 密钥。在“用于我与念念的交流”中允许语音处理（与授予家属分开），再点“点击说话”并允许麦克风，说完等自动识别或点“说完了”，识别文字自动提交现有 LLM，回复显示并朗读。“停止”取消当前识别、请求或播放；“打断并说话”停播后开始新输入。支持“再说一遍”“说慢一点”“关闭朗读”，音量使用手机音量键。当前为按钮打断，无自动人声打断或后台唤醒。设备没有识别服务、中文语音数据或麦克风权限时会提示并保留文字入口；语音服务可能联网，数据边界见 [安全说明](security.md)。真机收音、扬声器输出和设备引擎兼容性尚待验证。
 
+## 在线主动陪伴
+
+家属在“主动陪伴与会话回顾”读取当前设置，提出时间窗、每日上限（0 关闭，最多 3 次）和免打扰；长辈读取并确认同一设置版本后生效。API 与 worker 都须运行，长辈保持聊天连接，距最近互动或上次邀请至少 30 分钟才可触发。离开聊天页、断网或进入后台不会自动开启新会话。
+
+Android 与 Windows 静默显示邀请。点击“聊一会儿”后调用当前配置的模型，朗读沿用本人 VOICE 授权及现有开关；未授权或关闭朗读时继续展示文字。“暂时不聊”结束本次邀请，“今天少打扰我”暂停当日主动邀请，必要提醒仍独立工作。邀请不自动开启麦克风；后续说话仍点击语音入口。邀请 5 分钟内有效，设置变化或重复点击会拒绝，仍可直接发起普通交流。该流程不要求额外供应商或新增数据库迁移。
+
 ## 本地家庭记忆语义检索
 
 使用 [BGE 中文模型](https://huggingface.co/BAAI/bge-small-zh-v1.5)和 FastEmbed CPU 推理，无需 API 密钥。先在项目根目录安装依赖并下载固定版本的公开 ONNX 权重和分词器（约 100 MB）；此命令只下载公共模型，不上传项目数据：
@@ -94,6 +100,8 @@ $env:PYTHONPATH = "backend"
 ```
 
 根 `.env` 设置 `EMBEDDING_PROVIDER=local`、`EMBEDDING_MODEL_PATH=模型目录的绝对路径`，重启 API 和 worker。两者必须读取相同文件；运行时 `local_files_only=True`，不下载、不外发输入。模型缺失、超时或非法向量会失败，不回退为 Mock；会话沿用无可用记忆兜底，索引任务按现有 outbox 重试/DEAD 处理。可设置 `EMBEDDING_THREADS=2`、`EMBEDDING_TIMEOUT_SECONDS=8`（上限 10 秒）、`EMBEDDING_MIN_RELEVANCE=0.5`。默认演示配置仍为 Mock，`LLM_PROVIDER` 与向量模式独立。
+
+启用本地 Embedding 后，新获准统计轮次自动使用同一个 BGE 模型识别周报主题，无需另开服务。周报保留固定主题标签，按不同会话合并；原文与向量不落库。报告会分别显示语义、规则和推理失败回退的轮数，历史数据不会补录；分类前后均检查本人互动统计授权。
 
 首次启用后，worker 每 15 秒扫描一批最多 100 条源记忆，自动补建获准的当前模型索引；未补建完成的旧 Mock 向量不参与新检索。每轮最多执行 20 项后台任务，大库需要多个周期；可用 `python -m app.worker.main --once` 执行一次。只读查询不改变记忆确认状态，也不会自动为老人授权；必须有本人对自己的相应 scope 显式授权。
 
@@ -184,7 +192,9 @@ THA3 代码为 MIT，模型权重为 CC BY 4.0；上游示例角色有各自许�
 
 家属首页点击“开启本机后台通知”，Android 13 及以上需允许系统通知，并在对应长辈的通知偏好保留“应用内”。应用使用系统 JobScheduler 持久任务，关闭界面或进程回收后仍可联网补拉；重启手机后任务由系统恢复，登录凭证继续加密保存。前台每 30 秒同步，后台任务最短周期 15 分钟，实际执行会受 Doze、网络和厂商省电策略影响，不能作为即时或紧急送达保证，参见 [Android 调度接口](https://developer.android.com/reference/android/app/job/JobInfo.Builder#setPeriodic(long))。系统“强行停止”后需重新打开应用；禁用本机通知或退出登录会取消任务及通知。此功能无需 ntfy 或 Twilio 配置。
 
-通知栏仅显示通用 AI 提示，关注识别仍为 Mock。点击可冷启动或复用家属界面，先核对接收账号并经 API 重新验证授权，再直接进入对应事件处理；读取只标记已读，处理必须由家属明确提交。断网、撤权、渠道关闭、免打扰或事件已处理时，下次同步会移除旧提示，已知旧提示不会反复响铃。老人首页“家人的处理进度”在前台每 30 秒同步本人事件状态，点击可查看谁在何时确认关注、人工记录联系、误报或解决；处理记录不代表平台验证电话已接通。无新增数据库迁移，升级 API 和两个 APK 后使用。当前未连接 Android 设备，关闭界面收通知、点击及跨端交互仍需真机验证。
+通知栏仅显示通用 AI 提示，关注识别方式按各事件标注为规则、语义线索或 Mock。点击可冷启动或复用家属界面，先核对接收账号并经 API 重新验证授权，再直接进入对应事件处理；读取只标记已读，处理必须由家属明确提交。断网、撤权、渠道关闭、免打扰或事件已处理时，下次同步会移除旧提示，已知旧提示不会反复响铃。老人首页“家人的处理进度”在前台每 30 秒同步本人事件状态，点击可查看谁在何时确认关注、人工记录联系、误报或解决；处理记录不代表平台验证电话已接通。本次需先执行主动求助迁移，再升级 API、worker 和两个 APK。主动求助接口接受 BUTTON/VOICE/BLE 来源，当前新接通的是 Android 按钮；这不代表 BLE 硬件或完整语音求助已验收。关闭界面收通知、点击及跨端交互需在指定设备分别验证。
+
+老人端首页“请家人尽快联系我”调用 `POST /v1/signal-events/help-requests`，复用同一通知/处理状态。请求按幂等键只创建一次；老人能看到待通知、家人已确认、已联系、已解决、误报或通知失败。按钮不会自动呼叫急救服务；无已授权接收人或所有通知渠道失败时保留明确失败原因，并提示改用电话或当面联系。
 
 双方在家庭设置的“我的联系方式与紧急联系”登记本人号码（E.164，如带 +86 国家区号），可单独允许号码分享、登记为紧急联系人或删除。号码加密保存；退出/移除成员时删除。长辈可在此处逐人授予或撤回关注通知、健康信息授权。管理员可邀请紧急联系人并授予处理权限。事件中的拨号、短信入口使用当前获准分享的号码，打开系统拨号/短信编辑器，由用户完成发送；不会据此标记联系成功。号码为本人声明，尚未做运营商验证。
 
@@ -210,9 +220,13 @@ API 和 worker 同时配置 `CONTACT_ENCRYPTION_KEY`（用 `python -c "from cryp
 
 2026-10-28 本地私有实例已完成真实 HTTPS 发布/订阅、点击路由及匿名/越权拒绝验证；当时没有连接的 Android 手机，锁屏即时投递及 App 点击仍待指定真机验证。
 
-短信和自动语音电话配置 `TWILIO_ACCOUNT_SID`、`TWILIO_AUTH_TOKEN`、`TWILIO_FROM_NUMBER`。接收者登记本人号码并在对应长辈通知偏好中主动开启 SMS/PHONE，遵守免打扰；服务商账号、号码、地区发送权限与费用由部署方配置。发送内容仅为“念念 AI 提醒，请到应用查看授权详情”，不外发逐字稿、健康线索、家庭名称或事件标识。语音为 AI 自动播报，不是接通长辈本人。[短信 API](https://www.twilio.com/docs/messaging/api/message-resource)、[语音 API](https://www.twilio.com/docs/voice/api/call-resource)。
+短信和自动语音电话配置 `TWILIO_ACCOUNT_SID`、`TWILIO_AUTH_TOKEN`、`TWILIO_FROM_NUMBER`。如需接收状态回调，将公网 HTTPS 回执地址配置为 `TWILIO_STATUS_CALLBACK_URL=https://<API 域名>/v1/notification-webhooks/twilio`。回执地址必须恰好使用该路径，不能含用户信息、查询串或片段。未配置回调时继续通过状态轮询获取回执。接收者登记本人号码并在对应长辈通知偏好中主动开启 SMS/PHONE，遵守免打扰；服务商账号、号码、地区发送权限与费用由部署方配置。发送内容仅为“念念 AI 提醒，请到应用查看授权详情”，不外发逐字稿、健康线索、家庭名称或事件标识。语音为 AI 自动播报，不是接通长辈本人。[短信 API](https://www.twilio.com/docs/messaging/api/message-resource)、[语音 API](https://www.twilio.com/docs/voice/api/call-resource)。
 
-`GET /v1/notification-capabilities` 返回实际配置状态；外发关闭、缺少配置或接收地址会保留明确失败记录，不回退为成功。供应商受理仅标记 SENT；worker 查询 Twilio 回执，短信 delivered 才记送达，电话 busy/no-answer/failed 显示失败，completed 仅表示呼叫结束（可能是语音信箱），不会自动确认、联系或解决事件。外部发送超时、丢失回包或进程在发送中崩溃时标记 DELIVERY_UNKNOWN 并停止自动重发，避免重复呼叫；需人工核实。Mock 推送仍仅为模拟，不证明设备送达。ntfy 本地真实服务验证见上节；Twilio 真实号码和 Android 实机送达尚未验证。
+`GET /v1/notification-capabilities` 返回实际配置状态；外发关闭、缺少配置或接收地址会保留明确失败记录，不回退为成功。供应商受理仅标记 SENT。Twilio 会向上述固定地址回调；服务端按原始表单和配置地址验证签名、账号和消息/通话 SID，再只更新完全匹配的已持久化尝试。worker 查询仍作为回调缺失时的补偿。短信 delivered 才记送达，电话 busy/no-answer/failed 显示失败，completed 仅表示呼叫结束（可能是语音信箱），不会自动确认、联系或解决事件。
+
+ntfy 接受发布仍只标记 SENT；Android 从 ntfy 深链接成功打开通知时，以当前登录收件人身份提交幂等送达确认，服务端复验成员、来源授权和 PUSH/ntfy 尝试后才标记 DELIVERED。本机定时补拉产生的 IN_APP 通知不提交该确认，所以不会把“服务器可读取”误记为外部推送送达。该确认表示链接已到达应用并被打开，不表示用户已读或事件已处理。
+
+外部发送超时、丢失回包或进程在发送中崩溃时标记 DELIVERY_UNKNOWN 并停止自动重发，避免重复呼叫；需人工核实。Mock 推送仍仅为模拟，不证明设备送达。ntfy 本地真实服务验证见上节；Twilio 真实号码、供应商回调和 Android 锁屏实机送达仍需部署方凭真实账号与指定设备验收。
 
 `android/local.properties` 配置本机 `sdk.dir`，不要提交。两个应用共享 `shared`；日常只构建所改应用或一个 Demo 变体：
 
@@ -262,7 +276,18 @@ bash infra/linux/deploy.sh --host <局域网IP或DNS>
 
 首次生成权限 600 的 `infra/linux/.env` 和随机本机凭据，构建后端及固定版本 MinIO/mc，先迁移，再启动 API、worker、PostgreSQL/pgvector 和私有桶。更新时再次运行脚本即可；已有 `.env` 不覆盖，换地址时编辑 NIANNIAN_HOST。
 
-默认 API 为 8000、S3 为 9000；PostgreSQL 不映射主机端口，MinIO 控制台 9001 只绑定回环。端口可在该 `.env` 修改。默认 HTTP/WS 供可信内网 Windows 演示；Android 局域网连接需另外配置 HTTPS API。公网部署还需 TLS 和访问限制，不直接暴露演示凭据或管理端口。
+默认 API 为 8000、S3 为 9000；PostgreSQL 不映射主机端口，MinIO 控制台 9001 只绑定回环。端口可在该 `.env` 修改。首次部署现在同时生成联系人数据专用 Fernet 密钥；升级旧 `.env` 时需按“外部关注通知”一节补充 `CONTACT_ENCRYPTION_KEY`。
+
+Windows 与 Android 共用后端时使用 HTTPS/WSS。准备覆盖目标主机名的 PEM 完整证书链和未加密私钥，然后运行：
+
+```bash
+bash infra/linux/deploy-tls.sh \
+  --host api.example.test \
+  --certificate /absolute/path/fullchain.pem \
+  --private-key /absolute/path/private.key
+```
+
+TLS 部署将原始 API/MinIO 端口限制到 Linux 回环，通过 nginx 暴露 `https://主机:443`、`wss://主机:443` 和照片端点 `https://主机:9443`；脚本会核对证书主机名、证书/私钥是否匹配、HTTPS 健康接口及私有桶 403。Android 和 Windows 均填写同一个 HTTPS API 地址，照片预签名地址由服务端自动返回 9443 端点。自签或私有 CA 证书只有在指定平板和 Windows 已信任该 CA 后才可使用；不要关闭 Android 证书验证或放开任意局域网明文 HTTP。
 
 ```bash
 docker compose --env-file infra/linux/.env -f infra/linux/docker-compose.yml ps
@@ -277,7 +302,7 @@ docker compose --env-file infra/linux/.env -f infra/linux/docker-compose.yml dow
 
 - 登录不可用：检查 APP_ENV、Mock/Demo 配置和签名密钥；API 与 worker 必须使用同一配置。
 - 文字正常而照片失败：检查 S3_ENDPOINT、客户端可达的 S3_PUBLIC_ENDPOINT、私有桶凭据及 PUBLIC_BASE_URL。
-- 索引/摘要/通知不更新：检查 worker 和 task_outbox；失败会重试或进入 DEAD，不能只看 `/health`。
+- 索引/摘要/通知不更新：检查 `/health/ready` 的 worker、tasks 组件和 task_outbox；失败会重试或进入 DEAD。
 - Linux API 未启动：先查看 migrate、api 日志；Android 连不上时先核对 HTTPS/回环限制和端口可达性。
 
 开发验证统一用 `scripts/verify.py`，只运行关联范围；测试库及真实 MinIO 参数见 [测试说明](../tests/README.md)。没有执行的真机、供应商或部署检查如实写未验证，不新建多份报告。

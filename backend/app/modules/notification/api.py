@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from app.modules.notification import service, preferences, contacts
 from app.platform.authentication import current_identity
 from app.platform.config import get_settings
+from app.platform.errors import AppError
 from app.platform.resource_access import expected_version
 from app.platform.uow import transaction
 
@@ -68,6 +69,34 @@ async def mark_read(notification_id: UUID, request: Request, response: Response,
     response.headers['Cache-Control'] = 'no-store'
     return await service.detail(db, actor, notification_id, request.state.request_id,
         read_key=idempotency_key, settings=get_settings())
+
+
+@router.post('/notifications/{notification_id}/delivery-ack', operation_id='acknowledgeNotificationDelivery')
+async def delivery_ack(notification_id: UUID, request: Request, response: Response, idempotency_key: str = Header(),
+    actor=Depends(current_identity), db=Depends(transaction)):
+    response.headers['Cache-Control'] = 'no-store'
+    return await service.acknowledge_delivery(db, actor, notification_id, idempotency_key,
+        get_settings(), request.state.request_id)
+
+
+@router.post('/notification-webhooks/twilio', status_code=204, operation_id='receiveTwilioNotificationStatus')
+async def twilio_status(request: Request, x_twilio_signature: str | None = Header(default=None, alias='X-Twilio-Signature'),
+    db=Depends(transaction)):
+    from app.integrations.notifications import DeliveryFailure, verified_twilio_callback
+    content_type = request.headers.get('content-type', '').split(';', 1)[0].strip().lower()
+    if content_type != 'application/x-www-form-urlencoded':
+        raise AppError('INVALID_WEBHOOK', 'Webhook signature invalid.', 403)
+    try:
+        body = bytearray()
+        async for chunk in request.stream():
+            if len(body) + len(chunk) > 8192:
+                raise DeliveryFailure('INVALID_WEBHOOK')
+            body.extend(chunk)
+        callback = verified_twilio_callback(get_settings(), x_twilio_signature, bytes(body))
+    except DeliveryFailure:
+        raise AppError('INVALID_WEBHOOK', 'Webhook signature invalid.', 403) from None
+    await service.apply_twilio_callback(db, callback['sid'], callback['status'])
+    return Response(status_code=204)
 
 
 @router.get(PreferencePath, operation_id='getNotificationPreference')
