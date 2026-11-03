@@ -22,7 +22,7 @@ public_host="$(value NIANNIAN_HOST)"
 }
 
 deadline=$((SECONDS + 300))
-until response="$(curl --fail --silent --show-error --max-time 3 "http://127.0.0.1:${api_port}/health" 2>/dev/null)"; do
+until response="$(curl --fail --silent --show-error --max-time 5 "http://127.0.0.1:${api_port}/health/ready" 2>/dev/null)"; do
   if (( SECONDS >= deadline )); then
     printf 'ERROR: API did not become healthy within 300 seconds.\n' >&2
     "${compose[@]}" ps >&2
@@ -32,8 +32,8 @@ until response="$(curl --fail --silent --show-error --max-time 3 "http://127.0.0
   sleep 2
 done
 
-grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' <<<"${response}" || {
-  printf 'ERROR: unexpected /health response.\n' >&2
+grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"' <<<"${response}" || {
+  printf 'ERROR: unexpected /health/ready response.\n' >&2
   exit 1
 }
 

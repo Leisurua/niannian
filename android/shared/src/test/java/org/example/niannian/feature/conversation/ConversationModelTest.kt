@@ -570,4 +570,26 @@ class ConversationModelTest {
             model.clear()
         }
     }
+    @Test fun invitationStaysSilentUntilAcceptedAndIsClearedOnDisconnect() = runBlocking {
+        val gateway = Gateway(); val model = ConversationModel(gateway, this); val voice = Voice()
+        model.bind("family", "elder"); model.attachVoice(voice); model.start(); yield()
+        gateway.listener(frame(1)); yield(); model.toggleSpeech()
+        val invitation = "0192f1e4-6ed8-7c21-a4c1-5d58db7c3002"
+        val payload = JSONObject().put("text", "要不要聊一会儿？").put("proactive_invitation_id", invitation)
+            .put("expires_at", java.time.Instant.now().plusSeconds(290).toString().replace("Z", "+00:00")).put("speech_mode", "none")
+        gateway.listener(frame(2, "assistant.text", payload)); yield()
+        assertEquals(invitation, model.state.value.proactiveInvitationId)
+        assertTrue(voice.spoken.isEmpty()); assertTrue(model.state.value.messages.isEmpty())
+        assertTrue(model.respondToInvitation("ACCEPT"))
+        val sent = gateway.sent.last().getJSONObject("payload")
+        assertEquals(invitation, sent.getString("proactive_invitation_id"))
+        assertEquals("ACCEPT", sent.getString("proactive_response"))
+        assertFalse(model.respondToInvitation("ACCEPT"))
+        gateway.listener(frame(3, "assistant.text", JSONObject().put("text", "今天想做些什么？"), gateway.sent.last().getLong("sequence"))); yield()
+        assertEquals(listOf("今天想做些什么？"), voice.spoken)
+        gateway.onClose(0); yield()
+        assertTrue(model.state.value.proactiveInvitationId.isEmpty())
+        model.clear()
+    }
+
 }

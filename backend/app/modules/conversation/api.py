@@ -176,6 +176,7 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
     listen_task = None
     notices = asyncio.Queue(maxsize=1)
     last_interaction = utcnow()
+    pending_invitation = None
     history = []
     from app.modules.conversation.speech import Speech
     speech = Speech(factory, bearer, settings, conversation_id, getattr(websocket.app.state, 'family_voice_provider', None))
@@ -249,7 +250,12 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                         budget.take(time.monotonic())
                         message = parse_client_frame(raw.get('text'), conversation_id=conversation_id, last_sequence=row.client_sequence, limits=limits)
                         row.client_sequence = message.sequence
+                        invitation_response = message.payload.get('proactive_response') if message.type == 'text.input' else None
+                        invitation_valid = False
+                        if invitation_response:
+                            invitation_valid = await proactive.respond(db, row, pending_invitation, message.payload['proactive_invitation_id'])
                         if message.type not in ('ping', 'session.start'):
+                            pending_invitation = None
                             last_interaction = utcnow()
                         if message.type in ('interrupt', 'session.end', 'text.input', 'repeat', 'slow_down', 'voice.select'):
                             await speech.stop()
@@ -282,9 +288,16 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                             outgoing = service.handle(row, message)
                         elif message.type == 'text.input':
                             speech.speed = message.payload.get('speech_rate', 1.0)
-                            if turn_task or not row.provider_metadata.get('identity_disclosed'):
+                            if invitation_response and not invitation_valid:
+                                outgoing = [service.event(row, 'error', {'code': 'PROACTIVE_INVITATION_EXPIRED', 'retryable': False}),
+                                    service.event(row, 'assistant.state', {'state': row.backend_state})]
+                            elif invitation_response == 'DECLINE':
+                                outgoing = [service.event(row, 'assistant.text', {'text': '好的，暂时不聊。需要时随时找我。',
+                                    'source_labels': ['主动陪伴设置'], 'speech_mode': 'none'}),
+                                    service.event(row, 'assistant.state', {'state': 'IDLE'})]
+                            elif turn_task or not row.provider_metadata.get('identity_disclosed'):
                                 outgoing = [service.event(row, 'error', {'code': 'PROVIDER_TEMPORARILY_UNAVAILABLE', 'retryable': False})]
-                            elif explicit_help(message.payload['text']):
+                            elif not invitation_response and explicit_help(message.payload['text']):
                                 from app.modules.signal import help
                                 result = await help.request(db, actor, row.family_id,
                                     f'ws-help:{conversation_id}:{message.sequence}', f'turn-{message.sequence}', origin='VOICE')
@@ -296,7 +309,10 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                                     type='EMERGENCY', severity=result['severity'])),
                                     service.event(row, 'assistant.text', {'text': last_reply, 'source_labels': last_source_labels}),
                                     service.event(row, 'assistant.state', {'state': 'IDLE'})]
-                            elif message.payload['text'].strip('。！! ') in ('今天少打扰我', '今天别打扰我', '今天别主动提醒我', '不要打扰', '我在忙', '我在休息'):
+                            elif invitation_response == 'PAUSE_TODAY' or (
+                                not invitation_response and message.payload['text'].strip('。！! ') in (
+                                    '今天少打扰我', '今天别打扰我', '今天别主动提醒我', '不要打扰', '我在忙', '我在休息')
+                            ):
                                 try:
                                     await proactive.command(db, actor, row.family_id, actor.user_id, 'pause', {},
                                         f'ws-pause:{conversation_id}:{message.sequence}', settings, f'turn-{message.sequence}')
@@ -306,6 +322,8 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                                 outgoing = [service.event(row, 'assistant.text', {'text': reply, 'source_labels': source_labels}),
                                     service.event(row, 'assistant.state', {'state': 'IDLE'})]
                             else:
+                                if invitation_response == 'ACCEPT':
+                                    message = message.model_copy(update={'payload': {**message.payload, 'text': proactive.OPENING}})
                                 last_reply = None
                                 last_records = ()
                                 context_records = tuple(r for _, records in history for r in records)
@@ -402,10 +420,14 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                         pending_sequence = None
                         pending_query_payload = None
                     if notice and raw is None and turn_task is None and not outgoing and await proactive.accept(db, row, notice, last_interaction):
-                        outgoing = [service.event(row, 'assistant.text', {'text': proactive.INVITATION, 'source_labels': ['Mock']})]
+                        pending_invitation = proactive.invitation(notice, last_interaction)
+                        outgoing = [service.event(row, 'assistant.text', {'text': proactive.INVITATION,
+                            'source_labels': ['主动陪伴邀请'], 'speech_mode': 'none',
+                            'proactive_invitation_id': pending_invitation['id'],
+                            'expires_at': pending_invitation['expires_at'].isoformat()})]
                         last_interaction = utcnow()
                     for item in outgoing:
-                        if item['type'] == 'assistant.text':
+                        if item['type'] == 'assistant.text' and item['payload'].get('speech_mode') != 'none':
                             await speech.begin(db, actor, row, item, last_records or (), identity=raw is not None and message.type == 'session.start')
                     outgoing += await speech.drain(db, actor, row)
                     if permission_event:

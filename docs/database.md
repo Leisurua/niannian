@@ -596,6 +596,7 @@ UNIQUE `(message_id, recipient_member_id)`，索引 `(recipient_member_id, messa
 | `last_action_by` | `UUID` | NULL | → user.id，ON DELETE SET NULL |
 | `last_action_at` | `TIMESTAMP WITH TIME ZONE` | NULL | — |
 | `resolution_code` | `VARCHAR(32)` | NULL | — |
+| `failure_code` | `VARCHAR(64)` | NULL | 无授权接收人或全部通知渠道失败 |
 | `resolved_at` | `TIMESTAMP WITH TIME ZONE` | NULL | — |
 | `retention_until` | `TIMESTAMP WITH TIME ZONE` | NOT NULL | — |
 | `deleted_at` | `TIMESTAMP WITH TIME ZONE` | NULL | — |
@@ -701,9 +702,13 @@ UNIQUE `(message_id, recipient_member_id)`，索引 `(recipient_member_id, messa
 
 ## 迁移和生命周期
 
-保留现有全部 Alembic 历史，当前迁移头为 `20261026_avatar_jobs`。从 backend/ 运行 `python -m alembic upgrade head`；修改数据库时新增兼容迁移，不因为文档整理重写旧迁移或删除已有数据。普通功能修改不要求空库回退演练。
+保留现有全部 Alembic 历史，当前迁移头为 `20261101_operational_readiness`。从 backend/ 运行 `python -m alembic upgrade head`；修改数据库时新增兼容迁移，不因为文档整理重写旧迁移或删除已有数据。普通功能修改不要求空库回退演练。
 
-撤权/删除先隐藏，后台清理向量、对象和通知；已删除行、外部字节和副本的清理是不同步骤。账户删除/导出和保留期规则见 [security](security.md)，未覆盖的外部副本和端侧入口见 [roadmap](roadmap.md)。
+### service_heartbeat
+
+每种长运行服务只保留当前实例的 `instance_id`、`started_at` 和 `last_seen_at`。普通 worker 每隔数秒 UPSERT `service=worker`；正常退出仅在实例仍为本人时删除，避免旧实例覆盖或删除新实例心跳。`/health/ready` 和容器 healthcheck 只公开状态与心跳年龄，不公开实例标识。
+
+撤权/删除先隐藏，后台清理向量、对象和通知；已删除行、外部字节和副本的清理是不同步骤。账户删除/导出和保留期规则见 [security](security.md)，未覆盖的外部副本和端侧入口见 [roadmap](roadmap.md)。本人导出格式版本 2 还包含当前可用的声音档案元数据、本人私有样本/试听文件及声音偏好；不导出供应商音色句柄、工作空间、已撤回/删除/过期版本，也不声称包含未持久化的会话录音或逐字稿。
 
 ## 账户生命周期（20261025_account_lifecycle）
 
@@ -732,10 +737,12 @@ CHECK 限制状态为 UPLOADING、QUEUED、STYLIZING、PREPARING、RENDERING、R
 
 ### interaction_metric
 
-迁移 `20261024_interaction_stats` 新增，模型为 `modules/report/models.py`。主键 `(conversation_id, sequence)` 保证同一成功轮次只记录一次；字段 `family_id`、`owner_user_id`、`consent_id` 关联当前家庭、长辈和本人统计授权，`occurred_at` 是服务端完成时间，`duration_seconds` 为 0—300 秒，`emotions`、`topics` 是固定分类代码数组，`simulated` 标记 Mock，`retention_until` 用于到期过滤和 worker 清理。没有原文、摘要文本、自由主题或音频字段。索引为 `(family_id, owner_user_id, occurred_at)`。
+迁移 `20261024_interaction_stats` 新增，模型为 `modules/report/models.py`。主键 `(conversation_id, sequence)` 保证同一成功轮次只记录一次；字段 `family_id`、`owner_user_id`、`consent_id` 关联当前家庭、长辈和本人统计授权，`occurred_at` 是服务端完成时间，`duration_seconds` 为 0—300 秒，`emotions`、`topics` 是固定分类代码数组，`simulated` 标记 Mock，`retention_until` 用于到期过滤和 worker 清理。迁移 `20261101_report_semantics` 新增 `topic_method VARCHAR(16)`（RULE / LOCAL_SEMANTIC / RULE_FALLBACK，历史默认 RULE）和可空 `topic_model_version VARCHAR(64)`（本地模型指纹）。没有原文、摘要文本、自由主题或音频字段。 不保存本轮文本或语义向量，分类来源随原指标一起撤权删除及到期清理。索引为 `(family_id, owner_user_id, occurred_at)`。
 
 同一迁移将 `INTERACTION_STATS` 加入 consent scope；已有授权不会自动开启统计。删除统计时更新 conversation.provider_metadata 中的 `stats_cleared_at`，阻止删除前已经在途的回复重新写回记录。保留期与访问条件见 [security](security.md)，统计口径见 [ai](ai.md)。
 
 ## 家人音色
 
 voice_profile 保存每次制作版本、家庭/声音本人/录入者、样本哈希与私有对象键、本人批准时间、状态、供方工作空间/模型/音色句柄、到期和失败原因。每个家庭与声音本人只有一个 ACTIVE 版本；新版本启用后撤回旧版本并迁移选择。voice_preference 以家庭和老人账号为键，保存音色选择及 cloud_tts_allowed。task_outbox 增加 VOICE_GENERATE、VOICE_CLEANUP；声音原文和会话合成音频不写数据库。
+
+主动求助由 `20261101_elder_help_requests` 在线性迁移链中增加 `signal_event.failure_code`，前置为 `20261029_family_voices`。按钮事件不依赖会话，仍核对当前家庭成员、通知授权和原保留期；定期清理不能按“无会话来源”提前删除主动求助。

@@ -179,6 +179,13 @@ def test_fast_ntfy_dispatch_routes_to_current_recipient_and_honors_revoke(system
     push = next(item for item in items if item['channel'] == 'PUSH')
     assert push['status'] == 'SENT' and not push['simulated'] and len(sent) == 1
     assert sent[0]['click'] == notification_link(push['id'], home[1])
+    delivered = post(client, '/v1/notifications/' + push['id'] + '/delivery-ack', home[2], key='ntfy-device-ack')
+    assert delivered.status_code == 200
+    assert delivered.json()['status'] == 'DELIVERED'
+    assert delivered.json()['delivery_status'] == 'device-acknowledged'
+    assert post(client, '/v1/notifications/' + push['id'] + '/delivery-ack', home[2],
+        key='ntfy-device-ack').json()['status'] == 'DELIVERED'
+    assert post(client, '/v1/notifications/' + push['id'] + '/delivery-ack', home[4]).status_code == 404
     assert client.get('/v1/notifications/' + push['id'], headers=home[2]).json()['owner_user_id'] == home[3]
     with engine.connect() as conn:
         assert conn.execute(text("SELECT status FROM task_outbox WHERE kind='MEMORY_CLEANUP'")).scalar() == 'PENDING'
@@ -331,6 +338,55 @@ def test_wss_to_inapp_minimal_event_and_idempotent_read(system):
         assert conn.execute(text('SELECT source_message_id FROM signal_event')).scalar() is None
 
 
+def test_elder_help_button_progress_idempotency_and_family_handling(system):
+    client, engine, factory, _ = system
+    home = household(client)
+    grant(client, home, 'NOTIFICATION_TO_FAMILY')
+    pref(client, home)
+    path = '/v1/signal-events/help-requests'
+    body = {'family_id': home[0], 'source': 'BUTTON', 'kind': 'CONTACT_FAMILY'}
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        replies = list(pool.map(lambda _: post(client, path, home[4], body, key='elder-help-once'), range(2)))
+    assert [reply.status_code for reply in replies] == [200, 200]
+    assert replies[0].json()['id'] == replies[1].json()['id']
+    event_id = replies[0].json()['id']
+    # Older clients omit both fields and must be able to retry the same request.
+    retry = post(client, path, home[4], {'family_id': home[0]}, key='elder-help-once')
+    assert retry.status_code == 200 and retry.json()['id'] == event_id
+    asyncio.run(run_maintenance(factory))
+    assert replies[0].json()['status'] == 'VALIDATED'
+    assert replies[0].json()['can_handle'] is False
+    assert 'reason' not in replies[0].json()
+    assert post(client, path, home[4], body | {'source': 'VOICE'}, key='elder-help-once').status_code == 409
+    assert post(client, path, home[2], body, key='not-an-elder').status_code == 403
+    drain(factory)
+    owner = client.get('/v1/signal-events/' + event_id, headers=home[4]).json()
+    assert owner['status'] == 'NOTIFIED' and owner['can_handle'] is False
+    family_detail = client.get('/v1/signal-events/' + event_id, headers=home[2]).json()
+    assert family_detail['can_handle'] is True and family_detail['recommended_action'] == 'CONTACT_FAMILY_NOW'
+    handled = post(client, '/v1/signal-events/' + event_id + '/actions', home[2],
+        {'action': 'ACKNOWLEDGE', 'expected_status': 'NOTIFIED'}, key='help-ack')
+    assert handled.status_code == 200
+    owner = client.get('/v1/signal-events/' + event_id, headers=home[4]).json()
+    assert owner['status'] == 'ACKNOWLEDGED' and owner['actioned_at']
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM signal_event WHERE trigger_category='EXPLICIT_HELP_BUTTON'")).scalar() == 1
+        assert conn.execute(text("SELECT count(*) FROM audit_log WHERE action='HELP_REQUESTED'")).scalar() == 1
+
+
+def test_elder_help_without_authorized_recipient_records_failure(system):
+    client, engine, _, _ = system
+    home = household(client)
+    response = post(client, '/v1/signal-events/help-requests', home[4],
+        {'family_id': home[0], 'source': 'BLE', 'kind': 'CONTACT_FAMILY'}, key='offline-button')
+    assert response.status_code == 200
+    assert response.json()['status'] == 'NOTIFICATION_FAILED'
+    assert response.json()['failure_code'] == 'NO_AUTHORIZED_RECIPIENT'
+    assert client.get('/v1/signal-events/' + response.json()['id'], headers=home[2]).status_code == 404
+    with engine.connect() as conn:
+        assert conn.execute(text('SELECT count(*) FROM notification')).scalar() == 0
+
+
 def test_health_requires_its_own_scope_and_never_diagnoses(system):
     client, engine, factory, _ = system
     home, cid, _, events = setup_event(system, utterance='我胸口有点不舒服。')
@@ -403,15 +459,17 @@ def test_concurrent_dedup_and_changed_category_severity(system):
         assert conn.execute(text('SELECT count(*) FROM notification')).scalar() == 3
 
 
-def test_forged_candidates_and_emergency_never_create_events(system):
+def test_forged_or_emergency_candidates_cannot_trigger_notifications(system):
     client, engine, factory, _ = system
     home = household(client); grant(client, home, 'NOTIFICATION_TO_FAMILY')
     cid = start(client, home)
     assert emit(factory, home, cid, mutate=lambda cs: (cs[0].model_copy(update={'source_message_id':uuid4()}),)) == []
     assert emit(factory, home, cid, '验证码是什么东西？') == []
+    # Explicit voice requests are routed before the LLM (test_elder_help); candidates cannot create emergencies.
     assert emit(factory, home, cid, '救命，帮我叫人。') == []
     with engine.connect() as conn:
         assert conn.execute(text('SELECT count(*) FROM signal_event')).scalar() == 0
+        assert conn.execute(text('SELECT count(*) FROM notification')).scalar() == 0
 
 
 class FailedPush(MockPush):
@@ -885,3 +943,75 @@ def test_external_delivery_persistence_receipts_and_no_duplicate_send(system, mo
         assert len(sent) == (1 if outcome == 'crash' else 2)
         with engine.connect() as conn:
             assert conn.execute(text("SELECT count(*) FROM notification WHERE error_code='DELIVERY_UNKNOWN'")).scalar() == (1 if outcome == 'crash' else 2)
+
+
+def test_signed_twilio_webhook_updates_exact_persisted_receipt(system, monkeypatch):
+    import base64
+    import hashlib
+    import hmac
+    from urllib.parse import urlencode
+    from cryptography.fernet import Fernet
+    from app.integrations.notifications import Receipt
+    from app.modules.notification import api as notification_api, contacts
+    from app.platform.config import Settings
+
+    account = 'AC' + 'a' * 32
+    callback_url = 'https://api.example.invalid/v1/notification-webhooks/twilio'
+    config = Settings(app_env='dev', notification_external_enabled=True,
+        twilio_account_sid=account, twilio_auth_token='fictional-webhook-token',
+        twilio_from_number='+12025550100', twilio_status_callback_url=callback_url,
+        contact_encryption_key=Fernet.generate_key().decode())
+    monkeypatch.setattr(notifications, 'get_settings', lambda: config)
+    monkeypatch.setattr(notification_api, 'get_settings', lambda: config)
+    monkeypatch.setattr(contacts, 'get_settings', lambda: config)
+    sid = 'SM' + 'b' * 32
+
+    class Provider:
+        def __init__(self, settings):
+            pass
+        async def send(self, channel, destination, **routing):
+            return Receipt('twilio', sid, 'queued')
+
+    monkeypatch.setattr(notifications, 'ExternalNotifications', Provider)
+    client, engine, factory, _ = system
+    home, _, _, _ = setup_event(system, channels=['SMS'])
+    contact = f'/v1/families/{home[0]}/my-contact'
+    assert client.put(contact, headers={**home[2], 'If-Match': '0'},
+        json={'phone': '+12025550101'}).status_code == 200
+    drain(factory)
+
+    def signed(resource=sid, status='delivered'):
+        fields = {'AccountSid': account, 'MessageSid': resource, 'MessageStatus': status}
+        body = urlencode(fields).encode()
+        value = callback_url + ''.join(key + fields[key] for key in sorted(fields))
+        signature = base64.b64encode(hmac.new(config.twilio_auth_token.encode(), value.encode(), hashlib.sha1).digest()).decode()
+        return body, signature
+
+    body, signature = signed()
+    endpoint = '/v1/notification-webhooks/twilio'
+    assert client.post(endpoint, content=body,
+        headers={'Content-Type': 'application/x-www-form-urlencoded'}).status_code == 403
+    assert client.post(endpoint, content=b'x' * 8193, headers={'Content-Type': 'application/x-www-form-urlencoded',
+        'X-Twilio-Signature': signature}).status_code == 403
+    assert client.post(endpoint, content=body, headers={'Content-Type': 'application/x-www-form-urlencoded',
+        'X-Twilio-Signature': signature[:-1] + 'x'}).status_code == 403
+    assert client.post(endpoint, content=body, headers={'Content-Type': 'application/x-www-form-urlencoded',
+        'X-Twilio-Signature': signature}).status_code == 204
+    assert client.post(endpoint, content=body, headers={'Content-Type': 'application/x-www-form-urlencoded',
+        'X-Twilio-Signature': signature}).status_code == 204
+    unknown, unknown_signature = signed('SM' + 'c' * 32)
+    assert client.post(endpoint, content=unknown, headers={'Content-Type': 'application/x-www-form-urlencoded',
+        'X-Twilio-Signature': unknown_signature}).status_code == 204
+    with engine.connect() as db:
+        assert db.execute(text('SELECT status,provider_status FROM notification')).one() == ('DELIVERED', 'delivered')
+    for status in ('sent', 'undelivered'):
+        delayed, delayed_signature = signed(status=status)
+        assert client.post(endpoint, content=delayed, headers={'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Twilio-Signature': delayed_signature}).status_code == 204
+    with engine.connect() as db:
+        assert db.execute(text('SELECT status,provider_status FROM notification')).one() == ('DELIVERED', 'delivered')
+
+
+async def run_maintenance(factory):
+    async with factory() as db, db.begin():
+        await signals.maintenance(db)

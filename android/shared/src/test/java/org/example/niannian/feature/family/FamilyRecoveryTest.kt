@@ -220,6 +220,20 @@ class FamilyRecoveryTest {
         assertFalse(api.store.load().toString().contains("fictional-private-summary"))
     }
 
+    @Test fun providerPushAcknowledgementUsesAuthenticatedIdempotentReceipt() = runBlocking {
+        val api = FakeApi()
+        val id = "0192f1e4-6ed8-7c21-a4c1-5d58db7c3002"
+        val key = java.util.UUID.randomUUID().toString()
+        api.handler = { request ->
+            assertEquals("/v1/notifications/$id/delivery-ack", request.url.path)
+            assertEquals("POST", request.requestMethod)
+            assertEquals(key, request.getRequestProperty("Idempotency-Key"))
+            Reply(body = JSONObject().put("id", id).put("status", "DELIVERED"))
+        }
+        assertEquals("DELIVERED", api.repository.acknowledgeNotificationDelivery(id, key).getString("status"))
+        assertFalse(api.repository.hasPending())
+    }
+
     @Test fun lostRefreshResponseRequiresLoginInsteadOfReusingARotatedToken() = runBlocking {
         val api = FakeApi()
         api.handler = { request ->

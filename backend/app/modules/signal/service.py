@@ -22,12 +22,12 @@ from app.platform.tasks import enqueue
 POLICY_VERSION = 'w7-mock-1.0.0'
 POLICIES = {'MOCK': POLICY_VERSION, 'SEMANTIC': 'signals-semantic-1.0.0', 'RULE': 'signals-rule-1.0.0'}
 COPY = {
-    'EMERGENCY': ('老人主动请求帮助，请尽快核实并联系。', 'CONTACT_ELDER'),
     'SCAM_RISK': ('交流中出现需核实的敏感操作组合，请先联系家人核实。', 'PAUSE_AND_VERIFY_WITH_FAMILY'),
     'PHYSICAL_DISCOMFORT': ('老人提到身体不舒服，可主动关心并提供联系帮助。', 'CHECK_IN_AND_OFFER_CONTACT'),
     'EMOTION_EXPRESSION': ('有情绪相关表达，仅为交流观察线索。', 'OFFER_COMPANIONSHIP'),
     'MISS_FAMILY': ('老人表达了思念或联系家人的意愿。', 'OFFER_FAMILY_CONTACT'),
     'IMPORTANT_MEMORY': ('有待核实的往事线索，不代表已确认的家庭事实。', 'OFFER_MEMORY_REVIEW'),
+    'EMERGENCY': ('老人主动发出求助请求，请尽快人工联系并核实。', 'CONTACT_FAMILY_NOW'),
 }
 
 
@@ -78,7 +78,7 @@ async def record_turn(db, actor, conversation_id, request_id, text, candidates, 
         if not recipients:
             continue
         rule = evaluate(text)
-        severity = rule.severity if candidate.type == 'SCAM_RISK' else 'L1'
+        severity = rule.severity if candidate.type == 'SCAM_RISK' else ('L3' if candidate.type == 'EMERGENCY' else 'L1')
         key = dedupe_key(locked_source['family_id'], actor.user_id, candidate.type, candidate.trigger_category, severity, now)
         old = await db.scalar(select(SignalEvent).where(SignalEvent.dedupe_key == key,
             SignalEvent.deleted_at.is_(None), SignalEvent.retention_until > now))
@@ -138,6 +138,7 @@ async def accessible(db, row, actor, *, owner_status=False):
         return False
     try:
         if owner_status and actor.user_id == row.owner_user_id:
+            await family.context(db, actor.user_id, row.family_id)
             return True
         await recipient(db, row.family_id, row.owner_user_id, actor.user_id, row.type)
         return True
@@ -161,6 +162,7 @@ async def delivery_outcome(db, event_id, outcome):
     row = await db.get(SignalEvent, event_id, populate_existing=True)
     if row and not row.deleted_at and row.retention_until > utcnow() and row.status in ('VALIDATED','NOTIFIED','NOTIFICATION_FAILED'):
         row.status = outcome
+        row.failure_code = 'ALL_NOTIFICATION_CHANNELS_FAILED' if outcome == 'NOTIFICATION_FAILED' else None
         if outcome == 'NOTIFIED' and not row.notified_at:
             row.notified_at = utcnow()
 
@@ -183,6 +185,13 @@ def view(row, *, owner=False, detail=False):
                 result.update(actioned_at=iso_utc(row.last_action_at), last_action_by=str(row.last_action_by) if row.last_action_by else None)
             if row.resolved_at:
                 result.update(resolved_at=iso_utc(row.resolved_at), resolution_code=row.resolution_code)
+    elif detail:
+        if row.last_action_at:
+            result['actioned_at'] = iso_utc(row.last_action_at)
+        if row.resolved_at:
+            result['resolved_at'] = iso_utc(row.resolved_at)
+    if row.failure_code:
+        result['failure_code'] = row.failure_code
     return result
 
 

@@ -1,6 +1,8 @@
 import asyncio
 from io import BytesIO
+import json
 import wave
+from zipfile import ZipFile
 
 import pytest
 from app.main import app
@@ -102,3 +104,25 @@ def test_unapproved_expired_sample_cleanup_without_cloud_configuration(system):
     asyncio.run(expire())
     assert not storage.objects
     assert client.get(path, headers=home[2]).json()['status'] == 'DELETED'
+
+
+def test_owner_export_contains_current_voice_metadata_and_private_audio_only(system):
+    client, _, _, storage = system
+    home = household(client)
+    created = post(client, '/v1/voice-profiles', home[2], dict(family_id=home[0],
+        owner_user_id=home[1], display_name='本人声音')).json()
+    path = '/v1/voice-profiles/' + created['id']
+    audio = sample()
+    assert client.put(path + '/sample', headers=home[2], content=audio).status_code == 200
+
+    with ZipFile(BytesIO(client.get('/v1/me/export', headers=home[2]).content)) as archive:
+        data = json.loads(archive.read('account.json'))
+        profile = data['collections']['voice_profile'][0]
+        assert data['format_version'] == 2
+        assert profile['id'] == created['id'] and profile['status'] == 'PENDING'
+        assert profile['sample_archive_path'] == f"voices/{created['id']}/sample.wav"
+        assert archive.read(profile['sample_archive_path']) == audio
+        assert 'provider_voice_id' not in str(data) and 'provider_workspace' not in str(data)
+
+    with ZipFile(BytesIO(client.get('/v1/me/export', headers=home[4]).content)) as archive:
+        assert json.loads(archive.read('account.json'))['collections']['voice_profile'] == []

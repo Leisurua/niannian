@@ -1,18 +1,22 @@
 import asyncio
+import base64
+import hashlib
+import hmac
 from urllib.parse import parse_qs
 
 import httpx
 import pytest
 from pydantic import ValidationError
 
-from app.integrations.notifications import DeliveryFailure, ExternalNotifications, MESSAGE, capabilities
+from app.integrations.notifications import DeliveryFailure, ExternalNotifications, MESSAGE, capabilities, verified_twilio_callback
 from app.platform.config import Settings
 
 
 def settings(**kwargs):
     return Settings(app_env='dev', notification_external_enabled=True, notification_push_provider='ntfy',
         ntfy_base_url='https://ntfy.example.invalid', push_api_key='fictional-token',
-        twilio_account_sid='AC' + 'a' * 32, twilio_auth_token='fictional-token', twilio_from_number='+12025550100', **kwargs)
+        twilio_account_sid='AC' + 'a' * 32, twilio_auth_token='fictional-token', twilio_from_number='+12025550100',
+        twilio_status_callback_url='https://api.example.invalid/v1/notification-webhooks/twilio', **kwargs)
 
 
 def test_external_off_by_default_and_demo_cannot_enable():
@@ -23,6 +27,13 @@ def test_external_off_by_default_and_demo_cannot_enable():
     for url in ('http://host', 'https://user:pass@host', 'https://host?secret=x'):
         with pytest.raises(ValidationError):
             Settings(ntfy_base_url=url)
+    for url in ('http://api.example/v1/notification-webhooks/twilio',
+                'https://api.example/other', 'https://secret@api.example/v1/notification-webhooks/twilio'):
+        with pytest.raises(ValidationError):
+            Settings(twilio_status_callback_url=url)
+    polling_only = Settings(app_env='dev', notification_external_enabled=True,
+        twilio_account_sid='AC' + 'a' * 32, twilio_auth_token='token', twilio_from_number='+12025550100')
+    assert capabilities(polling_only)['channels']['SMS'] == capabilities(settings())['channels']['SMS']
 
 
 @pytest.mark.parametrize('channel', ['PUSH', 'SMS', 'PHONE'])
@@ -39,6 +50,8 @@ def test_real_requests_are_minimal_and_only_provider_acceptance(channel):
         body = parse_qs(request.content.decode())
         assert body['To'] == ['+12025550101']
         assert 'signal_event_id' not in body
+        assert body['StatusCallback'] == ['https://api.example.invalid/v1/notification-webhooks/twilio']
+        assert body.get('StatusCallbackMethod') == (['POST'] if channel == 'PHONE' else None)
         assert (body.get('Body', [''])[0] == MESSAGE) if channel == 'SMS' else '<Say language="zh-CN">' in body['Twiml'][0]
         return httpx.Response(201, json={'sid': ('SM' if channel == 'SMS' else 'CA') + 'b' * 32, 'status': 'queued'})
     result = asyncio.run(ExternalNotifications(settings(), httpx.MockTransport(handle)).send(channel,
@@ -70,15 +83,33 @@ def test_receipt_polling_checks_account_and_resource_identity():
     assert asyncio.run(provider.status('PHONE', sid)) == 'completed'
 
 
+def test_twilio_callback_requires_exact_hmac_account_resource_and_status():
+    configured = settings()
+    body = ('AccountSid=' + configured.twilio_account_sid + '&MessageSid=SM' + 'b' * 32
+        + '&MessageStatus=delivered').encode()
+    params = parse_qs(body.decode())
+    value = configured.twilio_status_callback_url + ''.join(key + params[key][0] for key in sorted(params))
+    signature = base64.b64encode(hmac.new(configured.twilio_auth_token.encode(), value.encode(), hashlib.sha1).digest()).decode()
+    assert verified_twilio_callback(configured, signature, body) == {'sid': 'SM' + 'b' * 32, 'status': 'delivered'}
+    for changed_signature, changed_body in ((signature[:-1] + 'x', body), ('é', body),
+        (signature, body.replace(b'delivered', b'failed')),
+        (signature, body + b'&MessageStatus=delivered'),
+        (signature, body + b'&CallSid=CA' + b'c' * 32)):
+        with pytest.raises(DeliveryFailure, match='INVALID_WEBHOOK'):
+            verified_twilio_callback(configured, changed_signature, changed_body)
+
+
 @pytest.mark.parametrize(('channel', 'receipt', 'expected'), [
     ('SMS', 'delivered', 'DELIVERED'), ('SMS', 'undelivered', 'FAILED'),
     ('PHONE', 'completed', 'SENT'), ('PHONE', 'busy', 'FAILED')])
 def test_terminal_receipt_at_acceptance_is_applied_without_waiting_for_poll(channel, receipt, expected):
     from types import SimpleNamespace
     from app.modules.notification.service import apply_receipt
-    row = SimpleNamespace(channel=channel, status='SENT', delivered_at=None, error_code=None)
+    row = SimpleNamespace(channel=channel, status='SENT', delivered_at=None, error_code=None,
+        provider_status='queued')
     apply_receipt(row, receipt)
-    assert row.status == expected
+    apply_receipt(row, 'queued')
+    assert row.status == expected and row.provider_status == receipt
     assert bool(row.delivered_at) == (expected == 'DELIVERED')
 
 

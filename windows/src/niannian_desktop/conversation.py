@@ -117,6 +117,11 @@ class ConversationPanel(VoicePanel):
         self.transcript = scrolledtext.ScrolledText(self, height=14, state='disabled', wrap='word', font=('Microsoft YaHei UI', 15))
         self.transcript.pack(fill='both', expand=True)
         row = ttk.Frame(self); row.pack(fill='x', pady=8)
+        self.invitation = None
+        self.invitation_timer = None
+        self.invitation_row = ttk.Frame(self)
+        for label, response in [('聊一会儿', 'ACCEPT'), ('暂时不聊', 'DECLINE'), ('今天少打扰我', 'PAUSE_TODAY')]:
+            ttk.Button(self.invitation_row, text=label, command=lambda action=response: self.respond_invitation(action)).pack(side='left', padx=3)
         self.input = tk.StringVar()
         entry = ttk.Entry(row, textvariable=self.input, font=('Microsoft YaHei UI', 14)); entry.pack(side='left', fill='x', expand=True)
         entry.bind('<Return>', lambda _: self.submit())
@@ -140,6 +145,7 @@ class ConversationPanel(VoicePanel):
         self.run(operation, lambda _: self.status.set('语音授权已更新。'))
 
     def reset(self):
+        self.clear_invitation()
         super().reset()
         if getattr(self, 'connection', None):
             self.connection.close()
@@ -222,9 +228,29 @@ class ConversationPanel(VoicePanel):
         try:
             if not self.connection:
                 raise ValueError('请先开始聊天。')
+            if kind not in ("ping", "session.start"):
+                self.clear_invitation()
             self.connection.send(kind, payload)
         except Exception:
             self.status.set('尚未连接，请先开始聊天。')
+
+    def clear_invitation(self):
+        self.invitation = None
+        if getattr(self, 'invitation_timer', None):
+            self.after_cancel(self.invitation_timer)
+            self.invitation_timer = None
+        if hasattr(self, 'invitation_row'):
+            self.invitation_row.pack_forget()
+
+    def respond_invitation(self, action):
+        if not self.invitation:
+            return
+        invitation = self.invitation
+        text = {'ACCEPT': '我愿意聊一会儿', 'DECLINE': '暂时不聊', 'PAUSE_TODAY': '今天少打扰我'}[action]
+        self.audio.stop(); self.playback = None
+        self.command('text.input', dict(text=text, proactive_invitation_id=invitation,
+            proactive_response=action, speech_rate=0.8 if self.slow else 1.0))
+        self.append('您：' + text)
 
     def append(self, text):
         self.transcript.configure(state='normal')
@@ -274,6 +300,21 @@ class ConversationPanel(VoicePanel):
             return
         if kind == 'assistant.text':
             text = payload['text']
+            if payload.get('proactive_invitation_id'):
+                try:
+                    from uuid import UUID
+                    invitation = str(UUID(payload['proactive_invitation_id']))
+                    remaining = min(300, (datetime.fromisoformat(payload['expires_at']) - datetime.now(timezone.utc)).total_seconds())
+                    if not 0 < remaining <= 300:
+                        return
+                except (KeyError, ValueError, TypeError):
+                    return
+                self.clear_invitation()
+                self.invitation = invitation
+                self.invitation_row.pack(fill='x', pady=8)
+                self.invitation_timer = self.after(int(remaining * 1000), self.clear_invitation)
+                self.append('念念邀请（选择后才开始交流）：' + text)
+                return
             self.append('念念：' + text)
             if self.voice_allowed and payload.get('speech_mode', 'device') == 'device' and reply is not None:
                 self.audio.speak(text, self.slow)
@@ -293,4 +334,4 @@ class ConversationPanel(VoicePanel):
             self.status.set(payload.get('display_text', ''))
         elif kind == 'error':
             self.audio.stop(); self.playback = None
-            self.status.set('本次请求未完成，请检查授权或稍后重试。')
+            self.status.set('邀请已过期或设置已变化，可直接打字聊天。' if payload.get('code') == 'PROACTIVE_INVITATION_EXPIRED' else '本次请求未完成，请检查授权或稍后重试。')

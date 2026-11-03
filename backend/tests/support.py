@@ -57,6 +57,9 @@ class MockObjectStorage:
     async def write(self, key, data, mime):
         self.objects[key] = data
 
+    async def health(self):
+        return None
+
     async def delete(self, key):
         if self.fail_delete:
             raise AppError('PROVIDER_TEMPORARILY_UNAVAILABLE', 'Mock deletion failure', 503)

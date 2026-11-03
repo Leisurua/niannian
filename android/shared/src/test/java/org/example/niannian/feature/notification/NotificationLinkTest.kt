@@ -9,8 +9,8 @@ class NotificationLinkTest {
     private val link = "niannian-family://notification/$id/$user"
 
     @Test fun pushAndLocalNotificationsUseTheSameRoutingIds() {
-        assertEquals(NotificationLaunch(id, user), parseNotificationLink(link))
-        assertEquals(validatedNotificationLaunch(id, user), parseNotificationLink(link))
+        assertEquals(NotificationLaunch(id, user, true), parseNotificationLink(link))
+        assertEquals(NotificationLaunch(id, user), validatedNotificationLaunch(id, user))
     }
 
     @Test fun malformedOrCredentialBearingLinksAreRejected() {

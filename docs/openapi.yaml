@@ -5,7 +5,7 @@ info:
   description: Current REST operations implemented by NianNian. Public DTOs are not ORM entities. Authentication is Demo-only;
     conversation input is TEXT with explicit Mock or configured real LLM mode. Family device registration, human text messages
     and recipient receipts are implemented. Weather, consented interaction statistics, account ZIP export and account deletion with authenticated receipts are implemented. External-copy completion requires verified operator evidence;
-    see roadmap.md. GET /health, /docs and /openapi.json are unversioned runtime endpoints. Provider metadata, vectors, raw
+    see roadmap.md. GET /health, /health/live, /health/ready, /metrics, /docs and /openapi.json are unversioned runtime endpoints. Provider metadata, vectors, raw
     audio and transcripts are not exposed as public resource content.
 servers:
 - url: /v1
@@ -54,7 +54,14 @@ x-websocket-channels:
       this connection, allowing a spoken repeat after device ASR starts. New text generation clears replay eligibility;
       cancelled unfinished output is never replayable. repeat/slow_down revalidate memory permissions before publishing.
       text.input payload accepts text plus optional timezone (valid IANA name, default Asia/Shanghai) and
-      weather_city_id (public Open-Meteo city ID, positive integer up to 2147483647). Daily date/time, today's
+      weather_city_id (public Open-Meteo city ID, positive integer up to 2147483647). Unsolicited proactive invitations
+      are assistant.text with proactive_invitation_id (UUID), expires_at (timestamp) and speech_mode=none.
+      Android and Windows display explicit ACCEPT, DECLINE and PAUSE_TODAY controls. A response uses text.input
+      with text and paired proactive_invitation_id/proactive_response fields. The server revalidates the current
+      confirmed preference, time window, pause and reserved quota before one-time acceptance; stale/replayed
+      responses return PROACTIVE_INVITATION_EXPIRED. ACCEPT starts an ordinary current-provider turn; DECLINE
+      does not call a provider. Invites require a connected idle session and never wake the app or microphone.
+      Daily date/time, today's
       forecast and owner reminders use deterministic data queries, bypassing RAG and the LLM in both real and Mock modes.
       Their source_labels identify server time, Open-Meteo forecast or owner reminder records/feedback.
       Today's plans include recurring occurrences before worker execution and postponed items due today, scoped to
@@ -372,7 +379,7 @@ paths:
       - Reports
       summary: Statistics
       operationId: getStatistics
-      description: Aggregates retained authorized data over local dates [start, end). Returns period, interaction (sessions, turns, active_seconds, days, hourly_turns, night_turns, emotions, repeated_topics, simulated_turns), reminders, attention, missing_data, collection_enabled, generated_at, notice and methodology. Requires REPORT_READ plus shared INTERACTION_STATS for family readers; X-Access-Reason must be FAMILY_CHECK_IN or FOLLOW_UP. Reminder and signal scopes are checked independently. No-store.
+      description: Aggregates retained authorized data over local dates [start, end). Returns period, interaction (sessions, turns, active_seconds, days, hourly_turns, night_turns, emotions, repeated_topics, simulated_turns, unclassified_topic_turns, topic_classification), reminders, attention, missing_data, collection_enabled, generated_at, notice and methodology. topic_classification counts RULE, LOCAL_SEMANTIC and RULE_FALLBACK turns; repeated_topics merges supported semantic topic codes across distinct conversations, never raw transcripts or vectors. Requires REPORT_READ plus shared INTERACTION_STATS for family readers; X-Access-Reason must be FAMILY_CHECK_IN or FOLLOW_UP. Reminder and signal scopes are checked independently. No-store.
       parameters:
       - name: family_id
         in: query
@@ -1797,7 +1804,8 @@ paths:
       tags: [SignalEvents]
       operationId: requestElderHelp
       description: Active elder requests help for themselves. Reuses authorized recipients, channels and quiet hours.
-        Same key replays the original event for seven days; different keys or button/voice requests within 120 seconds reuse one event.
+        Button, voice and future BLE entry points share this lifecycle and never call emergency services automatically.
+        Same key replays the original event for seven days; different keys with the same kind within 120 seconds reuse one event.
         No authorized recipient or no channel is persisted as NOTIFICATION_FAILED with an explanation.
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
@@ -1806,12 +1814,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: false
-              required: [family_id]
-              properties:
-                family_id:
-                  $ref: '#/components/schemas/Id'
+              $ref: '#/components/schemas/HelpRequestInput'
       responses:
         '200':
           description: Persisted help event with current progress; Cache-Control no-store
@@ -2016,6 +2019,53 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NotificationResponse'
+  /notifications/{notification_id}/delivery-ack:
+    parameters:
+    - $ref: '#/components/parameters/NotificationId'
+    post:
+      tags:
+      - Notifications
+      operationId: acknowledgeNotificationDelivery
+      description: The authenticated recipient confirms that an ntfy provider push reached and opened the family app. IN_APP, SMS and PHONE records cannot use this endpoint.
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Device-confirmed delivery
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+  /notification-webhooks/twilio:
+    post:
+      tags:
+      - Notifications
+      operationId: receiveTwilioNotificationStatus
+      security: []
+      description: Twilio status callback. Requires an exact X-Twilio-Signature over the configured public HTTPS callback URL and form fields; unknown valid SIDs are acknowledged without disclosure.
+      parameters:
+      - name: X-Twilio-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+      responses:
+        '204':
+          description: Valid callback processed or safely ignored
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
   /devices/register:
     post:
       tags:
@@ -4662,6 +4712,11 @@ components:
           $ref: '#/components/schemas/SignalStatus'
         recommended_action:
           type: string
+        failure_code:
+          type: string
+          enum:
+          - NO_AUTHORIZED_RECIPIENT
+          - ALL_NOTIFICATION_CHANNELS_FAILED
         created_at:
           $ref: '#/components/schemas/Timestamp'
     SignalActionInput:
@@ -4680,8 +4735,29 @@ components:
           - RESOLVE
         expected_status:
           $ref: '#/components/schemas/SignalStatus'
+    HelpRequestInput:
+      type: object
+      additionalProperties: false
+      required:
+      - family_id
+      properties:
+        family_id:
+          $ref: '#/components/schemas/Id'
+        source:
+          type: string
+          default: BUTTON
+          enum:
+          - BUTTON
+          - VOICE
+          - BLE
+        kind:
+          type: string
+          default: CONTACT_FAMILY
+          enum:
+          - CONTACT_FAMILY
+          - PHYSICAL_DISCOMFORT
     SignalEventDetailResponse:
-      description: The elder owner can read their own minimal event status, action times and family action history. Owner responses omit family-only reasons, conversation identifiers and contact numbers, and always set can_handle to false. Current source and membership remain required.
+      description: The elder owner can read their own minimal event status, action times and family action history. Owner responses omit family-only reasons, conversation identifiers and contact numbers, and always set can_handle to false. Current family membership remains required; conversation-originated events also require their current source, while explicit elder help requests do not require a conversation.
       allOf:
       - $ref: '#/components/schemas/SignalEventResponse'
       - type: object

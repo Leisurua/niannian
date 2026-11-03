@@ -1325,6 +1325,7 @@ private fun ElderSettingsSheet(
                                     HomeFeature.REMINDERS to "生活提醒",
                                     HomeFeature.MEMORIES to "家庭记忆",
                                     HomeFeature.MESSAGES to "家人留言",
+                                    HomeFeature.NOTIFICATIONS to "求助进度",
                                     HomeFeature.CONVERSATION to "陪伴设置",
                                     HomeFeature.REPORTS to "我的周报"
                                 ).forEach { (feat, label) ->
