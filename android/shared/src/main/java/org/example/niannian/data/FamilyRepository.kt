@@ -41,6 +41,61 @@ class FamilyRepository(
     }
     fun savedOrigin() = store.load().optString("origin", "http://10.0.2.2:8000")
     fun clear() = store.clear()
+
+    suspend fun exportAccount(userId: String, output: () -> java.io.OutputStream) {
+        call("/v1/me") // Renew the login using the existing refresh policy.
+        requestMutex.withLock { withContext(Dispatchers.IO) {
+            val session = store.load()
+            check(userId.isNotBlank() && session.getString("user_id") == userId)
+            val origin = ConnectionPolicy.origin(session.getString("origin"), debug)
+            val connection = connectionFactory(URL("$origin/v1/me/export"))
+            try {
+                connection.instanceFollowRedirects = false
+                connection.connectTimeout = 10000
+                connection.readTimeout = 120000
+                connection.setRequestProperty("Accept", "application/zip")
+                connection.setRequestProperty("Authorization", "Bearer " + session.getString("access_token"))
+                val status = connection.responseCode
+                if (status != 200) throw ApiFailure(status, "EXPORT_FAILED", "服务端未能生成导出文件。")
+                check(connection.contentType?.substringBefore(';') == "application/zip")
+                val length = connection.contentLengthLong
+                val maximum = 1025L * 1024 * 1024 // Includes the ZIP container overhead.
+                check(length <= maximum)
+                connection.inputStream.use { input ->
+                    output().use { destination ->
+                        val buffer = ByteArray(32768)
+                        var received = 0L
+                        while (true) {
+                            currentCoroutineContext().ensureActive()
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            received += count
+                            check(received <= maximum)
+                            destination.write(buffer, 0, count)
+                        }
+                        check(received > 0 && (length < 0 || length == received))
+                    }
+                }
+            } finally { connection.disconnect() }
+        } }
+    }
+
+    suspend fun deleteAccount(userId: String, server: String, token: String): JSONObject = requestMutex.withLock {
+        val session = store.load()
+        check(userId.isNotBlank() && session.optString("user_id") == userId && session.optString("origin") == server)
+        try {
+            executeCall("/v1/me/deletion", "POST", JSONObject().put("confirmation", "DELETE_MY_ACCOUNT")
+                .put("receipt_token", token), false, null)
+        } finally { clear() }
+    }
+
+    fun receiptOrigin(server: String): String = ConnectionPolicy.origin(server, debug)
+
+    suspend fun deletionReceipt(server: String, token: String): JSONObject = withContext(Dispatchers.IO) {
+        require(token.matches(Regex("[A-Za-z0-9_-]{43,128}")))
+        exchange(ConnectionPolicy.origin(server, debug), "/v1/account-deletions/lookup", "POST",
+            JSONObject().put("receipt_token", token), null, null)
+    }
     fun hasPending() = store.load().optBoolean("pending", false)
     fun pendingInvitation() = store.load().optString("invitation", "")
     fun invitationFamily() = store.load().optString("invitation_family", "")

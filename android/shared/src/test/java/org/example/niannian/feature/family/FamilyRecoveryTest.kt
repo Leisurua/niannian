@@ -27,7 +27,7 @@ private class MemorySession : SessionStore {
     @Synchronized override fun clear() { data = JSONObject() }
 }
 
-private data class Reply(val status: Int = 200, val body: JSONObject = JSONObject())
+private data class Reply(val status: Int = 200, val body: JSONObject = JSONObject(), val zip: ByteArray? = null)
 private fun error(status: Int, code: String) = Reply(status, JSONObject().put("error",
     JSONObject().put("code", code).put("message", "演示错误")))
 private fun page(items: List<JSONObject>, cursor: String? = null) = Reply(body = JSONObject()
@@ -41,8 +41,10 @@ private class Connection(url: URL, handler: (Connection) -> Reply) : HttpURLConn
     override fun disconnect() {}
     override fun usingProxy() = false
     override fun getResponseCode() = reply.status
+    override fun getContentType() = if (reply.zip != null) "application/zip" else "application/json"
+    override fun getContentLengthLong() = reply.zip?.size?.toLong() ?: -1L
     override fun getOutputStream() = sentBody
-    override fun getInputStream() = ByteArrayInputStream(reply.body.toString().toByteArray(Charsets.UTF_8))
+    override fun getInputStream() = ByteArrayInputStream(reply.zip ?: reply.body.toString().toByteArray(Charsets.UTF_8))
     override fun getErrorStream() = inputStream
 }
 
@@ -91,6 +93,57 @@ private suspend fun CompanionModel.idle() = withTimeout(5000) {
 }
 
 class FamilyRecoveryTest {
+    @Test fun accountExportStreamsZipOnlyForCurrentUser() = runBlocking {
+        val api = FakeApi()
+        api.store.save(api.store.load().put("user_id", "self"))
+        val archive = ByteArrayOutputStream().apply {
+            java.util.zip.ZipOutputStream(this).use { zip ->
+                zip.putNextEntry(java.util.zip.ZipEntry("account.json"))
+                zip.write("{}".toByteArray())
+            }
+        }.toByteArray()
+        api.handler = { request ->
+            assertEquals("Bearer fictional-access", request.getRequestProperty("Authorization"))
+            if (request.url.path == "/v1/me/export") Reply(zip = archive) else Reply()
+        }
+        val output = ByteArrayOutputStream()
+        api.repository.exportAccount("self") { output }
+        assertArrayEquals(archive, output.toByteArray())
+        assertFalse(api.requests.last().instanceFollowRedirects)
+        assertTrue(runCatching { api.repository.exportAccount("other") { error("Must not open destination") } }.isFailure)
+        assertEquals(1, api.requests.count { it.url.path == "/v1/me/export" })
+    }
+
+    @Test fun lostDeletionResponseClearsSessionAndReceiptUsesNoBearer() = runBlocking {
+        val api = FakeApi()
+        api.store.save(api.store.load().put("user_id", "self"))
+        val token = "x".repeat(43)
+        api.handler = { request ->
+            val body = JSONObject(request.sentBody.toString("UTF-8"))
+            assertEquals(token, body.getString("receipt_token"))
+            when (request.url.path) {
+                "/v1/me/deletion" -> {
+                    assertEquals("Bearer fictional-access", request.getRequestProperty("Authorization"))
+                    assertEquals("DELETE_MY_ACCOUNT", body.getString("confirmation"))
+                    throw IOException("fictional response lost")
+                }
+                "/v1/account-deletions/lookup" -> {
+                    assertNull(request.getRequestProperty("Authorization"))
+                    Reply(body = JSONObject().put("status", "PENDING").put("local_status", "ERASED")
+                        .put("backup", JSONObject().put("status", "REQUIRES_OPERATOR"))
+                        .put("providers", JSONArray().put(JSONObject().put("provider", "fictional")
+                            .put("status", "REQUIRES_OPERATOR"))))
+                }
+                else -> error("Unexpected account request")
+            }
+        }
+        assertTrue(runCatching { api.repository.deleteAccount("self", "https://example.com", token) }.exceptionOrNull() is IOException)
+        assertFalse(api.repository.hasSession())
+        val progress = deletionProgress(api.repository.deletionReceipt("https://example.com", token))
+        assertTrue(progress.contains("删除尚未全部完成"))
+        assertTrue(progress.contains("供应商 fictional：未核验"))
+    }
+
     @Test fun portraitGatewayUsesLatestSelfGrantAndRejectsOtherOwners() = runBlocking {
         val api = FakeApi()
         fun grant(version: Int, status: String = "GRANTED", owner: String = "elder", expiry: String? = null) =

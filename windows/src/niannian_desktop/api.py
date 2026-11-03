@@ -6,10 +6,15 @@ import threading
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlparse, urlunparse
-from urllib.request import Request, urlopen
+from urllib.request import Request, urlopen, build_opener, HTTPRedirectHandler
 from uuid import uuid4
 
 APP_VERSION = "0.1.0"
+
+
+class NoAccountRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 class ClientError(RuntimeError):
@@ -96,8 +101,11 @@ class ApiClient:
         auth: bool = True,
         idempotency_key: str | None = None,
         access_reason: str | None = None,
+        binary_output=None,
     ) -> dict[str, Any]:
         extra = {'access_reason': access_reason} if access_reason is not None else {}
+        if binary_output is not None:
+            extra['binary_output'] = binary_output
         with self._request_lock:
             try:
                 return self._exchange(method, path, body=body, auth=auth, idempotency_key=idempotency_key, **extra)
@@ -121,7 +129,7 @@ class ApiClient:
                         self.clear_session()
                     raise
 
-    def _exchange(self, method, path, *, body=None, auth=True, idempotency_key=None, access_reason=None):
+    def _exchange(self, method, path, *, body=None, auth=True, idempotency_key=None, access_reason=None, binary_output=None):
         self._check_optional_api(path)
         headers = {"Accept": "application/json", "User-Agent": f"NianNian-Windows/{APP_VERSION}"}
         data = None
@@ -140,7 +148,26 @@ class ApiClient:
             headers['X-Access-Reason'] = access_reason
         request = Request(self.base_url + path, data=data, headers=headers, method=method)
         try:
-            with urlopen(request, timeout=self.timeout) as response:
+            account = path in ('/v1/me/export', '/v1/me/deletion', '/v1/account-deletions/lookup')
+            open_request = build_opener(NoAccountRedirect()).open if account else urlopen
+            with open_request(request, timeout=120 if binary_output is not None else self.timeout) as response:
+                if binary_output is not None:
+                    maximum = 1025 * 1024 * 1024
+                    length = response.headers.get('Content-Length')
+                    prefix = response.read(4)
+                    if (response.headers.get_content_type() != 'application/zip' or not prefix.startswith(b'PK')
+                            or length is not None and (not length.isdecimal() or int(length) > maximum)):
+                        raise ClientError('导出文件无效或超出限制，请重试。')
+                    binary_output.write(prefix)
+                    received = len(prefix)
+                    while chunk := response.read(64 * 1024):
+                        received += len(chunk)
+                        if received > maximum:
+                            raise ClientError('导出文件超出限制。')
+                        binary_output.write(chunk)
+                    if length is not None and received != int(length):
+                        raise ClientError('导出文件未下载完整，请重试。')
+                    return {}
                 return _json_or_empty(response.read())
         except HTTPError as exc:
             try:
@@ -160,6 +187,20 @@ class ApiClient:
 
     def health(self) -> dict[str, Any]:
         return self._request("GET", "/health", auth=False)
+
+    def export_account(self, output):
+        self._request('GET', '/v1/me/export', binary_output=output)
+
+    def delete_account(self, token):
+        with self._request_lock:
+            try:
+                return self._request('POST', '/v1/me/deletion', body={
+                    'confirmation': 'DELETE_MY_ACCOUNT', 'receipt_token': token})
+            finally:
+                self.clear_session()
+
+    def deletion_receipt(self, token):
+        return self._request('POST', '/v1/account-deletions/lookup', auth=False, body={'receipt_token': token})
 
     def weather_cities(self, name: str) -> list[dict[str, Any]]:
         return self._request('GET', '/v1/weather/cities?' + urlencode({'q': name.strip()})).get('items', [])
