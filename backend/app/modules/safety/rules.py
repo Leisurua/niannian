@@ -12,6 +12,14 @@ RULE_VERSION = '1.1.0'
 WARNING = '存在风险，建议先联系家人核实。请不要转账、分享验证码或打开陌生链接。'
 EMERGENCY_COPY = '如需紧急帮助，请立即联系身边的人或使用紧急联系入口。'
 
+
+def explicit_help(text: str) -> bool:
+    """Whole commands only: quotations, negation and model candidates cannot send help."""
+    normalized = unicodedata.normalize('NFKC', text).strip()
+    return bool(re.fullmatch(r'(?:念念[，,、\s]*)?(?:请)?(?:现在)?'
+        r'(?:我要(?:向家人)?求助|帮我叫人|帮我联系家人|我要联系急救|救命(?:[，,、\s]*帮我叫人)?)'
+        r'[。！!\s]*', normalized))
+
 INDICATORS = {
     'TRANSFER': ('转账', '汇款', '打钱', '转钱'),
     'VERIFICATION_CODE': ('验证码', '短信码', '动态码'),

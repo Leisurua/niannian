@@ -16,6 +16,13 @@ class NotificationModelTest {
         var actionWait: CompletableDeferred<Unit>? = null
         var listReads = 0
         val calls = mutableListOf<String>()
+        val helpKeys = mutableListOf<String>()
+        override suspend fun help(family: String, key: String): JSONObject {
+            helpKeys.add(key)
+            wait?.await()
+            if (fail) error("offline")
+            return event().put("help_message", "没有可用的已授权联系人").put("duplicate", helpKeys.size > 1)
+        }
         fun event() = JSONObject().put("id", eventId).put("family_id", family).put("owner_user_id", "elder")
             .put("summary", "Mock · 请先联系家人核实").put("status", eventStatus).put("can_handle", canHandle)
         override suspend fun events(family: String): List<JSONObject> {
@@ -185,6 +192,36 @@ class NotificationModelTest {
         assertEquals("CONTACTED", model.state.value.event!!.status)
         gateway.fail = true; model.refresh(); yield()
         assertTrue(model.state.value.items.isEmpty()); assertNull(model.state.value.event)
+        model.clear()
+    }
+
+    @Test fun helpRetryKeepsKeyAndLateResponseCannotRestoreAnotherFamily() = runBlocking {
+        val gateway = Gateway(); gateway.fail = true
+        val model = NotificationModel(gateway, this)
+        model.bind("family", "elder", "elder"); model.requestHelp(); yield()
+        assertTrue(model.state.value.message.contains("求助发送结果未确认"))
+        gateway.fail = false; model.requestHelp(); yield()
+        assertEquals(gateway.helpKeys[0], gateway.helpKeys[1])
+        assertTrue(model.state.value.event!!.helpMessage.contains("没有可用"))
+        gateway.wait = CompletableDeferred(); model.requestHelp(); yield()
+        model.requestHelp(); assertEquals(3, gateway.helpKeys.size)
+        model.bind("other", "elder", "elder"); gateway.wait!!.complete(Unit); yield()
+        assertNull(model.state.value.event)
+        model.clear()
+    }
+
+    @Test fun familyCannotSubmitElderHelpAndDeliveryLabelsRequireEvidence() = runBlocking {
+        val gateway = Gateway(); val model = NotificationModel(gateway, this)
+        model.bind("family", "elder", "child"); model.requestHelp(); yield()
+        assertTrue(gateway.helpKeys.isEmpty())
+        val notice = JSONObject().put("channel", "PHONE").put("status", "SENT").put("delivery_status", "completed")
+        assertTrue(deliveryLabel(notice).contains("是否联系到本人未知"))
+        notice.put("status", "FAILED").put("delivery_status", "no-answer").put("error_code", "PROVIDER_DELIVERY_FAILED")
+        assertTrue(deliveryLabel(notice).contains("无人接听"))
+        notice.put("status", "READ").put("delivery_status", "failed")
+        assertTrue(deliveryLabel(notice).contains("发送或呼叫失败"))
+        notice.put("simulated", true)
+        assertTrue(deliveryLabel(notice).contains("Mock"))
         model.clear()
     }
 }

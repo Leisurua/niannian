@@ -26,7 +26,7 @@ async def create_for_event(db, source, recipients):
     now = utcnow()
     for uid in recipients:
         pref = await preferences.current(db, source['family_id'], source['owner_user_id'], uid)
-        channels = pref.channels if source['type'] in ('SCAM_RISK','PHYSICAL_DISCOMFORT') else [c for c in pref.channels if c in ('IN_APP', 'PUSH')]
+        channels = pref.channels if source['type'] in ('SCAM_RISK','PHYSICAL_DISCOMFORT','EMERGENCY') else [c for c in pref.channels if c in ('IN_APP', 'PUSH')]
         for channel in channels:
             key = hashlib.sha256(f"{source['id']}:{uid}:{channel}".encode()).hexdigest()
             if await db.scalar(select(Notification.id).where(Notification.dedupe_key == key)):

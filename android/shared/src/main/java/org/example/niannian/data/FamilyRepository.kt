@@ -248,6 +248,25 @@ class FamilyRepository(
             expectedVersion = null, explicitKey = key)
     }
 
+    suspend fun requestHelp(family: String, key: String): JSONObject = requestMutex.withLock {
+        require(UUID.fromString(family).toString() == family && UUID.fromString(key).toString() == key)
+        val session = store.load()
+        val retryKey = if (session.optString("help_family") == family) session.optString("help_key").ifBlank { key } else key
+        store.save(session.put("help_family", family).put("help_key", retryKey))
+        fun forget() {
+            val saved = store.load()
+            saved.remove("help_family"); saved.remove("help_key"); store.save(saved)
+        }
+        try {
+            val result = executeCall("/v1/signal-events/help-requests", "POST", JSONObject().put("family_id", family), false, null, retryKey)
+            forget()
+            result
+        } catch (error: ApiFailure) {
+            if (error.status in 400..499 && error.status !in listOf(401, 408, 429)) forget()
+            throw error
+        }
+    }
+
     suspend fun avatarCall(path: String, method: String, body: JSONObject?, key: String?): JSONObject = requestMutex.withLock {
         require(path == "/v1/consents" || path.startsWith("/v1/avatar-"))
         key?.let { require(UUID.fromString(it).toString() == it) }

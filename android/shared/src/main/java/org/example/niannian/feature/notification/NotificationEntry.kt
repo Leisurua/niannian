@@ -7,6 +7,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
@@ -18,6 +22,37 @@ import org.example.niannian.data.notificationGateway
 import java.util.UUID
 
 private data class NotificationRoute(val family: String, val owner: String)
+
+@Composable
+fun ElderHelpCard(model: NotificationModel?, family: String, user: String, unavailable: Boolean,
+    onVoice: () -> Unit, onProgress: () -> Unit) {
+    val state = model?.state?.collectAsState()?.value?.takeIf { it.family == family && it.owner == user && it.user == user }
+    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { model?.requestHelp() }, enabled = !unavailable && state != null && !state.busy && state.owner.isNotBlank(),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
+                Text("向家人求助", fontSize = 28.sp)
+            }
+            Text("点击后通知已授权家属。需要立即帮助时，请同时联系身边的人。", fontSize = 18.sp)
+            OutlinedButton(onClick = onVoice, enabled = !unavailable, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
+                Text("用语音求助", fontSize = 22.sp)
+            }
+            Text("进入聊天后点说话，说“我要向家人求助”。语音需本人授权和麦克风权限。", fontSize = 18.sp)
+            if (unavailable || state == null || state.owner.isBlank()) {
+                Text("当前无法发送求助，请检查网络和登录，或使用系统电话联系。", fontSize = 20.sp)
+            } else {
+                if (state.message.isNotBlank()) Text(state.message, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                state.event?.takeIf { it.helpMessage.isNotBlank() }?.let {
+                    Text(it.helpMessage, fontSize = 20.sp)
+                    Text(signalStatusLabel(it.status), fontSize = 20.sp)
+                    it.deliveries.forEach { delivery -> Text(delivery) }
+                }
+            }
+            TextButton(onClick = onProgress) { Text("查看求助与家人处理进度", fontSize = 20.sp) }
+        }
+    }
+}
 
 @Composable
 fun NotificationEntry(repository: FamilyRepository, launch: NotificationLaunch?, user: String,

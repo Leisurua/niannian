@@ -144,6 +144,23 @@ class FamilyRecoveryTest {
         assertTrue(progress.contains("供应商 fictional：未核验"))
     }
 
+    @Test fun helpRetrySurvivesRepositoryRecreationWithoutBlockingOtherWrites() = runBlocking {
+        val api = FakeApi()
+        val family = "0192f1e4-6ed8-7c21-a4c1-5d58db7c3001"
+        val firstKey = java.util.UUID.randomUUID().toString()
+        api.offline = true
+        assertTrue(runCatching { api.repository.requestHelp(family, firstKey) }.isFailure)
+        assertEquals(firstKey, api.store.load().getString("help_key"))
+        assertFalse(api.repository.hasPending())
+        val restored = FamilyRepository(api.store, false) { url -> Connection(url) { request ->
+            assertEquals(firstKey, request.getRequestProperty("Idempotency-Key"))
+            assertEquals(family, JSONObject(request.sentBody.toString("UTF-8")).getString("family_id"))
+            Reply(body = JSONObject().put("duplicate", true))
+        } }
+        assertTrue(restored.requestHelp(family, java.util.UUID.randomUUID().toString()).getBoolean("duplicate"))
+        assertFalse(api.store.load().has("help_key"))
+    }
+
     @Test fun portraitGatewayUsesLatestSelfGrantAndRejectsOtherOwners() = runBlocking {
         val api = FakeApi()
         fun grant(version: Int, status: String = "GRANTED", owner: String = "elder", expiry: String? = null) =

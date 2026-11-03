@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+import org.example.niannian.data.ApiFailure
 
 interface NotificationGateway {
     suspend fun list(): List<JSONObject>
@@ -15,13 +16,15 @@ interface NotificationGateway {
     suspend fun call(path: String, method: String = "GET", body: JSONObject? = null, version: Long? = null): JSONObject
     suspend fun read(id: String, key: String): JSONObject
     suspend fun act(id: String, body: JSONObject, key: String): JSONObject
+    suspend fun help(family: String, key: String): JSONObject
 }
 
 data class InboxItem(val id: String, val eventId: String, val status: String, val channel: String,
     val summary: String, val explanation: String, val eventStatus: String = "", val deliveries: List<String> = emptyList())
 data class EventContact(val name: String, val phone: String, val emergency: Boolean)
 data class SignalDetail(val id: String, val status: String, val canHandle: Boolean, val actionedAt: String,
-    val resolvedAt: String, val contacts: List<EventContact> = emptyList(), val history: List<String> = emptyList()) {
+    val resolvedAt: String, val contacts: List<EventContact> = emptyList(), val history: List<String> = emptyList(),
+    val helpMessage: String = "", val deliveries: List<String> = emptyList()) {
     val actions: List<String> get() = if (!canHandle) emptyList() else when (status) {
         "VALIDATED", "NOTIFIED", "NOTIFICATION_FAILED" -> listOf("ACKNOWLEDGE", "FALSE_POSITIVE")
         "ACKNOWLEDGED" -> listOf("CONTACT", "FALSE_POSITIVE", "RESOLVE")
@@ -46,9 +49,10 @@ class NotificationModel(private val gateway: NotificationGateway, private val sc
     private var polling: Job? = null
     private var expiry: Job? = null
     private var openedEvent: String? = null
+    private var pendingHelp: Pair<String, String>? = null
     fun clear() {
         generation++; job?.cancel(); polling?.cancel(); expiry?.cancel()
-        polling = null; openedEvent = null; current.value = NotificationState()
+        polling = null; openedEvent = null; pendingHelp = null; current.value = NotificationState()
     }
     fun bind(family: String, owner: String, user: String) {
         if (current.value.family == family && current.value.owner == owner && current.value.user == user) return
@@ -59,7 +63,8 @@ class NotificationModel(private val gateway: NotificationGateway, private val sc
         polling = tasks.launch { while (isActive) { refresh(); delay(30000) } }
     }
     private fun path() = "/v1/families/${current.value.family}/notification-preferences/${current.value.owner}"
-    private fun action(block: suspend (Int) -> Unit) {
+    private fun action(failureMessage: String = "同步未完成，操作结果未确认。请刷新核对网络、当前授权和事件处理状态；暂不显示旧内容。",
+        block: suspend (Int) -> Unit) {
         if (current.value.busy || current.value.owner.isBlank()) return
         val stamp = generation
         expiry?.cancel()
@@ -68,7 +73,7 @@ class NotificationModel(private val gateway: NotificationGateway, private val sc
             try { block(stamp) }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { if (stamp == generation) current.value = current.value.copy(items = emptyList(), detail = "", event = null,
-                loaded = false, message = "同步未完成，操作结果未确认。请刷新核对网络、当前授权和事件处理状态；暂不显示旧内容。") }
+                loaded = false, message = failureMessage) }
             finally { if (stamp == generation) current.value = current.value.copy(busy = false) }
         }
     }
@@ -95,33 +100,20 @@ class NotificationModel(private val gateway: NotificationGateway, private val sc
         val capabilities = if (elder) null else gateway.call("/v1/notification-capabilities").optJSONObject("channels")
         val values = mutableListOf<InboxItem>()
         val notices = if (elder) emptyList() else gateway.list()
+        var latestHelp: String? = null
         for (event in gateway.events(family)) {
             if (stamp != generation) return@action
             val eventId = event.getString("id")
             require(UUID.fromString(eventId).toString() == eventId)
             if (event.getString("family_id") != family || event.getString("owner_user_id") != owner) continue
+            if (elder && event.optString("type") == "EMERGENCY" && latestHelp == null) latestHelp = eventId
             val item = notices.firstOrNull { it.getString("signal_event_id") == eventId }
             val summary = item?.getString("summary").orEmpty(); val explanation = event.getString("summary")
             require(summary.length <= 240 && explanation.length <= 1000)
             val status = item?.getString("status") ?: "NONE"
             require(status in listOf("SENT", "DELIVERED", "READ", "FAILED", "NONE"))
             val deliveries = notices.filter { it.getString("signal_event_id") == eventId }.map { notice ->
-                val channel = when (notice.getString("channel")) { "SMS" -> "短信"; "PHONE" -> "语音电话"; "PUSH" -> "推送"; else -> "应用内" }
-                val result = when {
-                    notice.optString("error_code") == "DELIVERY_UNKNOWN" -> "结果未知，请人工核实（不会自动重发）"
-                    notice.optString("error_code") == "CHANNEL_NOT_CONFIGURED" -> "服务未配置或外发关闭"
-                    notice.optString("error_code") == "CONTACT_REQUIRED" -> "请登记接收号码或推送主题"
-                    notice.optString("error_code") == "PROVIDER_DELIVERY_FAILED" -> "服务商报告发送/呼叫失败"
-                    notice.optString("delivery_status") in listOf("busy", "no-answer") -> "忙线或无人接听"
-                    notice.optString("delivery_status") == "completed" -> "呼叫结束，仍需人工确认是否联系到本人"
-                    notice.optString("status") == "FAILED" -> "发送失败"
-                    notice.optString("status") == "DELIVERED" || notice.optString("delivery_status") == "delivered" -> "服务商确认送达"
-                    notice.optString("status") == "READ" -> "应用内已读"
-                    notice.getString("channel") == "IN_APP" -> "应用内可查看"
-                    notice.optBoolean("simulated", true) -> "Mock 模拟发送"
-                    else -> "服务商已受理，送达待确认"
-                }
-                "$channel：$result"
+                deliveryLabel(notice)
             }
             values.add(InboxItem(item?.getString("id").orEmpty(), eventId, status,
                 item?.getString("channel").orEmpty(), summary, explanation, event.getString("status"), deliveries))
@@ -131,7 +123,7 @@ class NotificationModel(private val gateway: NotificationGateway, private val sc
             current.value = current.value.copy(items = values, loaded = true, message = if (elder) "已同步家人处理进度。关注提示需核实，处理记录由家人提交。" else "已同步 · 关注提示需核实，识别方式见各条提示；渠道结果以发送记录为准。",
                 pushMode = capabilities?.optString("PUSH", "DISABLED") ?: "MOCK",
                 smsAvailable = capabilities?.optString("SMS") == "AVAILABLE", phoneAvailable = capabilities?.optString("PHONE") == "AVAILABLE")
-            openedEvent?.let { id ->
+            (openedEvent ?: latestHelp)?.let { id ->
                 val detail = gateway.call("/v1/signal-events/$id")
                 if (stamp == generation) showEvent(detail, id)
             }
@@ -187,7 +179,32 @@ class NotificationModel(private val gateway: NotificationGateway, private val sc
                 val phone = it.getString("phone"); require(phone.matches(Regex("\\+[1-9][0-9]{6,14}")))
                 EventContact(it.getString("display_name"), phone, it.getBoolean("emergency")) } },
             (0 until history.length()).map { index -> history.getJSONObject(index).let {
-                "${it.optString("actor_display_name", "家庭成员")} · ${signalActionLabel(it.getString("action"))} · ${it.getString("occurred_at")}" } }))
+                "${it.optString("actor_display_name", "家庭成员")} · ${signalActionLabel(it.getString("action"))} · ${it.getString("occurred_at")}" } },
+            detail.optString("help_message"), (detail.optJSONArray("deliveries") ?: JSONArray()).let { entries ->
+                (0 until entries.length()).map { deliveryLabel(entries.getJSONObject(it)) }
+            }))
+    }
+    fun requestHelp() {
+        if (current.value.owner != current.value.user) return
+        action("求助发送结果未确认。请检查网络后再次点击求助，重试会核对原请求；需要立即帮助请联系身边的人或使用系统电话。") { stamp ->
+            val family = current.value.family
+            val key = pendingHelp?.takeIf { it.first == family }?.second ?: UUID.randomUUID().toString()
+            pendingHelp = family to key
+            current.value = current.value.copy(message = "正在发送求助，请稍候…")
+            val result = try { gateway.help(family, key) }
+            catch (error: ApiFailure) {
+                if (stamp == generation && error.status in 400..499 && error.status !in listOf(408, 429)) pendingHelp = null
+                throw error
+            }
+            if (stamp != generation) return@action
+            val id = result.getString("id")
+            require(UUID.fromString(id).toString() == id)
+            showEvent(result, id)
+            openedEvent = id; pendingHelp = null
+            current.value = current.value.copy(loaded = true, message =
+                if (result.optBoolean("duplicate")) "已找到近期求助记录，没有重复发送。" else "求助记录已保存，请核对发送及处理进度。")
+            expire(stamp)
+        }
     }
     fun handle(actionName: String) {
         val event = current.value.event ?: return
@@ -206,6 +223,29 @@ class NotificationModel(private val gateway: NotificationGateway, private val sc
         }
     }
     override fun onCleared() { clear(); super.onCleared() }
+}
+
+internal fun deliveryLabel(notice: JSONObject): String {
+    val channel = when (notice.getString("channel")) { "SMS" -> "短信"; "PHONE" -> "语音电话"; "PUSH" -> "推送"; else -> "应用内" }
+    val result = when {
+        notice.optBoolean("simulated") -> "Mock 模拟，未真实联系"
+        notice.optString("error_code") == "DELIVERY_UNKNOWN" -> "结果未知，请人工核实（不会自动重发）"
+        notice.optString("delivery_status") == "no-answer" -> "服务商报告无人接听"
+        notice.optString("delivery_status") == "busy" -> "服务商报告忙线"
+        notice.optString("error_code") == "CHANNEL_NOT_CONFIGURED" -> "服务未配置或外发关闭"
+        notice.optString("error_code") == "CONTACT_REQUIRED" -> "缺少接收号码或推送主题"
+        notice.optString("error_code") == "PROVIDER_DELIVERY_FAILED" -> "服务商报告发送或呼叫失败"
+        notice.optString("status") == "FAILED" -> "发送失败"
+        notice.optString("status") == "CANCELLED" -> "已取消"
+        notice.optBoolean("deferred") -> "等待发送（家属免打扰时段）"
+        notice.optString("status") in listOf("PENDING", "QUEUED") -> "等待发送"
+        notice.optString("delivery_status") == "completed" -> "呼叫结束，是否联系到本人未知"
+        notice.optString("status") == "DELIVERED" || notice.optString("delivery_status") == "delivered" -> "服务商确认送达，不代表已联系"
+        notice.optString("status") == "READ" -> "通知已读，不代表已联系"
+        notice.getString("channel") == "IN_APP" -> "应用内可查看，尚未确认已读"
+        else -> "服务商已受理，联系结果未知"
+    }
+    return "$channel：$result"
 }
 
 internal fun signalActionLabel(action: String) = when (action) {
