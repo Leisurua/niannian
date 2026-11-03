@@ -7,6 +7,7 @@ from typing import Any, Callable
 from niannian_desktop.settings import load_base_url, save_base_url
 from niannian_desktop.tasks import BackgroundTasks
 from niannian_desktop.lifecycle import DesktopLifecycle
+from niannian_desktop.account import open_account
 from niannian_desktop.insights import InsightsPanel
 
 from .api import ApiError, ClientError, ElderClient, NetworkError
@@ -85,6 +86,7 @@ class ElderDemoApp(DesktopLifecycle, tk.Tk):
         self.right = ttk.Frame(body, style="Card.TFrame", padding=22)
         self.right.pack(side="left", fill="both", expand=True, padx=(10, 0))
         self._build_setup_panel()
+        ttk.Button(self.left, text="本人数据管理 / 删除回执", command=lambda: open_account(self)).pack(fill="x")
         self._build_message_panel()
         ttk.Button(self.left, text='天气与我的周报', command=self.open_insights).pack(fill='x', pady=10)
         ttk.Button(self.left, text='和念念聊天 · 选择声音', command=self.open_conversation).pack(fill='x', pady=10)

@@ -56,7 +56,7 @@ class SecureSession(context: Context, private val onClear: () -> Unit = {}) : Se
     }
 
     @Synchronized override fun clear() {
-        onClear()
-        check(preferences.edit().clear().commit()) { "无法清除本机登录状态，请重试。" }
+        try { onClear() }
+        finally { check(preferences.edit().clear().commit()) { "无法清除本机登录状态，请重试。" } }
     }
 }

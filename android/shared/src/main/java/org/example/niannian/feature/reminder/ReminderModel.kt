@@ -42,6 +42,12 @@ class ReminderModel(private val gateway: ReminderGateway, store: ReminderStore, 
     private var generation = 0
     private var job: Job? = null
     fun hide() { generation++; job?.cancel(); current.value = ReminderState() }
+    suspend fun clearAccountCache() {
+        val active = job
+        hide()
+        active?.join()
+        ledger.clear()
+    }
     fun bind(family: String, user: String): Job? {
         if (current.value.family == family && current.value.user == user) return null
         hide(); current.value = ReminderState(family = family, user = user)

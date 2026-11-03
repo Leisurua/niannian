@@ -7,6 +7,7 @@ from typing import Any, Callable
 from niannian_desktop.settings import load_base_url, save_base_url
 from niannian_desktop.tasks import BackgroundTasks
 from niannian_desktop.lifecycle import DesktopLifecycle
+from niannian_desktop.account import open_account
 from niannian_desktop.insights import InsightsPanel
 
 from .api import ApiError, ClientError, NetworkError, NianNianClient
@@ -80,6 +81,7 @@ class FamilyClientApp(DesktopLifecycle, tk.Tk):
         self.tabs.add(self.family_tab, text=" 家庭与设备 ")
         self.tabs.add(self.message_tab, text=" 消息 ")
         self._build_connect_tab()
+        ttk.Button(self.connect_tab, text="本人数据管理 / 删除回执", command=lambda: open_account(self)).pack(fill="x")
         self._build_family_tab()
         self._build_message_tab()
         self.insights = InsightsPanel(self.tabs, self)

@@ -189,6 +189,7 @@ internal fun ElderDesignHome(
     var startWithVoice by remember { mutableStateOf(false) }
     var chatTopic by remember { mutableStateOf<String?>(null) }
     var settingsOpen by remember { mutableStateOf(false) }
+    var gameOpen by remember(state.userId, state.selected?.id) { mutableStateOf(false) }
 
     var toastMessage by remember { mutableStateOf<String?>(null) }
     var now by remember { mutableStateOf(LocalDateTime.now()) }
@@ -380,12 +381,22 @@ internal fun ElderDesignHome(
                     settingsOpen = false
                     feature = target
                 },
+                onOpenGame = {
+                    settingsOpen = false
+                    gameOpen = true
+                },
                 onOpenBackendConsole = {
                     settingsOpen = false
                     onOpenFamilySettings()
                 },
                 onClose = { settingsOpen = false }
             )
+        }
+
+        if (gameOpen) {
+            val canRead = homeFamily(state).isNotBlank() && !state.busy && !state.offline && state.error.isBlank() &&
+                state.selfPermissions.any { it.scope == "VOICE" && homeConsentGranted(it) }
+            org.example.niannian.feature.game.MatchGamePanel(textScale, canRead) { gameOpen = false }
         }
 
         feature?.let { target ->
@@ -1127,6 +1138,7 @@ private fun ElderSettingsSheet(
     onQuickUsbLogin: () -> Unit,
     onSelectScale: (Float) -> Unit,
     onOpenFeature: (HomeFeature) -> Unit = {},
+    onOpenGame: () -> Unit,
     onOpenBackendConsole: () -> Unit,
     onClose: () -> Unit
 ) {
@@ -1154,6 +1166,7 @@ private fun ElderSettingsSheet(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 24.dp, vertical = 16.dp)
             ) {
                 Box(
@@ -1261,6 +1274,11 @@ private fun ElderSettingsSheet(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
+                Text("更多功能", fontSize = 16f.spScaled(scale), fontWeight = FontWeight.Bold, color = Ink)
+                Button(onClick = onOpenGame, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+                    Text("找相同", fontSize = 18f.spScaled(scale))
+                }
+                Spacer(modifier = Modifier.height(10.dp))
                 if (!loggedIn) {
                     Button(
                         onClick = onQuickUsbLogin,

@@ -30,6 +30,11 @@ data class CompanionState(
 class CompanionModel(private val repository: FamilyRepository, val elder: Boolean, private val deviceId: String,
     private val taskScope: CoroutineScope? = null) : ViewModel() {
     val voiceProfiles = org.example.niannian.feature.voice.VoiceProfilesModel(repository, taskScope ?: viewModelScope)
+    val accountRepository get() = repository
+    fun accountDeleted() {
+        voiceProfiles.bind("", "", elder)
+        current.value = CompanionState(address = current.value.address, message = "可使用独立凭证查询删除进度。")
+    }
     private val current = MutableStateFlow(CompanionState())
     val state = current.asStateFlow()
 
