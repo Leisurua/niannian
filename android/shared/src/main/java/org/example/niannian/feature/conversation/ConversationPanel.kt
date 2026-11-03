@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
@@ -45,6 +46,10 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import org.json.JSONObject
 
+val LocalConversationVoiceFactory = staticCompositionLocalOf<(Context) -> ConversationVoice> {
+    { AndroidConversationVoice(it) }
+}
+
 @Composable
 fun ConversationPanel(model: ConversationModel, familyId: String, userId: String, unavailable: Boolean,
     startWithVoice: Boolean = false) {
@@ -58,7 +63,8 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
             JSONObject(weatherPrefs.getString(weatherProfile, null) ?: "").optInt("id").takeIf { it > 0 }
         }.getOrNull())
     }
-    val voice = remember(context) { AndroidConversationVoice(context) }
+    val voiceFactory = LocalConversationVoiceFactory.current
+    val voice = remember(context, voiceFactory) { voiceFactory(context) }
     var draft by remember(familyId, userId) { mutableStateOf("") }
     var permissionSession by remember(familyId, userId) { mutableStateOf<String?>(null) }
     var pendingVoiceEntry by remember(familyId, userId) { mutableStateOf(startWithVoice) }
@@ -126,7 +132,7 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
                         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                     Text(when {
                         state.recording -> "您说，我在听"
-                        state.recognizing -> "正在识别您说的话"
+                        state.recognizing -> state.message
                         state.speechPending -> "正在准备朗读"
                         state.speaking -> "可以随时点停止"
                         state.busy && state.connected -> "正在想您的话"
@@ -165,7 +171,7 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
                 Text("我是 AI，不是真实家人。会话回顾需要本人明确授权；不会自动联系家人。", fontSize = 18.sp)
                 Text("可以问“今天几号”“今天会下雨吗”“今天有什么安排”，再说“第一项完成了”或“第一项稍后处理”。天气使用首页选择的城市。", fontSize = 18.sp)
                 Text("点击说话后可说“再说一遍”“慢一点”“恢复语速”“停一下”或“结束聊天”。播放时不收音，请先点“打断并说话”；也可以直接点停止。", fontSize = 18.sp)
-                Text("点击说话会使用设备语音服务，可能联网处理声音和朗读内容。应用不保存录音；控制口令直接执行，其他文字用于查询或 AI 对话。请勿说出密码或验证码。", fontSize = 18.sp)
+                Text("已内置中文模型时，声音在本机识别。系统识别和朗读服务可能联网。应用不保存录音；控制口令直接执行，其他文字用于查询或 AI 对话。请勿说出密码或验证码。", fontSize = 18.sp)
                 Column(Modifier.fillMaxWidth().heightIn(max = 360.dp).verticalScroll(chatScroll),
                     verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     state.messages.forEach { item ->

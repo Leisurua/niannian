@@ -2,14 +2,14 @@
 
 ## 当前可用范围
 
-文字会话支持可配置的 OpenAI 兼容 Chat Completions 服务（JSON 模式），默认仍为明确标记的 Mock。开发环境通过 `LLM_PROVIDER=openai_compatible`、URL、模型及密钥显式启用。已接入 DeepSeek V4.1 Flash（`deepseek-flash`），通过虚构输入的真实供应商调用及隔离库 WebSocket 两轮对话验证。Android 老人端已接入设备语音识别 → 现有 LLM → 系统中文朗读，真机语音联调尚未验证。配置见 [部署说明](deployment.md#真实-llm-文字联调)。
+文字会话支持可配置的 OpenAI 兼容 Chat Completions 服务（JSON 模式），默认仍为明确标记的 Mock。开发环境通过 `LLM_PROVIDER=openai_compatible`、URL、模型及密钥显式启用。已接入 DeepSeek V4.1 Flash（`deepseek-flash`），通过虚构输入的真实供应商调用及隔离库 WebSocket 两轮对话验证。含中文模型的 Android 老人端已在 Pixel 7 / API 35 模拟器用合成语音完成本机转写、真实 DeepSeek 回答和系统朗读，虚拟扬声器采集到实际音频。实体手机语音联调尚待验证。配置见 [部署说明](deployment.md#真实-llm-文字联调)。
 
 | 能力 | 实现入口 | 当前行为 |
 | --- | --- | --- |
 | 文字编排 | `backend/app/ai/conversation.py` | 透明 AI 身份、结构化回复校验、规则警告优先、失败兜底、授权记忆复验 |
 | LLM | `backend/app/integrations/openai_compatible.py` | DeepSeek 官方 HTTPS 服务、关闭深度思考、非流式 JSON 回复；未配置时使用 Mock |
 | Embedding | `backend/app/integrations/embedding.py` | 可启用本地 BGE 中文模型、512 维真实语义向量；离线推理、不外发记忆；未启用时为明确标记的 8 维 Mock |
-| Android ASR / TTS | `android/shared/.../conversation/AndroidConversationVoice.kt` | 系统 SpeechRecognizer 收音识别，TextToSpeech 中文朗读；依赖已安装的服务，可能联网 |
+| Android ASR / TTS | `OfflineConversationVoice.kt`、`AndroidConversationVoice.kt` | 含模型的老人端使用本机 Vosk 中文转写，普通包使用系统 SpeechRecognizer；中文朗读使用 TextToSpeech |
 | Android 基础数字人 | `android/shared/.../conversation/PersimmonCompanionOrb.kt` | Compose Canvas 2D 柿子形象；待机、听您说话、思考中、正在回答；口型随设备实际播放启停 |
 | THA3 自定义形象 | `modules/avatar`、`integrations/avatar_preprocess.py` / `tha3_renderer.py`、Android `AvatarGenerationModel` / `AvatarModel` / `CompanionAvatar` | 手机照片经千问/豆包生成立绘，服务端抠图与构图后由真实 THA3 生成四态包，下载预览并手动确认启用；也支持离线 ZIP 导入 |
 | 旧编排 ASR / TTS / Avatar 占位 | `backend/app/integrations/mock/adapters.py` | 仍为 Mock 占位，不解码/返回音频；Android 语音不调用它们 |
@@ -48,7 +48,7 @@ Mock 编排超时 8 秒，真实 LLM 默认 20 秒（`LLM_TIMEOUT_SECONDS`，上
 
 ## 会话、回顾与主动邀请
 
-WSS 保持本人文字输入；协商 pcm_v1 的客户端可接收家人音色 PCM 输出。Android 点击说话后由系统 ASR 收音，最终识别结果先匹配本地控制口令，其余以 `text.input` 提交；最终 `assistant.text` 交给系统 TTS。后端不接收原始音频，`audio.chunk`、`audio.end` 等消息名仍返回不可用。语音能力与 `llm_mode` 独立，Mock 回复也可以朗读，不能据此声称用了真实 LLM。
+WSS 保持本人文字输入；协商 pcm_v1 的客户端可接收家人音色 PCM 输出。Android 点击说话后，等麦克风就绪再提示收音。最终识别结果先匹配本地控制口令，其余以 `text.input` 提交；最终 `assistant.text` 交给系统 TTS。后端不接收原始音频，`audio.chunk`、`audio.end` 等消息名仍返回不可用。语音能力与 `llm_mode` 独立，Mock 回复也可以朗读，不能据此声称用了真实 LLM。
 
 日期、天气和当天安排通过 [conversation/daily.py](../backend/app/modules/conversation/daily.py) 的确定性查询接入同一语音/文字通道，不调用 RAG 或 LLM，真实/Mock 闲聊模式均可用。支持“今天几号／星期几／现在几点”“今天会下雨吗／需要带伞吗”“今天有什么安排”。日期由服务端时钟按设备传来的 IANA 时区计算，未传默认 Asia/Shanghai；天气只查首页手选城市，使用 Open-Meteo 当地当天预报、温度区间和最高降水概率，明确预报性质及日期。没有城市、无有效预报或查询超时均明确说明，不用当前晴天推断全天无雨。返回的 `source_labels` 在 Android 每条回答下展示实际来源。
 

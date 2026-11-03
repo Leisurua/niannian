@@ -126,7 +126,7 @@ private fun CompanionScreenContent(model: CompanionModel, environmentLabel: Stri
                     else "允许生成我的会话回顾。仅保存脱敏主题，最长 24 小时；不保存逐字稿。分享给家人和通知分别授权。"
                     else if (target.self && target.scope == "VOICE")
                     if (revoking) "停止设备语音识别和朗读，您仍可打字聊天。"
-                    else "允许点击说话和朗读回复。设备语音服务可能联网处理声音和朗读内容；应用不保存录音。此项不授予家属权限，可随时撤回。"
+                    else "允许点击说话和朗读回复。内置中文模型在本机识别声音；系统识别和朗读服务可能联网。应用不保存录音。此项不授予家属权限，可随时撤回。"
                     else if (target.self) if (revoking) "撤回后，念念将不能在您的交流中继续引用这项记忆，基础聊天仍可用。"
                     else "允许在您与念念的交流中引用已确认的${label}。此项不会授权家人查看，不会开启通知；有效至您撤回，您随时可以关闭。"
                     else if (revoking) "撤回后，当前家庭创建者不能继续使用这项授权。其他授权保持原设置，授权历史会保留。"

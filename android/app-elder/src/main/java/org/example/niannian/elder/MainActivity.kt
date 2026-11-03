@@ -10,6 +10,7 @@ import org.json.JSONObject
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.ViewModel
@@ -24,6 +25,7 @@ import org.example.niannian.feature.conversation.ConversationToolsModel
 import org.example.niannian.feature.conversation.ConversationGateway
 import org.example.niannian.feature.conversation.ConversationModel
 import org.example.niannian.feature.conversation.ConversationTransport
+import org.example.niannian.feature.conversation.LocalConversationVoiceFactory
 import org.example.niannian.feature.conversation.AvatarModel
 import org.example.niannian.feature.conversation.AvatarStorage
 import org.example.niannian.feature.conversation.AvatarGenerationModel
@@ -108,20 +110,22 @@ class MainActivity : ComponentActivity() {
                 val state by model.state.collectAsState()
                 val target = state.selected?.takeIf { state.loggedIn && state.userId.isNotBlank() && it.status == "ACTIVE" && it.role == "ELDER" }
                     ?.let { HelpButtonTarget(state.userId, it.id) }
-                CompanionScreen(model, runtime.statusLabel, reminderModel, memoryModel, toolsModel,
-                    messages = messageModel,
-                    notifications = notificationModel,
-                    avatar = avatarModel,
-                    avatarGeneration = avatarGeneration,
-                    conversation = conversationModel,
-                    elderDeviceSettings = { state ->
-                        tabletMode.Settings()
-                        val family = state.selected?.takeIf { it.status == "ACTIVE" }?.id
-                        StandbySettings(reminderStore, repository::savedUserId, family ?: if (state.offline) null else "")
-                        BleHelpSettings(helpButton, target != null)
-                    },
-                    onNotifications = { ReminderScheduler.arm(applicationContext) },
-                    offlineContent = { CachedReminderEntry(reminderModel, reminderStore, repository.savedUserId()) { ReminderScheduler.arm(applicationContext) } })
+                CompositionLocalProvider(LocalConversationVoiceFactory provides ::elderConversationVoice) {
+                    CompanionScreen(model, runtime.statusLabel, reminderModel, memoryModel, toolsModel,
+                        messages = messageModel,
+                        notifications = notificationModel,
+                        avatar = avatarModel,
+                        avatarGeneration = avatarGeneration,
+                        conversation = conversationModel,
+                        elderDeviceSettings = { state ->
+                            tabletMode.Settings()
+                            val family = state.selected?.takeIf { it.status == "ACTIVE" }?.id
+                            StandbySettings(reminderStore, repository::savedUserId, family ?: if (state.offline) null else "")
+                            BleHelpSettings(helpButton, target != null)
+                        },
+                        onNotifications = { ReminderScheduler.arm(applicationContext) },
+                        offlineContent = { CachedReminderEntry(reminderModel, reminderStore, repository.savedUserId()) { ReminderScheduler.arm(applicationContext) } })
+                }
                 BleHelpHost(helpButton, target, repository)
             }
         }
