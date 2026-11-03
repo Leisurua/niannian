@@ -2,7 +2,9 @@
 
 ## 账户生命周期运维
 
-升级 API/worker 前，在 `backend/` 运行 `python -m alembic upgrade head`（当前头 `20261026_avatar_jobs`，包含账户生命周期迁移），随后重启二者。当前入口是 REST API，字段和凭证找回方式见 [OpenAPI](openapi.yaml)；Android/Windows 尚未增加账户管理界面。导出文件含本人资料，客户端应通过系统文件保存器交由本人选择位置；删除前先保存独立回执凭证，受理后按已有退出流程清理本地会话和缓存。
+升级 API/worker 前，在 `backend/` 运行 `python -m alembic upgrade head`，随后重启二者。账户接口与凭证找回方式见 [OpenAPI](openapi.yaml)。
+
+Android 在「家庭与授权设置 → 本人数据管理」，Windows 在老人端侧栏或子女端「连接与登录」打开同名入口。本人登录后选择 ZIP 保存位置，界面显示生成和下载状态。删除前先保存独立查询凭证，再确认删除；提交后本机清除登录与私有缓存。退出或重启后，仍可在同一入口打开保存的 JSON 凭证并核对原服务器，查询服务端清理、备份及各供应商状态。导出 ZIP 和查询凭证由本人保管，请保存到只有本人可访问的位置。
 
 可配置 `BACKUP_RETENTION_DAYS=30`、`AUDIT_RETENTION_DAYS=90`、`TASK_RETENTION_DAYS=7`、`ACCOUNT_EXPORT_MAX_BYTES=104857600`。`BACKUP_DIRECTORY` 默认为空；只有显式指定的私有目录会启用自动备份期限清理。备份文件须命名为 `niannian-backup-YYYYMMDDTHHMMSSZ.dump`、`.sql.gz`、`.tar.gz` 或 `.zip`，时间为备份快照的 UTC 时间，不因复制而改写；写入完成后才使用该名称。清理不递归、不跟随符号链接/目录联接、不删除其他文件；目录必须仅由可信运维账号写入。此功能不自动创建备份。
 

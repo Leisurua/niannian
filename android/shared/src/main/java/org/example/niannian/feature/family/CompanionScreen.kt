@@ -25,6 +25,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -76,7 +77,12 @@ private fun CompanionScreenContent(model: CompanionModel, environmentLabel: Stri
     var invitation by remember { mutableStateOf("") }
     var revokeMember by remember { mutableStateOf<Member?>(null) }
     var consentChange by remember { mutableStateOf<ConsentChange?>(null) }
-    var showFamilySettings by remember { mutableStateOf(false) }
+    var showFamilySettings by rememberSaveable { mutableStateOf(false) }
+    var showAccount by rememberSaveable { mutableStateOf(false) }
+    if (showAccount) {
+        AccountPanel(model, clearPrivateCache = reminders::clearAccountCache) { showAccount = false }
+        return
+    }
     val homeModels = remember(reminders, memories, tools, conversation, notifications, messages) {
         HomeModels(reminders, memories, tools, conversation, notifications, onNotifications, messages, notificationSettings)
     }
@@ -139,6 +145,7 @@ private fun CompanionScreenContent(model: CompanionModel, environmentLabel: Stri
                 Text(if (model.elder) "← 返回「念念 · 今日」首页" else "← 返回「念念 · 子女端」首页", fontSize = 18.sp)
             }
             Text("家庭与授权设置", fontSize = 28.sp)
+            Button(onClick = { showAccount = true }, enabled = !state.busy) { Text("本人数据管理 / 删除回执") }
             Text(environmentLabel, color = MaterialTheme.colorScheme.primary)
             Text("念念是 AI 陪伴助手，不是真实家人。此版本使用虚构 DEMO 账户，不提供诊断、真实通话或已经送达的承诺。", fontSize = 18.sp)
             if (state.busy) CircularProgressIndicator()
