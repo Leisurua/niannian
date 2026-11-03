@@ -294,8 +294,74 @@ paths:
           description: Unauthorized or no longer available
         '409':
           description: Not READY/ACTIVE
+  /me/exports:
+    post:
+      tags: [Account]
+      operationId: requestAccountExport
+      summary: Queue an idempotent private account export
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: No-store job; Location identifies the progress resource. Current queued jobs or a result created within five minutes are reused.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AccountExportJob'}
+        '401': {description: Login required}
+  /me/exports/{export_id}:
+    parameters:
+    - name: export_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    get:
+      tags: [Account]
+      operationId: getAccountExport
+      responses:
+        '200':
+          description: Owner-only no-store job progress
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AccountExportJob'}
+        '404': {description: Absent or belongs to another account}
+  /me/exports/{export_id}/retry:
+    parameters:
+    - name: export_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    post:
+      tags: [Account]
+      operationId: retryAccountExport
+      responses:
+        '202':
+          description: Owner-only manual retry of a failed job; repeats do not restart running jobs
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AccountExportJob'}
+        '404': {description: Absent or belongs to another account}
+        '410': {description: Expired; create a new job}
+  /me/exports/{export_id}/download:
+    parameters:
+    - name: export_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    get:
+      tags: [Account]
+      operationId: downloadAccountExport
+      responses:
+        '200':
+          description: Owner-authenticated no-store ZIP proxy; never an anonymous object URL
+          content:
+            application/zip:
+              schema: {type: string, format: binary}
+        '404': {description: Absent or belongs to another account}
+        '409': {description: Not ready}
+        '410': {description: Expired}
   /me/export:
     get:
+      deprecated: true
       tags: [Account]
       summary: Export the authenticated account's data and safe photos
       operationId: exportAccount
@@ -3165,6 +3231,17 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    AccountExportJob:
+      type: object
+      required: [id, status, attempts, created_at, expires_at, error_code, download_url]
+      properties:
+        id: {type: string, format: uuid}
+        status: {type: string, enum: [PENDING, RUNNING, READY, FAILED, CANCELLED, EXPIRED]}
+        attempts: {type: integer, minimum: 0, maximum: 3}
+        created_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+        error_code: {type: [string, 'null']}
+        download_url: {type: [string, 'null'], description: Relative owner-authenticated API path, only when READY}
     AvatarGenerationCapabilities:
       type: object
       required:

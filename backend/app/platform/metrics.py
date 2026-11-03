@@ -32,7 +32,7 @@ class RequestMetricsMiddleware:
         self.app, self.metrics = app, metrics
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
-        if scope['type'] != 'http':
+        if scope['type'] != 'http' or scope.get('path') in ('/health', '/health/live', '/health/ready', '/metrics'):
             await self.app(scope, receive, send)
             return
         started, status = perf_counter(), 500

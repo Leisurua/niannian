@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -42,13 +43,67 @@ class FamilyRepository(
     fun savedOrigin() = store.load().optString("origin", "http://10.0.2.2:8000")
     fun clear() = store.clear()
 
-    suspend fun exportAccount(userId: String, output: () -> java.io.OutputStream) {
+    suspend fun exportAccount(userId: String, progress: (String) -> Unit = {}, output: () -> java.io.OutputStream) {
         call("/v1/me") // Renew the login using the existing refresh policy.
+        val origin = requestMutex.withLock {
+            val session = store.load()
+            check(userId.isNotBlank() && session.optString("user_id") == userId)
+            session.getString("origin")
+        }
+        suspend fun accountCall(path: String, method: String = "GET", key: String? = null): JSONObject = requestMutex.withLock {
+            val saved = store.load()
+            check(saved.optString("user_id") == userId && saved.optString("origin") == origin)
+            executeCall(path, method, null, false, null, key)
+        }
+        var job = requestMutex.withLock {
+            val saved = store.load()
+            check(saved.optString("user_id") == userId && saved.optString("origin") == origin)
+            val id = saved.optString("export_id")
+            val result = if (id.isNotBlank()) {
+                require(UUID.fromString(id).toString() == id)
+                executeCall("/v1/me/exports/$id", "GET", null, false, null)
+            } else {
+                val key = saved.optString("export_key").ifBlank { UUID.randomUUID().toString() }
+                store.save(saved.put("export_key", key)) // Persist before sending; lost replies reuse this key.
+                executeCall("/v1/me/exports", "POST", null, false, null, key)
+            }
+            store.save(store.load().put("export_id", result.getString("id")))
+            result
+        }
+        val jobId = job.getString("id")
+        require(UUID.fromString(jobId).toString() == jobId)
+        if (job.getString("status") == "FAILED") job = accountCall("/v1/me/exports/$jobId/retry", "POST")
+        var ready = job.getString("status") == "READY"
+        repeat(180) {
+            if (!ready) {
+                when (job.getString("status")) {
+                    "FAILED" -> throw ApiFailure(503, "EXPORT_FAILED", "导出失败，可再次点击重试。")
+                    "EXPIRED", "CANCELLED" -> {
+                        requestMutex.withLock {
+                            val saved = store.load()
+                            if (saved.optString("user_id") == userId && saved.optString("origin") == origin) {
+                                saved.remove("export_id"); saved.remove("export_key"); store.save(saved)
+                            }
+                        }
+                        throw ApiFailure(410, "EXPORT_EXPIRED", "导出已到期，请重新申请。")
+                    }
+                    "PENDING", "RUNNING" -> progress(if (job.getString("status") == "PENDING") "导出已排队，可稍后再次查询。" else "后台正在生成导出文件…")
+                    else -> throw ApiFailure(502, "INVALID_EXPORT", "导出状态无效。")
+                }
+                delay(2000)
+                job = accountCall("/v1/me/exports/$jobId")
+                require(job.getString("id") == jobId)
+                ready = job.getString("status") == "READY"
+            }
+        }
+        if (!ready) throw ApiFailure(408, "EXPORT_PENDING", "任务仍在后台处理中，请稍后再次点击查询。")
+        progress("导出已生成，正在下载…")
+        call("/v1/me")
         requestMutex.withLock { withContext(Dispatchers.IO) {
             val session = store.load()
-            check(userId.isNotBlank() && session.getString("user_id") == userId)
-            val origin = ConnectionPolicy.origin(session.getString("origin"), debug)
-            val connection = connectionFactory(URL("$origin/v1/me/export"))
+            check(session.optString("user_id") == userId && session.optString("origin") == origin)
+            val safeOrigin = ConnectionPolicy.origin(origin, debug)
+            val connection = connectionFactory(URL("$safeOrigin/v1/me/exports/$jobId/download"))
             try {
                 connection.instanceFollowRedirects = false
                 connection.connectTimeout = 10000
@@ -76,6 +131,8 @@ class FamilyRepository(
                         check(received > 0 && (length < 0 || length == received))
                     }
                 }
+                val saved = store.load()
+                saved.remove("export_id"); saved.remove("export_key"); store.save(saved)
             } finally { connection.disconnect() }
         } }
     }

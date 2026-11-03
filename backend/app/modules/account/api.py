@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Request, Response
 from pydantic import Field, SecretStr
 
-from app.modules.account import service
+from app.modules.account import service, exports
 from app.modules.account.export import build_export
 from app.modules.auth.api import limit_login
 from app.modules.auth.schemas import Input
@@ -23,7 +23,36 @@ class DeleteAccount(Input):
     receipt_token: SecretStr = Field(min_length=43, max_length=128)
 
 
-@router.get('/me/export', operation_id='exportAccount')
+@router.post('/me/exports', status_code=202, operation_id='requestAccountExport')
+async def request_export(request: Request, response: Response, idempotency_key: str = Header(),
+                         actor=Depends(current_identity), db=Depends(transaction)):
+    response.headers['Cache-Control'] = 'no-store'
+    result = await exports.request(db, actor, idempotency_key, get_settings())
+    response.headers['Location'] = '/v1/me/exports/' + result['id']
+    return result
+
+
+@router.get('/me/exports/{export_id}', operation_id='getAccountExport')
+async def export_progress(export_id: UUID, response: Response, actor=Depends(current_identity), db=Depends(transaction)):
+    response.headers['Cache-Control'] = 'no-store'
+    return exports.view(await exports.owned(db, actor.user_id, export_id))
+
+
+@router.post('/me/exports/{export_id}/retry', status_code=202, operation_id='retryAccountExport')
+async def retry_export(export_id: UUID, response: Response, actor=Depends(current_identity), db=Depends(transaction)):
+    response.headers['Cache-Control'] = 'no-store'
+    return await exports.retry(db, actor, export_id, get_settings())
+
+
+@router.get('/me/exports/{export_id}/download', operation_id='downloadAccountExport')
+async def download_export(export_id: UUID, request: Request, actor=Depends(current_identity), db=Depends(transaction)):
+    settings = get_settings()
+    payload = await exports.download(db, actor, export_id, store(request, settings), settings)
+    return Response(payload, media_type='application/zip', headers={
+        'Cache-Control': 'no-store', 'Content-Disposition': 'attachment; filename="niannian-account.zip"'})
+
+
+@router.get('/me/export', operation_id='exportAccount', deprecated=True)
 async def export(request: Request, actor=Depends(current_identity), db=Depends(transaction)):
     settings = get_settings()
     # Lazy storage construction permits accounts with no photos to export even

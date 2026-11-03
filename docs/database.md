@@ -702,7 +702,7 @@ UNIQUE `(message_id, recipient_member_id)`，索引 `(recipient_member_id, messa
 
 ## 迁移和生命周期
 
-保留现有全部 Alembic 历史，当前迁移头为 `20261101_operational_readiness`。从 backend/ 运行 `python -m alembic upgrade head`；修改数据库时新增兼容迁移，不因为文档整理重写旧迁移或删除已有数据。普通功能修改不要求空库回退演练。
+保留现有全部 Alembic 历史，当前迁移头为 `20261103_account_exports`。从 backend/ 运行 `python -m alembic upgrade head`；修改数据库时新增兼容迁移，不因为文档整理重写旧迁移或删除已有数据。普通功能修改不要求空库回退演练。
 
 ### service_heartbeat
 
@@ -711,6 +711,8 @@ UNIQUE `(message_id, recipient_member_id)`，索引 `(recipient_member_id, messa
 撤权/删除先隐藏，后台清理向量、对象和通知；已删除行、外部字节和副本的清理是不同步骤。账户删除/导出和保留期规则见 [security](security.md)，未覆盖的外部副本和端侧入口见 [roadmap](roadmap.md)。本人导出格式版本 2 还包含当前可用的声音档案元数据、本人私有样本/试听文件及声音偏好；不导出供应商音色句柄、工作空间、已撤回/删除/过期版本，也不声称包含未持久化的会话录音或逐字稿。
 
 ## 账户生命周期（20261025_account_lifecycle）
+
+新增 `account_export`（20261103_account_exports）：本人外键、请求键 SHA-256（本人内唯一）、私有对象键、PENDING/RUNNING/READY/FAILED/CANCELLED/EXPIRED 状态、最多三次尝试、租约令牌/到期时间、创建/有效期/重试/清理时间和固定错误码。worker 以 SKIP LOCKED 领取并提交可查询的 RUNNING 状态，300 秒租约保护 180 秒生成窗口；生成期间不占用用户写锁，下载和删除仍要求本人当前有效登录。结果过期立即不可下载，异步全版本清理；账户删除保留键直到清理完成。没有家庭成员资格的本人也可以导出，不依赖 task_outbox 的家庭外键。
 
 `account_deletion`：`id` UUID 主键、`user_id` 唯一外键、`receipt_hash` 唯一 SHA-256 摘要；`local_status` 限 PENDING/RETRY/ERASED，`requested_at`、`local_erased_at`、`retry_at`、`last_error_code` 记录本地处理；`backup_due_at`、`backup_confirmed_at`、`backup_evidence_hash` 记录备份期限和核验。不存导出文件或个人正文。worker 使用行锁及 SKIP LOCKED，每次只处理一个账户；进程失败释放锁，持久请求可重试。
 

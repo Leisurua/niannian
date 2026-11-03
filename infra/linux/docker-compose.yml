@@ -34,6 +34,7 @@ x-backend-environment: &backend-environment
   AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-90}
   TASK_RETENTION_DAYS: ${TASK_RETENTION_DAYS:-7}
   ACCOUNT_EXPORT_MAX_BYTES: ${ACCOUNT_EXPORT_MAX_BYTES:-104857600}
+  ACCOUNT_EXPORT_HOURS: ${ACCOUNT_EXPORT_HOURS:-24}
 
 x-backend-service: &backend-service
   build:
@@ -53,6 +54,31 @@ x-backend-service: &backend-service
       max-file: "3"
 
 services:
+  ops-monitor:
+    <<: *backend-service
+    profiles: [monitoring]
+    command: ["python", "-m", "app.platform.monitor"]
+    # Independent of API/worker startup and their credentials, so outages can alert.
+    environment:
+      OPS_API_URL: http://api:8000
+      OPS_NTFY_URL: ${OPS_NTFY_URL:-}
+      OPS_NTFY_TOKEN_FILE: /run/secrets/ops-ntfy-token
+      OPS_CA_FILE: ${OPS_CA_FILE:-}
+      OPS_POLL_SECONDS: ${OPS_POLL_SECONDS:-30}
+      OPS_FAILURE_SAMPLES: ${OPS_FAILURE_SAMPLES:-3}
+      OPS_RECOVERY_SAMPLES: ${OPS_RECOVERY_SAMPLES:-2}
+      OPS_REPEAT_SECONDS: ${OPS_REPEAT_SECONDS:-3600}
+      OPS_BACKLOG_THRESHOLD: ${OPS_BACKLOG_THRESHOLD:-100}
+      OPS_MIN_REQUESTS: ${OPS_MIN_REQUESTS:-20}
+      OPS_ERROR_RATE: ${OPS_ERROR_RATE:-0.05}
+      OPS_MEAN_LATENCY_SECONDS: ${OPS_MEAN_LATENCY_SECONDS:-3}
+    secrets: [ops-ntfy-token]
+    volumes:
+      - ops_monitor_data:/srv/niannian/monitor
+      - ${OPS_CA_DIRECTORY:-./tls}:/etc/niannian/ops-ca:ro
+    read_only: true
+    tmpfs: [/tmp]
+
   postgres:
     image: pgvector/pgvector:pg16
     environment:
@@ -161,3 +187,8 @@ networks:
 volumes:
   postgres_data:
   minio_data:
+  ops_monitor_data:
+
+secrets:
+  ops-ntfy-token:
+    file: ${OPS_NTFY_TOKEN_FILE:-./monitoring/ntfy-token}

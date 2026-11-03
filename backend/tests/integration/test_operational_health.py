@@ -38,12 +38,13 @@ def test_readiness_distinguishes_worker_state_and_dependencies(system, monkeypat
     assert ready.json()['status'] == 'ready'
     assert ready.json()['components']['worker']['status'] == 'ok'
 
+    current_head = health.EXPECTED_MIGRATION_HEAD
     monkeypatch.setattr(health, 'EXPECTED_MIGRATION_HEAD', 'not-the-current-head')
     mismatch = client.get('/health/ready')
     assert mismatch.status_code == 503
     assert mismatch.json()['components']['database']['status'] == 'ok'
     assert mismatch.json()['components']['migrations']['status'] == 'mismatch'
-    monkeypatch.setattr(health, 'EXPECTED_MIGRATION_HEAD', '20261101_operational_readiness')
+    monkeypatch.setattr(health, 'EXPECTED_MIGRATION_HEAD', current_head)
 
     async def stale():
         async with factory() as db:

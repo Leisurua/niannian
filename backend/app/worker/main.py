@@ -24,6 +24,7 @@ async def run_cycle():
     from app.modules.notification import service as notifications
     from app.modules.report import metrics
     from app.modules.account import service as accounts
+    from app.modules.account import exports
     from app.modules.avatar import service as avatars
     settings = get_settings()
     logger = logging.getLogger('nianian.worker')
@@ -38,8 +39,12 @@ async def run_cycle():
         for _ in range(5):
             if not await accounts.process_one(session_factory, storage, settings):
                 break
+        for _ in range(2):
+            if not await exports.process_one(session_factory, storage, settings):
+                break
         async with session_factory() as db:
             await accounts.maintenance(db, settings)
+            await exports.maintenance(db)
             await avatars.maintenance(db)
             from app.modules.voice import service as voices
             await voices.maintenance(db)

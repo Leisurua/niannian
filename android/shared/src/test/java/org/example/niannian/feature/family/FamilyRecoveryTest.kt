@@ -102,16 +102,24 @@ class FamilyRecoveryTest {
                 zip.write("{}".toByteArray())
             }
         }.toByteArray()
+        val exportId = "0192f1e4-6ed8-7c21-a4c1-5d58db7c3033"
         api.handler = { request ->
             assertEquals("Bearer fictional-access", request.getRequestProperty("Authorization"))
-            if (request.url.path == "/v1/me/export") Reply(zip = archive) else Reply()
+            when (request.url.path) {
+                "/v1/me/exports" -> {
+                    assertNotNull(request.getRequestProperty("Idempotency-Key"))
+                    Reply(202, JSONObject().put("id", exportId).put("status", "READY"))
+                }
+                "/v1/me/exports/$exportId/download" -> Reply(zip = archive)
+                else -> Reply()
+            }
         }
         val output = ByteArrayOutputStream()
         api.repository.exportAccount("self") { output }
         assertArrayEquals(archive, output.toByteArray())
         assertFalse(api.requests.last().instanceFollowRedirects)
         assertTrue(runCatching { api.repository.exportAccount("other") { error("Must not open destination") } }.isFailure)
-        assertEquals(1, api.requests.count { it.url.path == "/v1/me/export" })
+        assertEquals(1, api.requests.count { it.url.path == "/v1/me/exports" })
     }
 
     @Test fun lostDeletionResponseClearsSessionAndReceiptUsesNoBearer() = runBlocking {

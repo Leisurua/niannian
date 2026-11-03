@@ -89,6 +89,8 @@ async def erase_database(db, uid):
     object keys stay private until a successful physical delete after PUT expiry.
     """
     from app.modules.voice.service import invalidate_member
+    from app.modules.account.exports import invalidate
+    await invalidate(db, uid)
     family_ids = (await db.scalars(select(FamilyMember.family_id).where(FamilyMember.user_id == uid))).all()
     for family_id in family_ids:
         await invalidate_member(db, family_id, uid)
@@ -190,6 +192,14 @@ async def process_one(factory, storage, settings):
         # All previously authorized provider sends must finish/cancel before
         # final erasure can be confirmed. New turns fail account authentication.
         await send_gate(db, row.user_id)
+        from app.modules.account.models import AccountExport
+        pending_export = await db.scalar(select(AccountExport).where(AccountExport.user_id == row.user_id,
+            AccountExport.purged_at.is_(None)).limit(1))
+        if pending_export:
+            row.retry_at = max(utcnow() + timedelta(seconds=15), pending_export.cleanup_after)
+            row.last_error_code = 'EXPORT_CLEANUP_PENDING'
+            await db.commit()
+            return True
         from app.modules.voice.models import VoiceProfile
         if await db.scalar(select(VoiceProfile.id).where(VoiceProfile.owner_user_id == row.user_id, VoiceProfile.status != 'DELETED').limit(1)):
             row.retry_at, row.last_error_code = utcnow() + timedelta(seconds=60), 'VOICE_CLEANUP_PENDING'

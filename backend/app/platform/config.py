@@ -73,6 +73,7 @@ class Settings(BaseSettings):
     worker_heartbeat_seconds: int = Field(default=5, ge=1, le=30)
     worker_stale_seconds: int = Field(default=45, ge=10, le=300)
     account_export_max_bytes: int = Field(default=104857600, ge=1048576, le=1073741824)
+    account_export_hours: int = Field(default=24, ge=1, le=48)
     avatar_generation_enabled: bool = False
     avatar_image_provider: Literal['qwen', 'doubao'] = 'qwen'
     avatar_image_base_url: str | None = None

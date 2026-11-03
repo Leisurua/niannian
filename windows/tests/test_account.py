@@ -5,6 +5,7 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 from zipfile import ZipFile
+from uuid import uuid4
 
 from niannian_desktop.account import receipt_text
 from niannian_desktop.api import ApiClient, ClientError
@@ -14,6 +15,7 @@ class AccountTransportTest(unittest.TestCase):
     def test_export_and_lost_deletion_reply_recovery(self):
         token = secrets.token_urlsafe(32)
         calls = []
+        export_id = str(uuid4())
         archive = io.BytesIO()
         with ZipFile(archive, 'w') as zip_file:
             zip_file.writestr('account.json', '{"fictional":true}')
@@ -34,8 +36,12 @@ class AccountTransportTest(unittest.TestCase):
                 self.reply(200, 'application/zip', archive.getvalue())
 
             def do_POST(self):
-                body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                body = json.loads(self.rfile.read(int(self.headers.get('Content-Length', '0'))) or b'{}')
                 calls.append((self.path, self.headers.get('Authorization'), body))
+                if self.path == '/v1/me/exports':
+                    assert self.headers.get('Idempotency-Key')
+                    self.reply(202, 'application/json', json.dumps({'id': export_id, 'status': 'READY'}).encode())
+                    return
                 if self.path == '/v1/me/deletion':
                     # Simulate committed deletion followed by loss of the response.
                     self.close_connection = True
@@ -63,7 +69,8 @@ class AccountTransportTest(unittest.TestCase):
                 self.assertIn('删除尚未全部完成', progress)
                 self.assertIn('备份：未核验', progress)
                 self.assertIn('供应商 fictional：未核验', progress)
-                self.assertEqual(calls, [('/v1/me/export', 'Bearer fictional-access', None),
+                self.assertEqual(calls, [('/v1/me/exports', 'Bearer fictional-access', {}),
+                    (f'/v1/me/exports/{export_id}/download', 'Bearer fictional-access', None),
                     ('/v1/me/deletion', 'Bearer fictional-access', {'confirmation': 'DELETE_MY_ACCOUNT', 'receipt_token': token}),
                     ('/v1/account-deletions/lookup', None, {'receipt_token': token})])
             finally:

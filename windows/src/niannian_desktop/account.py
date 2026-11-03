@@ -112,7 +112,8 @@ class AccountWindow(tk.Toplevel):
         if path:
             def work():
                 with save_file(path) as output:
-                    client.export_account(output)
+                    client.export_account(output, progress=lambda text: self.after(0,
+                        lambda: self.status.set(text) if self.winfo_exists() else None))
                 return '本人数据已下载并保存。导出文件由您保管。'
             self.run('生成并下载导出文件', work)
 

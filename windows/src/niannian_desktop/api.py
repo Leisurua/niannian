@@ -3,11 +3,12 @@ from __future__ import annotations
 import json
 import socket
 import threading
+import time
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlparse, urlunparse
 from urllib.request import Request, urlopen, build_opener, HTTPRedirectHandler
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 APP_VERSION = "0.1.0"
 
@@ -90,6 +91,8 @@ class ApiClient:
         self._feature_cache: dict[str, bool] | None = None
         self._request_lock = threading.RLock()
         self._pending_message: tuple[dict[str, Any], str] | None = None
+        self._account_generation = 0
+        self._export_id = self._export_key = None
         self.login_device_id = f"windows-{self.login_kind}-login-{uuid4()}"
 
     def _request(
@@ -148,7 +151,7 @@ class ApiClient:
             headers['X-Access-Reason'] = access_reason
         request = Request(self.base_url + path, data=data, headers=headers, method=method)
         try:
-            account = path in ('/v1/me/export', '/v1/me/deletion', '/v1/account-deletions/lookup')
+            account = path.startswith('/v1/me/exports') or path in ('/v1/me/export', '/v1/me/deletion', '/v1/account-deletions/lookup')
             open_request = build_opener(NoAccountRedirect()).open if account else urlopen
             with open_request(request, timeout=120 if binary_output is not None else self.timeout) as response:
                 if binary_output is not None:
@@ -188,8 +191,51 @@ class ApiClient:
     def health(self) -> dict[str, Any]:
         return self._request("GET", "/health", auth=False)
 
-    def export_account(self, output):
-        self._request('GET', '/v1/me/export', binary_output=output)
+    def export_account(self, output, progress=None):
+        generation, origin = self._account_generation, self.base_url
+        owner = self.user.get('id') if self.user else None
+        def request(method, path, **kwargs):
+            with self._request_lock:
+                if (generation != self._account_generation or self.base_url != origin
+                        or (self.user.get('id') if self.user else None) != owner):
+                    raise ClientError('账户已切换，请重新申请本人导出。')
+                return self._request(method, path, **kwargs)
+        if self._export_id:
+            job = request('GET', '/v1/me/exports/' + self._export_id)
+        else:
+            self._export_key = self._export_key or str(uuid4())
+            job = request('POST', '/v1/me/exports', idempotency_key=self._export_key)
+        try:
+            job_id = str(UUID(job['id']))
+            if job_id != job['id']:
+                raise ValueError('Invalid ID')
+        except (ValueError, KeyError, TypeError):
+            raise ClientError('服务器返回了无效的导出任务。') from None
+        self._export_id = job_id
+        if job['status'] == 'FAILED':
+            job = request('POST', f'/v1/me/exports/{job_id}/retry')
+        for _ in range(180):
+            state = job.get('status')
+            if state == 'READY':
+                if progress:
+                    progress('导出已生成，正在下载…')
+                request('GET', f'/v1/me/exports/{job_id}/download', binary_output=output)
+                self._export_id = self._export_key = None
+                return
+            if state in ('EXPIRED', 'CANCELLED'):
+                self._export_id = self._export_key = None
+                raise ClientError('导出已到期，请重新申请。')
+            if state == 'FAILED':
+                raise ClientError('导出失败，可再次点击重试。')
+            if state not in ('PENDING', 'RUNNING'):
+                raise ClientError('服务器返回了无效的导出状态。')
+            if progress:
+                progress('导出已排队…' if state == 'PENDING' else '后台正在生成导出文件…')
+            time.sleep(2)
+            job = request('GET', '/v1/me/exports/' + job_id)
+            if job.get('id') != job_id:
+                raise ClientError('服务器返回了不匹配的导出任务。')
+        raise ClientError('导出仍在后台处理中，请稍后再次点击查询原任务。')
 
     def delete_account(self, token):
         with self._request_lock:
@@ -249,6 +295,8 @@ class ApiClient:
             raise ClientError("当前服务器版本不支持设备或留言功能，请更新后端并运行数据库迁移。")
 
     def clear_session(self) -> None:
+        self._account_generation += 1
+        self._export_id = self._export_key = None
         self.access_token = self.refresh_token = None
         self.user = self.binding = None
         self._pending_message = None

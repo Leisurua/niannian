@@ -77,7 +77,7 @@ internal fun AccountPanel(model: CompanionModel, clearPrivateCache: suspend () -
         if (uri != null) work("正在生成并下载本人数据，请稍候…", "导出未完成，请检查连接与保存位置后重试。") {
             var saved = false
             try {
-                repo.exportAccount(exportOwner) { checkNotNull(context.contentResolver.openOutputStream(uri, "wt")) }
+                repo.exportAccount(exportOwner, progress = { message = it }) { checkNotNull(context.contentResolver.openOutputStream(uri, "wt")) }
                 saved = true
                 "本人数据已下载并保存。导出文件由您保管。"
             } finally {

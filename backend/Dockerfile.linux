@@ -6,7 +6,7 @@ RUN python -m pip install -r /tmp/requirements.lock && groupadd --system niannia
 COPY . .
 ARG PRELOAD_EMBEDDING_MODEL=false
 RUN if [ "$PRELOAD_EMBEDDING_MODEL" = "true" ]; then python -m app.integrations.embedding --download /srv/niannian/models/bge-small-zh-v1.5; fi
-RUN chown -R niannian:niannian /srv/niannian/backend
+RUN mkdir -p /srv/niannian/monitor && chown -R niannian:niannian /srv/niannian/backend /srv/niannian/monitor
 USER niannian
 EXPOSE 8000
 CMD ["python", "-m", "app", "--host", "0.0.0.0", "--port", "8000"]

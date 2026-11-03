@@ -4,6 +4,8 @@
 
 升级 API/worker 前，在 `backend/` 运行 `python -m alembic upgrade head`，随后重启二者。当前迁移版本见 [数据库说明](database.md)。账户接口与凭证找回方式见 [OpenAPI](openapi.yaml)。
 
+导出默认通过 `POST /v1/me/exports` 提交并取得任务 ID，`GET /v1/me/exports/{id}` 查询，READY 后使用 `/download` 鉴权下载；FAILED 可 POST `/retry`。Android 和 Windows 已改用此流程，排队/生成期间显示进度，退出或等待超时不会取消后台任务。普通 worker 和私有 S3 必须可用，`ACCOUNT_EXPORT_HOURS=24` 控制结果有效期；失败自动重试最多三次。对象过期和账户删除后的导出清理需要 S3 全版本删除权限。升级前可继续使用旧同步导出接口，不能把旧客户端的直接下载视为异步进度。
+
 Android 在「家庭与授权设置 → 本人数据管理」，Windows 在老人端侧栏或子女端「连接与登录」打开同名入口。本人登录后选择 ZIP 保存位置，界面显示生成和下载状态。删除前先保存独立查询凭证，再确认删除；提交后本机清除登录与私有缓存。退出或重启后，仍可在同一入口打开保存的 JSON 凭证并核对原服务器，查询服务端清理、备份及各供应商状态。导出 ZIP 和查询凭证由本人保管，请保存到只有本人可访问的位置。
 
 可配置 `BACKUP_RETENTION_DAYS=30`、`AUDIT_RETENTION_DAYS=90`、`TASK_RETENTION_DAYS=7`、`ACCOUNT_EXPORT_MAX_BYTES=104857600`。`BACKUP_DIRECTORY` 默认为空；只有显式指定的私有目录会启用自动备份期限清理。备份文件须命名为 `niannian-backup-YYYYMMDDTHHMMSSZ.dump`、`.sql.gz`、`.tar.gz` 或 `.zip`，时间为备份快照的 UTC 时间，不因复制而改写；写入完成后才使用该名称。清理不递归、不跟随符号链接/目录联接、不删除其他文件；目录必须仅由可信运维账号写入。此功能不自动创建备份。
@@ -57,7 +59,21 @@ python -m app --reload
 python -m app.worker.main --serve
 ```
 
-API 根地址 `http://127.0.0.1:8000`；`/docs`、`/openapi.json` 查看当前运行接口。`/health` 与 `/health/live` 只检查 API 进程；`/health/ready` 检查数据库、当前迁移头、私有存储和 worker 持久心跳，并附带 task_outbox 的等待、运行、重试和 DEAD 数量。任一依赖不可用或 worker 心跳超过 `WORKER_STALE_SECONDS` 时返回 503；DEAD 任务显示 degraded，但不把仍能接收请求的 API 判为未就绪。`/metrics` 输出无用户/路径标签的 Prometheus 文本，包括请求量、5xx、延迟、依赖状态、心跳年龄及任务积压；Linux Compose 以 ready 和 worker healthcheck 标记异常，实际通知策略由部署侧监控配置。容器内可运行 `python -m app.worker.main --healthcheck` 单独检查 worker。摘要、通知和索引需要 worker 实际运行，`--once` 可执行一次周期。Demo 登录支持 demo-child、demo-elder、demo-caregiver、demo-other；通过正常客户端/API 建家并授权，不运行依赖未实现表的 seed。
+API 根地址 `http://127.0.0.1:8000`；`/docs`、`/openapi.json` 查看当前运行接口。`/health` 与 `/health/live` 只检查 API 进程；`/health/ready` 检查数据库、当前迁移头、私有存储和 worker 持久心跳，并附带 task_outbox 的等待、运行、重试和 DEAD 数量。任一依赖不可用或 worker 心跳超过 `WORKER_STALE_SECONDS` 时返回 503；DEAD 任务显示 degraded，但不把仍能接收请求的 API 判为未就绪。`/metrics` 输出无用户/路径标签的 Prometheus 文本，包括业务 HTTP 请求量、5xx、延迟、依赖状态、心跳年龄及任务积压；健康/指标探测不计入 HTTP 统计。Linux Compose 以 ready 和 worker healthcheck 标记异常，自动运维通知见下文。容器内可运行 `python -m app.worker.main --healthcheck` 单独检查 worker。摘要、通知和索引需要 worker 实际运行，`--once` 可执行一次周期。Demo 登录支持 demo-child、demo-elder、demo-caregiver、demo-other；通过正常客户端/API 建家并授权，不运行依赖未实现表的 seed。
+
+### 自动运维告警
+
+`python -m app.platform.monitor` 是独立进程，API/普通 worker 停止后仍能发送告警，不复用家属通知任务。默认每 30 秒检查一次，连续 3 次异常才告警、连续 2 次正常才报恢复；持续故障每小时提醒一次，发送失败每 60 秒重试。运维状态持久保存，重启不立即重复发送已确认的告警；网络超时的受理结果无法确认，重试可能产生重复提示。探测响应、配置 URL、令牌和供应商正文不写日志，通知只有固定故障类别。
+
+覆盖 API 不可达、数据库、迁移、私有存储、worker 心跳、任务探测失败、DEAD 任务及积压（默认 100）。HTTP 告警使用最近约 5 分钟的计数增量，至少 20 个业务请求，5xx 比例达到 5% 或平均耗时达到 3 秒后按连续异常阈值触发；不是 P95/P99，API 计数重置后重新积累样本。
+
+在 `infra/linux/.env` 配置 `OPS_NTFY_URL=https://<私有 ntfy>/<独立运维主题>`、`OPS_NTFY_TOKEN_FILE=<主机上只含发布令牌的绝对文件路径>`，并为运维人员配置该主题的只读订阅账号。主题须默认拒绝匿名和家庭账号访问，令牌文件限制读取权限，不进入 Git；不使用家属主题。私有 CA 时另设 `OPS_CA_DIRECTORY=<主机 CA 目录>`、`OPS_CA_FILE=/etc/niannian/ops-ca/ca.crt`。启动：
+
+```bash
+docker compose --env-file infra/linux/.env -f infra/linux/docker-compose.yml --profile monitoring up -d --build
+```
+
+`ops-monitor` 不依赖 API/数据库启动成功，只共享内部网络及专用状态卷，不持有数据库、S3 或家庭通知密钥。主机令牌文件应放在仅运维可进入的目录，挂载后须允许容器内 `niannian` 服务用户只读。阈值配置见 `infra/linux/.env.example`。非 Docker 可通过相同 `OPS_*` 环境变量指定 `OPS_API_URL`、`OPS_STATE_FILE` 后直接运行；`--once` 用于单次检查。整台主机断电或 ntfy 本身不可达时，同机进程不能保证送达：需要在独立主机运行同一监控进程，且 ntfy 位于独立可达服务。配置存在及模拟供应商测试不代表运维人员已收到真实推送。
 
 APP_ENV 从进程环境选择 dev/test/demo，应用读取 `backend/config/<环境>.env`，再加载忽略提交的根 `.env`；环境变量优先。demo 要求 demo_data=true 且 provider_mode=mock、Embedding 为 Mock；test 禁止真实外部 LLM，但允许显式启用本地 Embedding 做离线验证。填入供应商密钥不会自动启用真实 AI。
 
