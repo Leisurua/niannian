@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Header, Query, Request, Response
 
 from app.modules.memory import files, service
 from app.modules.memory.schemas import Action, FileConfirm, FileUpload, MemoryDraft, MemoryFeedback, MemoryUpdate
-from app.modules.memory.schemas import MemoryStatus, MemoryType, Visibility
+from app.modules.memory.schemas import MemoryStatus, MemoryType, RecallPrompts, Visibility
 from app.platform.authentication import current_identity
 from app.platform.config import get_settings
 from app.platform.resource_access import expected_version
@@ -27,6 +27,13 @@ async def listing(request: Request, family_id: UUID | None = None, subject_user_
 @router.post('/memories', status_code=201, operation_id='createMemory')
 async def create(body: MemoryDraft, request: Request, idempotency_key: str = Header(), actor=Depends(current_identity), db=Depends(transaction)):
     return await service.create(db, actor, body, idempotency_key, get_settings(), request.state.request_id)
+
+
+@router.get('/memories/recall-prompts', operation_id='getRecallPrompts', response_model=RecallPrompts)
+async def recall_prompts(family_id: UUID, request: Request, response: Response,
+                         actor=Depends(current_identity), db=Depends(transaction)):
+    response.headers['Cache-Control'] = 'no-store'
+    return await service.recall_prompts(db, actor, family_id, request.state.request_id)
 
 
 @router.get('/memories/{memory_id}', operation_id='getMemory')

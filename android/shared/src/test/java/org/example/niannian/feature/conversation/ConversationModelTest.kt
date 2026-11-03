@@ -115,6 +115,38 @@ class ConversationModelTest {
         model.clear()
     }
 
+    @Test fun unansweredInputCanBeEditedAfterReconnectWithoutBeingResent() = runBlocking {
+        val gateway = Gateway(); val model = ConversationModel(gateway, this)
+        model.bind("family", "elder"); model.start(); yield(); gateway.listener(frame(1)); yield()
+        assertTrue(model.input("虚构的问题"))
+        gateway.onClose(0); yield()
+        assertEquals("虚构的问题", model.state.value.retryText)
+        assertTrue(model.state.value.messages.isEmpty())
+        model.start(); yield(); gateway.listener(frame(4)); yield()
+        assertEquals(1, gateway.sent.count { it.getString("type") == "text.input" })
+        assertEquals("虚构的问题", model.state.value.retryText)
+        gateway.onClose(4403); yield()
+        assertEquals("", model.state.value.retryText)
+        model.clear()
+    }
+
+    @Test fun identityPlaysOnceBeforeListeningAndCancellationRejectsLateAudioCallback() = runBlocking {
+        val gateway = Gateway(); val model = ConversationModel(gateway, this); val voice = Voice()
+        model.bind("family", "elder"); model.attachVoice(voice)
+        model.start(); yield(); gateway.listener(frame(1)); yield()
+        model.voiceEntry(announceIdentity = true)
+        assertEquals(listOf(CONVERSATION_IDENTITY), voice.spoken)
+        assertFalse(model.state.value.recording)
+        val completed = voice.finished
+        model.interrupt()
+        completed()
+        assertFalse(model.state.value.recording)
+        model.voiceEntry(announceIdentity = true)
+        assertTrue(model.state.value.recording)
+        assertEquals(listOf(CONVERSATION_IDENTITY), voice.spoken)
+        model.clear()
+    }
+
     @Test fun familyChangeAndClearRejectLateFrames() = runBlocking {
         val gateway = Gateway(); val model = ConversationModel(gateway, this)
         model.bind("family-a", "elder"); model.start(); yield()

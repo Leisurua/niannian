@@ -16,7 +16,7 @@ import android.speech.tts.UtteranceProgressListener
 import java.util.Locale
 
 /** Uses the user's installed speech services, which may use the network. */
-class AndroidConversationVoice(context: Context) : ConversationVoice {
+class AndroidConversationVoice(context: Context, private val offlineOnly: Boolean = false) : ConversationVoice {
     private val pcm = org.example.niannian.feature.voice.PcmPlayer()
     private val app = context.applicationContext
     private val main = Handler(Looper.getMainLooper())
@@ -104,7 +104,7 @@ class AndroidConversationVoice(context: Context) : ConversationVoice {
             if (stamp == epoch && !closed) {
                 try {
                     val engine = tts
-                    if (engine == null || engine.setLanguage(Locale.SIMPLIFIED_CHINESE) < 0) {
+                    if (engine == null || !selectChineseVoice(engine)) {
                         fail()
                     } else {
                         engine.setAudioAttributes(attributes)
@@ -154,6 +154,17 @@ class AndroidConversationVoice(context: Context) : ConversationVoice {
                 } }
             } catch (_: Exception) { fail() }
         }
+    }
+
+    private fun selectChineseVoice(engine: TextToSpeech): Boolean {
+        if (!offlineOnly) return engine.setLanguage(Locale.SIMPLIFIED_CHINESE) >= 0
+        val local = engine.voices.orEmpty().filter { voice ->
+            voice.locale.language == Locale.CHINESE.language && !voice.isNetworkConnectionRequired &&
+                TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED !in voice.features
+        }.maxByOrNull { voice ->
+            (if (voice.locale.country == Locale.SIMPLIFIED_CHINESE.country) 1000 else 0) + voice.quality
+        } ?: return false
+        return engine.setVoice(local) == TextToSpeech.SUCCESS
     }
 
     override fun startPcm(started: () -> Unit, finished: () -> Unit, failed: (String) -> Unit) {

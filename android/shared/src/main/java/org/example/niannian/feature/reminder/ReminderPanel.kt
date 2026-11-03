@@ -90,7 +90,7 @@ fun ReminderPanel(model: ReminderModel, family: String, user: String, subjects: 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(if (model.elder) "我的提醒" else "家人提醒", fontSize = 24.sp)
-            Text("Demo / Mock · 记录反馈不代表已经服药；此版本不播报真实语音。", fontSize = 18.sp)
+            Text("Demo / Mock 登录环境 · 记录反馈不代表已经服药。", fontSize = 18.sp)
             if (state.offline) Text(if (model.elder) "当前离线 · 仅显示有效本人缓存，反馈先保存在本机。" else "当前离线，家人提醒内容已隐藏。", fontSize = 20.sp)
             Text("提醒按设置的时区执行；后台时间可能延迟，请保持页面打开并核对系统通知权限。")
             if (model.elder) Action("开启本机提醒通知", state.busy) {

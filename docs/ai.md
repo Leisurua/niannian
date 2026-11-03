@@ -60,7 +60,9 @@ WSS 保持本人文字输入；协商 pcm_v1 的客户端可接收家人音色 P
 
 识别或打字输入完整短句“再说一遍”“慢一点／说慢一点”“恢复语速”“停一下／停止”“结束聊天”时，Android 直接执行重播、设置语速、打断或结束，不交给 LLM，不计为新聊天轮次。允许首尾空白和句末句号、逗号、感叹号；问句、引语、转述和更长句子仍作为普通输入。反复说“慢一点”保持慢速，不切换回正常语速；有上一条回答时重新请求服务器再播，没有回答则只保存本次会话的语速选择。“今天少打扰我”继续由既有服务端主动陪伴设置处理。
 
-进入收音仍先打断，播放时没有后台收音；要说控制口令需先点“打断并说话”，直接点停止可立即停止。打断保留本连接已完成回答及其权限依赖，新问题开始时清除上一条重播资格，取消未完成轮次不能重播其结果；断线、结束、后台和换家庭清除临时内容。重播重新请求服务器复验记忆权限，不直接朗读缓存回答；日期、天气、提醒查询重新取数，反馈重播只核对已有结果、不重复写入。主动邀请不自动播音。语音实现遵循 Android [SpeechRecognizer](https://developer.android.com/reference/android/speech/SpeechRecognizer) 和 [TextToSpeech](https://developer.android.com/reference/android/speech/tts/TextToSpeech) 生命周期。具体协议在 [openapi.yaml](openapi.yaml)，传输与留存边界见 [security](security.md)。
+老人端首次打开应用时展示 AI 身份、能力和分项授权说明，可主动朗读或进入授权设置。每次新会话仍展示简短身份提示。有语音授权时，首次点击说话会先用设备声音朗读简短提示，随后才收音。停止、退出或撤回授权会取消等待中的音频和收音，重连或同一会话内打断后恢复说话不会再次朗读提示。
+
+进入收音仍先打断，播放时没有后台收音；要说控制口令需先点“打断并说话”，直接点停止可立即停止。打断保留本连接已完成回答及其权限依赖，新问题开始时清除上一条重播资格，取消未完成轮次不能重播其结果。断线清除本连接聊天记录，只在内存中保留本人未获得有效回复的输入，供重新编辑；重连不会自动发送。鉴权失败、结束、退到后台或切换家庭会清除此输入。重播重新请求服务器复验记忆权限，不直接朗读缓存回答；日期、天气、提醒查询重新取数，反馈重播只核对已有结果、不重复写入。主动邀请不自动播音。语音实现遵循 Android [SpeechRecognizer](https://developer.android.com/reference/android/speech/SpeechRecognizer) 和 [TextToSpeech](https://developer.android.com/reference/android/speech/tts/TextToSpeech) 生命周期。具体协议在 [openapi.yaml](openapi.yaml)，传输与留存边界见 [security](security.md)。
 
 老人首页和聊天入口共用 `ConversationPanel`，移除了聊天页固定示例回复和持续“正在听”的模拟状态。`ConversationState.companionPhase` 由本地录音、识别、请求等待、待播和实际播音派生；服务端 `LISTENING` / `SPEAKING` 不能单独让形象显示收音或动嘴。TTS `onStart` 才标记实际播音，`onDone`、`onStop`、失败、按钮打断、切后台、断线和 VOICE 撤权立即清除待播/播音标记并丢弃旧回调。ASR 自动结束收音后进入识别等待。基础口型是播放期间的开合循环，不是音素对齐或音量分析。
 

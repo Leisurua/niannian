@@ -67,14 +67,14 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
         permissionSession = null
         if (requestedSession != null && model.state.value.id == requestedSession && model.state.value.family == familyId
             && model.state.value.user == userId && owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
-            if (granted) model.voiceEntry() else model.voicePermissionDenied()
+            if (granted) model.voiceEntry(announceIdentity = true) else model.voicePermissionDenied()
         }
     }
     val chatScroll = rememberScrollState()
     fun requestVoice() {
         if (!model.state.value.connected || unavailable || permissionSession != null) return
         if (!model.state.value.voiceAllowed || context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            model.voiceEntry()
+            model.voiceEntry(announceIdentity = true)
         } else {
             model.interrupt()
             permissionSession = model.state.value.id
@@ -187,7 +187,7 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
                 Control("发送", state.connected && !state.busy && !state.recording && !state.recognizing && !unavailable && draft.isNotBlank()) {
                     if (model.input(draft)) draft = ""
                 }
-                if (state.connected && !state.busy && state.message.isNotEmpty() && state.retryText.isNotEmpty())
+                if (!state.busy && state.message.isNotEmpty() && state.retryText.isNotEmpty() && draft.isBlank())
                     Control("重新编辑上一条", !unavailable) { draft = state.retryText }
                 if (state.connected) {
                     Control(if (state.voiceEnabled) "关闭朗读" else "开启朗读", !unavailable && state.voiceAllowed) { model.toggleSpeech() }

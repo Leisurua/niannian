@@ -48,3 +48,5 @@ Thumbs.db
 # Generated artifacts
 artifacts/
 reports/
+# PlatformIO firmware build and libraries
+.pio/

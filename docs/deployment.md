@@ -194,11 +194,51 @@ THA3 代码为 MIT，模型权重为 CC BY 4.0；上游示例角色有各自许�
 
 家属首页点击“开启本机后台通知”，Android 13 及以上需允许系统通知，并在对应长辈的通知偏好保留“应用内”。应用使用系统 JobScheduler 持久任务，关闭界面或进程回收后仍可联网补拉；重启手机后任务由系统恢复，登录凭证继续加密保存。前台每 30 秒同步，后台任务最短周期 15 分钟，实际执行会受 Doze、网络和厂商省电策略影响，不能作为即时或紧急送达保证，参见 [Android 调度接口](https://developer.android.com/reference/android/app/job/JobInfo.Builder#setPeriodic(long))。系统“强行停止”后需重新打开应用；禁用本机通知或退出登录会取消任务及通知。此功能无需 ntfy 或 Twilio 配置。
 
-通知栏仅显示通用 AI 提示，关注识别方式按各事件标注为规则、语义线索或 Mock。点击可冷启动或复用家属界面，先核对接收账号并经 API 重新验证授权，再直接进入对应事件处理；读取只标记已读，处理必须由家属明确提交。断网、撤权、渠道关闭、免打扰或事件已处理时，下次同步会移除旧提示，已知旧提示不会反复响铃。老人首页“家人的处理进度”在前台每 30 秒同步本人事件状态，点击可查看谁在何时确认关注、人工记录联系、误报或解决；处理记录不代表平台验证电话已接通。本次需先执行主动求助迁移，再升级 API、worker 和两个 APK。主动求助接口接受 BUTTON/VOICE/BLE 来源，当前新接通的是 Android 按钮；这不代表 BLE 硬件或完整语音求助已验收。关闭界面收通知、点击及跨端交互需在指定设备分别验证。
+通知栏仅显示通用 AI 提示，关注识别方式按各事件标注为规则、语义线索或 Mock。点击可冷启动或复用家属界面，先核对接收账号并经 API 重新验证授权，再直接进入对应事件处理；读取只标记已读，处理必须由家属明确提交。断网、撤权、渠道关闭、免打扰或事件已处理时，下次同步会移除旧提示，已知旧提示不会反复响铃。老人首页“家人的处理进度”在前台每 30 秒同步本人事件状态，点击可查看谁在何时确认关注、人工记录联系、误报或解决；处理记录由家属人工提交。部署时先执行迁移，再升级 API、worker 和两个 APK。主动求助接口接受屏幕按钮、明确语音和 [BLE 实体按钮](#esp32-c3-实体求助按钮) 来源。
 
 老人端首页“请家人尽快联系我”调用 `POST /v1/signal-events/help-requests`，复用同一通知/处理状态。请求按幂等键只创建一次；老人能看到待通知、家人已确认、已联系、已解决、误报或通知失败。按钮不会自动呼叫急救服务；无已授权接收人或所有通知渠道失败时保留明确失败原因，并提示改用电话或当面联系。
 
 双方在家庭设置的“我的联系方式与紧急联系”登记本人号码（E.164，如带 +86 国家区号），可单独允许号码分享、登记为紧急联系人或删除。号码加密保存；退出/移除成员时删除。长辈可在此处逐人授予或撤回关注通知、健康信息授权。管理员可邀请紧急联系人并授予处理权限。事件中的拨号、短信入口使用当前获准分享的号码，打开系统拨号/短信编辑器，由用户完成发送；不会据此标记联系成功。号码为本人声明，尚未做运营商验证。
+
+### 专用平板 kiosk
+
+老人端默认按普通应用运行。仅在专用平板，由维护人员在 Android 允许配置设备所有者的状态下安装 APK，使用已授权的 ADB 连接进行配置。以下使用 Demo 应用包名。保留维护终端连接，然后在老人端「家庭与授权设置 → 专用平板模式」确认启用。
+
+```sh
+adb shell dpm set-device-owner org.example.niannian.elder.demo/org.example.niannian.elder.TabletAdminReceiver
+```
+
+启用后，系统在重启并解锁后将念念作为默认桌面进入，界面只锁定此应用。设备未配置所有者时界面提示并保留普通运行。维护人员可退出锁定并清除念念桌面设置；该命令只恢复普通运行模式，保留设备所有者与应用数据。恢复入口要求调用者具备系统 `DUMP` 权限。
+
+```sh
+adb shell am broadcast -a org.example.niannian.elder.EXIT_TABLET_MODE -n org.example.niannian.elder.demo/org.example.niannian.elder.TabletRecoveryReceiver
+```
+
+配置原则见 [Android 专用设备](https://developer.android.com/work/dpc/dedicated-devices/cookbook#home-app) 与 [单应用锁定](https://developer.android.com/work/dpc/dedicated-devices/lock-task-mode)。
+
+### 离线待机与提醒
+
+在老人端「家庭与授权设置 → 打开念念待机页」点击唤醒，或明确开启本机语音待机后说“你好，小念”。麦克风仅在前台待机页工作，唤醒、退出和切到后台后停止。可以选择唤醒后朗读到期提醒，或在唤醒页手动朗读。播报仅取当前本人有效缓存的标题，依照静默时段和已有反馈过滤，并使用设备已安装的离线中文声音。设备没有合适声音时可查看文字提醒，在线模型不可用时界面保留离线提示。
+
+启用语音唤醒的演示包需要在构建时提供 [Vosk 中文轻量模型](https://alphacephei.com/vosk/models)。下载 `vosk-model-small-cn-0.22.zip`，SHA-256 为 `3af8b0e7e0f835ae9d414ce5df580237a3cfb08d586c9fbbb0f7ff29ad5b14ba`。解压后的目录命名为 `wake-cn`，内含原始模型目录、Apache-2.0 许可证和内容为 `vosk-small-cn-0.22-3af8b0e7` 的 `uuid` 文件。构建时将其父目录传给 `-PniannianWakeAssets`。普通包缺少模型时，待机页保留点击唤醒和离线朗读入口。
+
+前置摄像头的接近唤醒默认关闭。进入待机页后，本人可单独开启并授予 Android 摄像头权限。支持 Camera2 简单人脸检测的前置摄像头连续检测到近距离人脸约 1.2 秒后恢复正常亮度，唤醒或离开待机页即关闭摄像头。只判断框大小与置信度，画面缓冲即取即丢。设备不支持、被占用或拒绝权限时可点击唤醒。 [Android Camera2 检测模式](https://developer.android.com/reference/android/hardware/camera2/CameraMetadata#STATISTICS_FACE_DETECT_MODE_SIMPLE)
+
+### ESP32-C3 实体求助按钮
+
+将常开大按键的两端接到 ESP32-C3-DevKitM-1 的 GPIO4 与 GND。固件使用 GPIO4 内部上拉，由 USB 给开发板供电。构建并按需烧录 [PlatformIO 项目](../firmware/esp32c3_help_button/platformio.ini)。 [开发板引脚说明](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c3/esp32-c3-devkitm-1/user_guide.html)
+
+```sh
+pio run -d firmware/esp32c3_help_button
+pio run -d firmware/esp32c3_help_button -t upload
+pio device monitor -b 115200
+```
+
+演示交付中的 `niannian-esp32c3-help.bin` 是 ESP32-C3 合并镜像，烧录起始地址为 `0x0`。
+
+在未连接时长按大按键 4 秒打开 60 秒配对窗口。Android 12 或更新版本上，先登录并选择家庭，再在老人端「家庭与授权设置 → 蓝牙求助按钮」搜索。选择与串口地址尾号一致的按钮，并在系统对话框输入串口显示的一次配对码。建议在启用 kiosk 前完成配对。固件仅接受当前通过配对授权的平板。更换平板时，先关闭旧平板的按钮连接，再重新开启物理配对窗口。Android 应用绑定与老人账号、家庭关联。
+
+服务 UUID 为 `a969ba54-806f-4d1b-b763-640c13563949`，事件特征为 `a969ba55-806f-4d1b-b763-640c13563949`。特征经配对认证后发送 GATT indication，载荷为一个协议版本字节 `01` 后接 16 字节大端 UUID v4。Android 以前台连接接收事件，以该 UUID 作为现有求助接口的幂等键。断连会尝试重连，断网时可在结果提示中用同一请求重试。开发板未提供电池信息。求助与通知结果以服务端记录为准。
 
 ### 外部关注通知（默认关闭）
 
