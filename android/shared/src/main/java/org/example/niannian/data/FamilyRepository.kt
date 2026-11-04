@@ -254,6 +254,16 @@ class FamilyRepository(
             expectedVersion = null, explicitKey = key)
     }
 
+    suspend fun requestBleHelp(family: String, owner: String, key: String): JSONObject = requestMutex.withLock {
+        require(UUID.fromString(family).toString() == family && UUID.fromString(key).toString() == key)
+        check(owner.isNotBlank() && owner == store.load().optString("user_id")) { "Help button account changed" }
+        sendHelp(family, key, "BLE")
+    }
+
+    private suspend fun sendHelp(family: String, key: String, source: String): JSONObject =
+        executeCall("/v1/signal-events/help-requests", "POST",
+            JSONObject().put("family_id", family).put("source", source), false, null, key)
+
     suspend fun requestHelp(family: String, key: String): JSONObject = requestMutex.withLock {
         require(UUID.fromString(family).toString() == family && UUID.fromString(key).toString() == key)
         val session = store.load()
@@ -264,7 +274,7 @@ class FamilyRepository(
             saved.remove("help_family"); saved.remove("help_key"); store.save(saved)
         }
         try {
-            val result = executeCall("/v1/signal-events/help-requests", "POST", JSONObject().put("family_id", family), false, null, retryKey)
+            val result = sendHelp(family, retryKey, "BUTTON")
             forget()
             result
         } catch (error: ApiFailure) {

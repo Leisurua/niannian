@@ -103,7 +103,9 @@ def certificates(host):
         .sign(root_key, hashes.SHA256()))
     (PRIVATE / 'server-key.pem').write_bytes(leaf_key.private_bytes(serialization.Encoding.PEM,
         serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
-    (PRIVATE / 'server.crt').write_bytes(leaf.public_bytes(serialization.Encoding.PEM) + CA.read_bytes())
+    leaf_pem = leaf.public_bytes(serialization.Encoding.PEM)
+    (PRIVATE / 'server.crt').write_bytes(leaf_pem + CA.read_bytes())
+    return leaf_pem
 
 
 def main():
@@ -127,7 +129,8 @@ def main():
             publisher_token='tk_' + ''.join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(29)),
             topic='family-' + secrets.token_hex(16))
         secrets_file.write_text(json.dumps(credentials), encoding='utf-8')
-    certificates(args.host)
+    server_certificate = RUNTIME / 'niannian-ntfy-server.crt'
+    server_certificate.write_bytes(certificates(args.host))
     base_url = f'https://{args.host}:{args.port}'
     config = {
         'base-url': base_url, 'listen-http': '-', 'listen-https': f'0.0.0.0:{args.port}',
@@ -144,7 +147,8 @@ def main():
     config_path.write_text(yaml.safe_dump(config, allow_unicode=True), encoding='utf-8')
     connection = dict(server=base_url, username='niannian-family', password=credentials['subscriber_password'],
         topic=credentials['topic'], subscription_url=f"ntfy://{args.host}:{args.port}/{credentials['topic']}",
-        ca_certificate=str(CA), instructions='Import the CA in ntfy Settings > Advanced > Manage certificates; add this account, then subscribe with instant delivery.')
+        ca_certificate=str(CA), server_certificate=str(server_certificate),
+        instructions='Pin the server certificate in ntfy Settings > Advanced > Manage certificates for this server URL; add this account, then subscribe with instant delivery.')
     (PRIVATE / 'phone-connection.json').write_text(json.dumps(connection, ensure_ascii=False, indent=2), encoding='utf-8')
     installed = subprocess.run(['powershell.exe', '-NoProfile', '-Command',
         "if (Get-Service -Name NianNianNtfy -ErrorAction SilentlyContinue) { 'installed' }"],

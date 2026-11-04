@@ -13,7 +13,8 @@ class ConversationModelTest {
         JSONObject().put("conversation_id", id).put("sequence", sequence).put("type", type).put("payload", payload)
             .apply { if (replyTo != null) put("in_reply_to", replyTo) }.toString()
 
-    private class Voice : ConversationVoice {
+    private class Voice(private val autoReady: Boolean = true) : ConversationVoice {
+        var ready: () -> Unit = {}
         var partial: (String) -> Unit = {}
         var final: (String) -> Unit = {}
         var failure: (String) -> Unit = {}
@@ -24,8 +25,10 @@ class ConversationModelTest {
         val speechRates = mutableListOf<Boolean>()
         var stops = 0
         var finishes = 0
-        override fun listen(partial: (String) -> Unit, final: (String) -> Unit, failed: (String) -> Unit, captured: () -> Unit) {
+        override fun listen(ready: () -> Unit, partial: (String) -> Unit, final: (String) -> Unit, failed: (String) -> Unit, captured: () -> Unit) {
+            this.ready = ready
             this.partial = partial; this.final = final; failure = failed; this.captured = captured
+            if (autoReady) ready()
         }
         override fun finishListening() { finishes++ }
         override fun speak(text: String, slow: Boolean, started: () -> Unit, finished: () -> Unit, failed: (String) -> Unit) {
@@ -112,6 +115,38 @@ class ConversationModelTest {
         oldClose(4403); yield()
         assertTrue(model.state.value.connected)
         assertEquals(listOf(1L, 2L), gateway.sent.map { it.getLong("sequence") })
+        model.clear()
+    }
+
+    @Test fun unansweredInputCanBeEditedAfterReconnectWithoutBeingResent() = runBlocking {
+        val gateway = Gateway(); val model = ConversationModel(gateway, this)
+        model.bind("family", "elder"); model.start(); yield(); gateway.listener(frame(1)); yield()
+        assertTrue(model.input("虚构的问题"))
+        gateway.onClose(0); yield()
+        assertEquals("虚构的问题", model.state.value.retryText)
+        assertTrue(model.state.value.messages.isEmpty())
+        model.start(); yield(); gateway.listener(frame(4)); yield()
+        assertEquals(1, gateway.sent.count { it.getString("type") == "text.input" })
+        assertEquals("虚构的问题", model.state.value.retryText)
+        gateway.onClose(4403); yield()
+        assertEquals("", model.state.value.retryText)
+        model.clear()
+    }
+
+    @Test fun identityPlaysOnceBeforeListeningAndCancellationRejectsLateAudioCallback() = runBlocking {
+        val gateway = Gateway(); val model = ConversationModel(gateway, this); val voice = Voice()
+        model.bind("family", "elder"); model.attachVoice(voice)
+        model.start(); yield(); gateway.listener(frame(1)); yield()
+        model.voiceEntry(announceIdentity = true)
+        assertEquals(listOf(CONVERSATION_IDENTITY), voice.spoken)
+        assertFalse(model.state.value.recording)
+        val completed = voice.finished
+        model.interrupt()
+        completed()
+        assertFalse(model.state.value.recording)
+        model.voiceEntry(announceIdentity = true)
+        assertTrue(model.state.value.recording)
+        assertEquals(listOf(CONVERSATION_IDENTITY), voice.spoken)
         model.clear()
     }
 
@@ -453,6 +488,29 @@ class ConversationModelTest {
         model.voiceEntry(); voice.final("女儿让我慢一点走路")
         assertEquals("text.input", gateway.sent.last().getString("type"))
         assertEquals("女儿让我慢一点走路", gateway.sent.last().getJSONObject("payload").getString("text"))
+        model.clear()
+    }
+
+    @Test fun delayedMicrophoneIsReadyBeforeListeningAndStopDiscardsOldCallbacks() = runBlocking {
+        val gateway = Gateway(); val voice = Voice(autoReady = false); val model = ConversationModel(gateway, this)
+        model.attachVoice(voice); model.bind("family", "elder"); model.start(); yield()
+        gateway.listener(frame(1)); yield()
+
+        model.voiceEntry()
+        val oldReady = voice.ready
+        val oldFinal = voice.final
+        assertFalse(model.state.value.recording)
+        assertTrue(model.state.value.voiceActive)
+        model.interrupt()
+        oldReady(); oldFinal("迟到的识别结果")
+        assertFalse(model.state.value.voiceActive)
+        assertFalse(gateway.sent.any { it.getString("type") == "text.input" })
+
+        model.voiceEntry()
+        voice.ready()
+        assertTrue(model.state.value.recording)
+        voice.final("你好")
+        assertEquals("text.input", gateway.sent.last().getString("type"))
         model.clear()
     }
 

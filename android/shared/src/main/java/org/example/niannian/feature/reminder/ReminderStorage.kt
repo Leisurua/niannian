@@ -7,6 +7,7 @@ import androidx.room.Room
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.time.Instant
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -40,6 +41,15 @@ class ReminderStorage private constructor(context: Context) : ReminderStore {
     }
     fun whenCurrent(snapshot: JSONObject, action: () -> Unit): Boolean = synchronized(lock) {
         if (snapshot.optLong("_storage_epoch", -1) != epoch) false else { action(); true }
+    }
+    suspend fun readCurrentDueTitles(owner: String, family: String?, read: (List<String>) -> Unit): Boolean {
+        if (owner.isBlank()) return false
+        val snapshot = ReminderLedger(this).snapshot()
+        if (snapshot.optString("owner") != owner || family != null && snapshot.optString("family") != family) return false
+        val titles = reminderCards(snapshot, Instant.now()).asSequence()
+            .filter { it.due && it.status !in setOf("DONE", "SKIPPED") }
+            .map { it.title }.distinct().take(5).toList()
+        return whenCurrent(snapshot) { read(titles) }
     }
     override suspend fun load(): JSONObject = withContext(Dispatchers.IO) { synchronized(lock) {
         val row = database.snapshots().load() ?: return@synchronized JSONObject().put("_storage_epoch", epoch)
