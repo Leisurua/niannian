@@ -425,13 +425,24 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
 
     private fun startListening(device: ConversationVoice) {
         val stamp = voiceGeneration
-        current.value = current.value.copy(recording = true, state = "LISTENING", voiceEnabled = true,
-            message = "请说话，说完可点“说完了”。")
+        current.value = current.value.copy(recognizing = true, state = "THINKING", voiceEnabled = true,
+            message = "正在准备麦克风…")
         voiceDeadline = tasks.launch {
-            delay(30000)
-            if (stamp == voiceGeneration && current.value.recording) finishListening()
+            delay(15000)
+            if (stamp == voiceGeneration) voiceFailure("麦克风准备超时，请重试或继续打字。")
         }
         device.listen(
+            ready = {
+                if (stamp == voiceGeneration && !current.value.recording) {
+                    current.value = current.value.copy(recording = true, recognizing = false, state = "LISTENING",
+                        message = "请说话，说完可点“说完了”。")
+                    voiceDeadline?.cancel()
+                    voiceDeadline = tasks.launch {
+                        delay(30000)
+                        if (stamp == voiceGeneration && current.value.recording) finishListening()
+                    }
+                }
+            },
             partial = { text -> if (stamp == voiceGeneration && current.value.recording) {
                 current.value = current.value.copy(partialTranscript = text.take(2000))
             } },

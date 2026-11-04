@@ -33,7 +33,7 @@ class AndroidConversationVoice(context: Context, private val offlineOnly: Boolea
     private val attributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
 
-    override fun listen(partial: (String) -> Unit, final: (String) -> Unit, failed: (String) -> Unit, captured: () -> Unit) {
+    override fun listen(ready: () -> Unit, partial: (String) -> Unit, final: (String) -> Unit, failed: (String) -> Unit, captured: () -> Unit) {
         stop()
         if (closed) return
         val stamp = epoch
@@ -50,7 +50,7 @@ class AndroidConversationVoice(context: Context, private val offlineOnly: Boolea
             val service = SpeechRecognizer.createSpeechRecognizer(app)
             recognizer = service
             service.setRecognitionListener(object : RecognitionListener {
-                override fun onReadyForSpeech(params: Bundle?) = Unit
+                override fun onReadyForSpeech(params: Bundle?) { if (stamp == epoch && !closed) ready() }
                 override fun onBeginningOfSpeech() = Unit
                 override fun onRmsChanged(rmsdB: Float) = Unit
                 override fun onBufferReceived(buffer: ByteArray?) = Unit
