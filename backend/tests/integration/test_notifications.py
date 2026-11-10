@@ -971,6 +971,8 @@ def test_signed_twilio_webhook_updates_exact_persisted_receipt(system, monkeypat
             pass
         async def send(self, channel, destination, **routing):
             return Receipt('twilio', sid, 'queued')
+        async def status(self, channel, identifier):
+            return 'undelivered'
 
     monkeypatch.setattr(notifications, 'ExternalNotifications', Provider)
     client, engine, factory, _ = system
@@ -995,8 +997,24 @@ def test_signed_twilio_webhook_updates_exact_persisted_receipt(system, monkeypat
         'X-Twilio-Signature': signature}).status_code == 403
     assert client.post(endpoint, content=body, headers={'Content-Type': 'application/x-www-form-urlencoded',
         'X-Twilio-Signature': signature[:-1] + 'x'}).status_code == 403
-    assert client.post(endpoint, content=body, headers={'Content-Type': 'application/x-www-form-urlencoded',
-        'X-Twilio-Signature': signature}).status_code == 204
+    for status in ('sent', 'queued'):
+        progress, progress_signature = signed(status=status)
+        assert client.post(endpoint, content=progress, headers={'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Twilio-Signature': progress_signature}).status_code == 204
+    with engine.connect() as db:
+        notification_id, provider_status = db.execute(text('SELECT id,provider_status FROM notification')).one()
+        assert provider_status == 'sent'
+
+    async def poll_with_pre_callback_snapshot():
+        async with factory() as db:
+            stale = await db.get(notifications.Notification, notification_id)
+            assert stale.provider_status == 'sent'
+            assert client.post(endpoint, content=body, headers={'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Twilio-Signature': signature}).status_code == 204
+            await notifications.refresh_receipt(db, stale)
+            await db.commit()
+
+    asyncio.run(poll_with_pre_callback_snapshot())
     assert client.post(endpoint, content=body, headers={'Content-Type': 'application/x-www-form-urlencoded',
         'X-Twilio-Signature': signature}).status_code == 204
     unknown, unknown_signature = signed('SM' + 'c' * 32)

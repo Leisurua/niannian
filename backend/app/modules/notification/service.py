@@ -23,6 +23,10 @@ from app.platform.identifiers import utcnow, uuid7, iso_utc
 from app.platform.pagination import page_rows
 
 SUMMARY = 'Mock 演示 · 有一条关注提示，请在应用内查看授权详情；未验证设备推送到达。'
+TWILIO_PROGRESS = {
+    'SMS': {'accepted': 0, 'scheduled': 0, 'queued': 1, 'sending': 2, 'sent': 3},
+    'PHONE': {'accepted': 0, 'queued': 1, 'ringing': 2, 'in-progress': 3},
+}
 
 
 async def create_for_event(db, source, recipients):
@@ -336,6 +340,10 @@ async def refresh_receipt(db, row):
     settings = get_settings()
     if not settings.notification_external_enabled:
         return
+    # Maintenance can load the row before it acquires the family lock.
+    await db.refresh(row)
+    if row.deleted_at or row.status not in ('SENT', 'READ') or row.provider_status in TWILIO_TERMINAL_STATUSES:
+        return
     attempt = await db.scalar(select(NotificationAttempt).where(NotificationAttempt.notification_id == row.id,
         NotificationAttempt.status == 'SUCCEEDED').order_by(NotificationAttempt.attempt_no.desc()).limit(1))
     if not attempt or not attempt.provider_message_id:
@@ -354,6 +362,9 @@ async def refresh_receipt(db, row):
 def apply_receipt(row, status):
     if row.provider_status in TWILIO_TERMINAL_STATUSES:
         return  # Late and repeated receipts cannot change a final provider outcome.
+    progress = TWILIO_PROGRESS.get(row.channel, {})
+    if status in progress and progress[status] < progress.get(row.provider_status, -1):
+        return
     row.provider_status = status
     if status == 'delivered' and row.channel == 'SMS':
         row.delivered_at = row.delivered_at or utcnow()
