@@ -74,6 +74,34 @@ def test_retry_exhaustion_manual_retry_and_account_deletion_purge(system, monkey
     assert not storage.objects
 
 
+def test_retry_then_account_deletion_purges_unconfirmed_write(system, monkeypatch):
+    from backend.tests.integration.test_account_lifecycle import request_delete
+
+    client, engine, factory, storage = system
+    home = household(client)
+    job = post(client, '/v1/me/exports', home[4], key='unconfirmed-write').json()
+    original_write = storage.write
+
+    async def write_then_fail(*args):
+        await original_write(*args)
+        raise RuntimeError('Storage write was not acknowledged')
+
+    monkeypatch.setattr(storage, 'write', write_then_fail)
+    for _ in range(3):
+        assert asyncio.run(exports.process_one(factory, storage, get_settings()))
+        with engine.begin() as conn:
+            conn.execute(text('UPDATE account_export SET retry_at=now()'))
+    assert storage.objects
+    retry = client.post('/v1/me/exports/' + job['id'] + '/retry', headers=home[4])
+    assert retry.status_code == 202 and retry.json()['attempts'] == 0
+    request_delete(client, home[4])
+
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE account_export SET cleanup_after=now()-interval '1 minute', retry_at=now()"))
+    assert asyncio.run(exports.process_one(factory, storage, get_settings()))
+    assert not storage.objects
+
+
 def test_status_polling_is_available_while_worker_generates(system, monkeypatch):
     client, _, factory, storage = system
     home = household(client)

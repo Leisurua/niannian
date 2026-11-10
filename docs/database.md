@@ -714,6 +714,8 @@ UNIQUE `(message_id, recipient_member_id)`，索引 `(recipient_member_id, messa
 
 新增 `account_export`（20261103_account_exports）：本人外键、请求键 SHA-256（本人内唯一）、私有对象键、PENDING/RUNNING/READY/FAILED/CANCELLED/EXPIRED 状态、最多三次尝试、租约令牌/到期时间、创建/有效期/重试/清理时间和固定错误码。worker 以 SKIP LOCKED 领取并提交可查询的 RUNNING 状态，300 秒租约保护 180 秒生成窗口；生成期间不占用用户写锁，下载和删除仍要求本人当前有效登录。结果过期立即不可下载，异步全版本清理；账户删除保留键直到清理完成。没有家庭成员资格的本人也可以导出，不依赖 task_outbox 的家庭外键。
 
+`purged_at` 表示该键已确认无存储对象，新建且未领取的任务也满足这一条件。worker 领取时清空该字段，手动重试保留清理状态，以便删除账户时清除前次写入结果未确认的对象。
+
 `account_deletion`：`id` UUID 主键、`user_id` 唯一外键、`receipt_hash` 唯一 SHA-256 摘要；`local_status` 限 PENDING/RETRY/ERASED，`requested_at`、`local_erased_at`、`retry_at`、`last_error_code` 记录本地处理；`backup_due_at`、`backup_confirmed_at`、`backup_evidence_hash` 记录备份期限和核验。不存导出文件或个人正文。worker 使用行锁及 SKIP LOCKED，每次只处理一个账户；进程失败释放锁，持久请求可重试。
 
 `provider_copy`：`id` UUID 主键，`user_id` 外键，`(user_id, provider)` 唯一；保存 `first_possible_send_at`、`last_possible_send_at`、`confirmed_at`、`evidence_hash`；`resource_refs` JSONB 数组只保留供应商资源 ID、渠道、服务账号引用，用于删除办理，确认后清空。真实发送前提交可能副本记录，同一供应商后续使用更新最后时间并清除先前确认。迁移为所有现有用户插入 LEGACY_UNVERIFIED，要求运维核对升级前历史。删除状态由这些真实行汇总，不能靠期限或当前 provider 配置推断成功。存在删除/副本记录时迁移拒绝降级丢失记录。

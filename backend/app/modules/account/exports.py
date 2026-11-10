@@ -47,9 +47,10 @@ async def request(db, actor, key, settings):
         return view(pending)
     job_id = uuid7()
     expires = now + timedelta(hours=settings.account_export_hours)
+    # A new, unclaimed job has no object to erase.
     row = AccountExport(id=job_id, user_id=actor.user_id, request_hash=digest(key),
         object_key=f'account-exports/{actor.user_id}/{job_id}.zip', status='PENDING', attempts=0,
-        created_at=now, expires_at=expires, retry_at=now, cleanup_after=expires)
+        created_at=now, expires_at=expires, retry_at=now, cleanup_after=expires, purged_at=now)
     db.add(row)
     await db.flush()
     return view(row)
@@ -57,13 +58,13 @@ async def request(db, actor, key, settings):
 
 async def retry(db, actor, job_id, settings):
     row = await owned(db, actor.user_id, job_id)
-    if row.expires_at <= utcnow() or row.status == 'CANCELLED':
-        raise AppError('ACCOUNT_EXPORT_EXPIRED', '导出任务已到期，请重新申请。', 410)
     # API user lock prevents concurrent retry, but coordinate with storage cleanup too.
     await db.refresh(row, with_for_update=True)
+    if row.expires_at <= utcnow() or row.status == 'CANCELLED':
+        raise AppError('ACCOUNT_EXPORT_EXPIRED', '导出任务已到期，请重新申请。', 410)
     if row.status == 'FAILED':
         row.status, row.attempts, row.error_code = 'PENDING', 0, None
-        row.retry_at, row.purged_at = utcnow(), None
+        row.retry_at = utcnow()
         row.expires_at = utcnow() + timedelta(hours=settings.account_export_hours)
         row.cleanup_after = row.expires_at
     return view(row)
@@ -96,10 +97,9 @@ async def cleanup_one(factory, storage):
         if row is None:
             return False
         try:
-            if row.attempts:
-                if storage is None:
-                    raise RuntimeError('Storage unavailable')
-                await getattr(storage, 'delete_all_versions', storage.delete)(row.object_key)
+            if storage is None:
+                raise RuntimeError('Storage unavailable')
+            await getattr(storage, 'delete_all_versions', storage.delete)(row.object_key)
         except Exception:
             row.retry_at = now + timedelta(seconds=60)
             log_event(logging.getLogger('nianian.worker'), logging.ERROR, 'ACCOUNT_EXPORT_PURGE_FAILED',
@@ -132,6 +132,9 @@ async def process_one(factory, storage, settings):
             return True
         job_id, uid, token = row.id, row.user_id, uuid7()
         row.status, row.attempts, row.error_code = 'RUNNING', row.attempts + 1, None
+        # Claiming a job can lead to a write even when the attempt later fails.
+        # Manual retries reset the attempt count but preserve this cleanup obligation.
+        row.purged_at = None
         row.lease_token, row.lease_until = token, now + timedelta(seconds=300)
         await db.commit()
     try:
@@ -174,5 +177,7 @@ async def process_one(factory, storage, settings):
 
 async def maintenance(db):
     # Cancelled account rows can disappear only after private bytes are purged.
+    now = utcnow()
     await db.execute(delete(AccountExport).where(AccountExport.purged_at.is_not(None),
-        or_(AccountExport.status == 'CANCELLED', AccountExport.created_at < utcnow() - timedelta(days=7))))
+        or_(AccountExport.status == 'CANCELLED',
+            (AccountExport.expires_at <= now) & (AccountExport.created_at < now - timedelta(days=7)))))
