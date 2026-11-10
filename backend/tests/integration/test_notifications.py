@@ -298,7 +298,11 @@ def test_summary_and_notification_grants_are_independent(system, scope):
         assert client.get('/v1/conversations/' + cid, headers={**home[2],'X-Access-Reason':'FAMILY_CHECK_IN'}).status_code == 404
 
 
-def test_wss_to_inapp_minimal_event_and_idempotent_read(system):
+@pytest.mark.parametrize(('utterance', 'category'), [
+    (UTTERANCE, 'VERIFICATION_CODE_AND_SECRECY'),
+    ('有人冒充我女儿。还让我保密。', 'IMPERSONATION_AND_SECRECY'),
+])
+def test_wss_to_inapp_minimal_event_and_idempotent_read(system, utterance, category):
     client, engine, factory, _ = system
     home = household(client)
     grant(client, home, 'NOTIFICATION_TO_FAMILY')
@@ -306,7 +310,7 @@ def test_wss_to_inapp_minimal_event_and_idempotent_read(system):
     cid = start(client, home)
     with client.websocket_connect('/v1/ws/conversations/' + cid, headers=home[4]) as ws:
         handshake(ws, cid)
-        ws.send_json(ws_frame(cid, 'text.input', 2, {'text': UTTERANCE}))
+        ws.send_json(ws_frame(cid, 'text.input', 2, {'text': utterance}))
         frames = [ws.receive_json() for _ in range(5)]
         assert [f['type'] for f in frames] == ['assistant.state','warning','signal.created','assistant.text','assistant.state']
         event_id = frames[2]['payload']['signal_event_id']
@@ -316,11 +320,11 @@ def test_wss_to_inapp_minimal_event_and_idempotent_read(system):
     assert inbox.headers['cache-control'] == 'no-store'
     item, = inbox.json()['items']
     assert item['status'] == 'SENT' and item['signal_event_id'] == event_id
-    assert 'Mock' not in item['summary'] and UTTERANCE not in str(item)
+    assert 'Mock' not in item['summary'] and utterance not in str(item)
     assert item['provider'] == 'in_app' and item['simulated'] is False
     assert client.get('/v1/signal-events/' + event_id, headers=home[2]).json()['recognition_mode'] == 'RULE'
     detail = client.get('/v1/signal-events/' + event_id, headers=home[2])
-    assert detail.json()['reason']['category'] == 'VERIFICATION_CODE_AND_SECRECY'
+    assert detail.json()['reason']['category'] == category
     assert detail.json()['status'] == 'NOTIFIED'
     assert 'confidence' not in detail.json() and 'source_message_id' not in detail.json()
     before = client.get('/v1/notifications/' + item['id'], headers=home[2]).json()

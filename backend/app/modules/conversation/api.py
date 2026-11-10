@@ -17,7 +17,7 @@ from app.modules.audit import service as audit
 from app.modules.auth.service import authenticate
 from app.modules.conversation import service, summary as recap, proactive, daily
 from app.modules.weather.service import WeatherService
-from app.modules.safety.rules import explicit_help
+from app.modules.safety.rules import evaluate, explicit_help
 from app.platform.identifiers import utcnow
 from app.modules.conversation.protocol import InputLimits, MessageBudget, ProtocolError, parse_client_frame
 from app.platform.authentication import current_identity
@@ -41,6 +41,8 @@ async def generate_turn(factory, bearer, settings, orchestrator, conversation_id
         # Authentication failures must never fall through into an external LLM call.
         actor = await authenticate(db, bearer[7:], settings)
         row = await service.access(db, actor, conversation_id, owner_only=True, active=True)
+        if text_input.strip() and len(text_input) <= 2000 and evaluate(text_input).message:
+            return await orchestrator.handle(request_id=request_id, conversation_id=conversation_id, text=text_input)
         if daily.intent(text_input):
             await db.commit()
             try:
@@ -80,6 +82,8 @@ async def generate_turn(factory, bearer, settings, orchestrator, conversation_id
     else:
         result = await orchestrator.handle(request_id=request_id, conversation_id=conversation_id, text=text_input,
             memory_records=records, recent_turns=[turn for turn, _ in history])
+    if result.avatar_state == AvatarState.WARNING:
+        return result
     dependencies = {(r.id, r.version): r for r in (*result.memory_records, *history_records)}
     return replace(result, memory_records=tuple(dependencies.values()))
 
@@ -387,7 +391,8 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                             history.clear()
                         else:
                             last_reply, last_records = result.assistant_text, result.memory_records
-                            if pending_signal_input and not isinstance(result, DailyTurn) and result.trace.get('result_status') != 'FAILED':
+                            if (pending_signal_input and not isinstance(result, DailyTurn)
+                                    and result.avatar_state != AvatarState.WARNING and result.trace.get('result_status') != 'FAILED'):
                                 history.append((dict(user=pending_signal_input[0], assistant=last_reply), last_records))
                                 history = history[-6:]
                                 while sum(len(t['user']) + len(t['assistant']) for t, _ in history) > 12000:

@@ -99,7 +99,7 @@ def test_proactive_minimum_gap_uses_elapsed_time_across_dst_fold():
 def test_baseline_combinations(utterance, category, severity):
     result = evaluate(utterance)
     assert (result.kind, result.category, result.severity) == ('SCAM_RISK', category, severity)
-    assert result.rule_version == '1.1.0'
+    assert result.rule_version == '1.2.0'
     assert 'TRANSFER' in result.blocked_actions
     assert '核实' in result.message
     assert '一定是诈骗' not in result.message
@@ -131,9 +131,9 @@ def test_invalid_rule_input(utterance):
         evaluate(utterance)
 
 
-def test_rule_ids_unique_and_baseline_contains_six_approved_combinations():
-    assert len({rule.rule_id for rule in RULES}) == 6
-    assert len({rule.category for rule in RULES}) == 6
+def test_rule_ids_and_categories_are_unique():
+    assert len({rule.rule_id for rule in RULES}) == len(RULES)
+    assert len({rule.category for rule in RULES}) == len(RULES)
 
 
 def payload(**changes):
