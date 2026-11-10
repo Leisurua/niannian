@@ -1107,6 +1107,33 @@ paths:
                 $ref: '#/components/schemas/MemoryResponse'
         '403':
           $ref: '#/components/responses/ForbiddenError'
+  /memories/recall-prompts:
+    get:
+      tags:
+      - Memories
+      operationId: getRecallPrompts
+      parameters:
+      - name: family_id
+        in: query
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+      responses:
+        '200':
+          description: Confirmed titles for the older adult with current self-use consent; empty when no eligible titles are available
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [titles]
+                properties:
+                  titles:
+                    type: array
+                    maxItems: 8
+                    items:
+                      type: string
+        '404':
+          $ref: '#/components/responses/NotFoundError'
   /memories/{memory_id}:
     parameters:
     - $ref: '#/components/parameters/MemoryId'

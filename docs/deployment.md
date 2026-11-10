@@ -83,7 +83,7 @@ LLM_TIMEOUT_SECONDS=20
 
 Android 以 demo-elder 登录并加入家庭，点击“开始聊天”，输入文字后发送。连接后的聊天卡片显示“AI 对话”或“Mock 演示”；成功回复后可继续第二轮，停止会取消等待，失败可重新编辑上一条。断线不会自动重发，重连后需重新说明话题；回顾仍需单独授权。
 
-语音在老人端使用手机已安装的中文语音识别与 TTS 服务，无须配置后端 ASR/TTS 密钥。在“用于我与念念的交流”中允许语音处理（与授予家属分开），再点“点击说话”并允许麦克风，说完等自动识别或点“说完了”，识别文字自动提交现有 LLM，回复显示并朗读。“停止”取消当前识别、请求或播放；“打断并说话”停播后开始新输入。支持“再说一遍”“说慢一点”“关闭朗读”，音量使用手机音量键。当前为按钮打断，无自动人声打断或后台唤醒。设备没有识别服务、中文语音数据或麦克风权限时会提示并保留文字入口；语音服务可能联网，数据边界见 [安全说明](security.md)。真机收音、扬声器输出和设备引擎兼容性尚待验证。
+含 Vosk 中文模型的老人端在本机转写，普通包使用设备的中文识别服务。回复使用系统 TTS，无须配置后端 ASR/TTS 密钥。在“用于我与念念的交流”中允许语音处理，再点“点击说话”并允许麦克风。看到“您说，我在听”后开始说话，说完等自动识别或点“说完了”，转写自动提交现有 LLM，回复显示并朗读。“停止”取消当前识别、请求或播放。“打断并说话”停播后开始新输入。支持“再说一遍”“说慢一点”“关闭朗读”，音量使用手机音量键。识别、朗读或权限不可用时保留文字入口，数据边界见 [安全说明](security.md)。真机收音、扬声器输出和设备引擎兼容性尚待验证。
 
 ## 在线主动陪伴
 
@@ -194,11 +194,51 @@ THA3 代码为 MIT，模型权重为 CC BY 4.0；上游示例角色有各自许�
 
 家属首页点击“开启本机后台通知”，Android 13 及以上需允许系统通知，并在对应长辈的通知偏好保留“应用内”。应用使用系统 JobScheduler 持久任务，关闭界面或进程回收后仍可联网补拉；重启手机后任务由系统恢复，登录凭证继续加密保存。前台每 30 秒同步，后台任务最短周期 15 分钟，实际执行会受 Doze、网络和厂商省电策略影响，不能作为即时或紧急送达保证，参见 [Android 调度接口](https://developer.android.com/reference/android/app/job/JobInfo.Builder#setPeriodic(long))。系统“强行停止”后需重新打开应用；禁用本机通知或退出登录会取消任务及通知。此功能无需 ntfy 或 Twilio 配置。
 
-通知栏仅显示通用 AI 提示，关注识别方式按各事件标注为规则、语义线索或 Mock。点击可冷启动或复用家属界面，先核对接收账号并经 API 重新验证授权，再直接进入对应事件处理；读取只标记已读，处理必须由家属明确提交。断网、撤权、渠道关闭、免打扰或事件已处理时，下次同步会移除旧提示，已知旧提示不会反复响铃。老人首页“家人的处理进度”在前台每 30 秒同步本人事件状态，点击可查看谁在何时确认关注、人工记录联系、误报或解决；处理记录不代表平台验证电话已接通。本次需先执行主动求助迁移，再升级 API、worker 和两个 APK。主动求助接口接受 BUTTON/VOICE/BLE 来源，当前新接通的是 Android 按钮；这不代表 BLE 硬件或完整语音求助已验收。关闭界面收通知、点击及跨端交互需在指定设备分别验证。
+通知栏仅显示通用 AI 提示，关注识别方式按各事件标注为规则、语义线索或 Mock。点击可冷启动或复用家属界面，先核对接收账号并经 API 重新验证授权，再直接进入对应事件处理；读取只标记已读，处理必须由家属明确提交。断网、撤权、渠道关闭、免打扰或事件已处理时，下次同步会移除旧提示，已知旧提示不会反复响铃。老人首页“家人的处理进度”在前台每 30 秒同步本人事件状态，点击可查看谁在何时确认关注、人工记录联系、误报或解决；处理记录由家属人工提交。部署时先执行迁移，再升级 API、worker 和两个 APK。主动求助接口接受屏幕按钮、明确语音和 [BLE 实体按钮](#esp32-c3-实体求助按钮) 来源。
 
 老人端首页“请家人尽快联系我”调用 `POST /v1/signal-events/help-requests`，复用同一通知/处理状态。请求按幂等键只创建一次；老人能看到待通知、家人已确认、已联系、已解决、误报或通知失败。按钮不会自动呼叫急救服务；无已授权接收人或所有通知渠道失败时保留明确失败原因，并提示改用电话或当面联系。
 
 双方在家庭设置的“我的联系方式与紧急联系”登记本人号码（E.164，如带 +86 国家区号），可单独允许号码分享、登记为紧急联系人或删除。号码加密保存；退出/移除成员时删除。长辈可在此处逐人授予或撤回关注通知、健康信息授权。管理员可邀请紧急联系人并授予处理权限。事件中的拨号、短信入口使用当前获准分享的号码，打开系统拨号/短信编辑器，由用户完成发送；不会据此标记联系成功。号码为本人声明，尚未做运营商验证。
+
+### 专用平板 kiosk
+
+老人端默认按普通应用运行。仅在专用平板，由维护人员在 Android 允许配置设备所有者的状态下安装 APK，使用已授权的 ADB 连接进行配置。以下使用 Demo 应用包名。保留维护终端连接，然后在老人端「家庭与授权设置 → 专用平板模式」确认启用。
+
+```sh
+adb shell dpm set-device-owner org.example.niannian.elder.demo/org.example.niannian.elder.TabletAdminReceiver
+```
+
+启用后，系统在重启并解锁后将念念作为默认桌面进入，界面只锁定此应用。设备未配置所有者时界面提示并保留普通运行。维护人员可退出锁定并清除念念桌面设置；该命令只恢复普通运行模式，保留设备所有者与应用数据。恢复入口要求调用者具备系统 `DUMP` 权限。
+
+```sh
+adb shell am broadcast -a org.example.niannian.elder.EXIT_TABLET_MODE -n org.example.niannian.elder.demo/org.example.niannian.elder.TabletRecoveryReceiver
+```
+
+配置原则见 [Android 专用设备](https://developer.android.com/work/dpc/dedicated-devices/cookbook#home-app) 与 [单应用锁定](https://developer.android.com/work/dpc/dedicated-devices/lock-task-mode)。
+
+### 离线待机与提醒
+
+在老人端「家庭与授权设置 → 打开念念待机页」点击唤醒，或明确开启本机语音待机后说“你好，小念”。麦克风仅在前台待机页工作，唤醒、退出和切到后台后停止。可以选择唤醒后朗读到期提醒，或在唤醒页手动朗读。播报仅取当前本人有效缓存的标题，依照静默时段和已有反馈过滤，并使用设备已安装的离线中文声音。设备没有合适声音时可查看文字提醒，在线模型不可用时界面保留离线提示。
+
+启用语音唤醒和本机中文聊天转写的老人端需要在构建时提供 [Vosk 中文轻量模型](https://alphacephei.com/vosk/models)。下载 `vosk-model-small-cn-0.22.zip`，SHA-256 为 `3af8b0e7e0f835ae9d414ce5df580237a3cfb08d586c9fbbb0f7ff29ad5b14ba`。解压后的目录命名为 `wake-cn`，内含原始模型目录、Apache-2.0 许可证和内容为 `vosk-small-cn-0.22-3af8b0e7` 的 `uuid` 文件。构建时将其父目录传给 `-PniannianWakeAssets`。普通包缺少模型时，聊天使用系统识别，待机页保留点击唤醒和离线朗读入口。
+
+前置摄像头的接近唤醒默认关闭。进入待机页后，本人可单独开启并授予 Android 摄像头权限。支持 Camera2 简单人脸检测的前置摄像头连续检测到近距离人脸约 1.2 秒后恢复正常亮度，唤醒或离开待机页即关闭摄像头。只判断框大小与置信度，画面缓冲即取即丢。设备不支持、被占用或拒绝权限时可点击唤醒。 [Android Camera2 检测模式](https://developer.android.com/reference/android/hardware/camera2/CameraMetadata#STATISTICS_FACE_DETECT_MODE_SIMPLE)
+
+### ESP32-C3 实体求助按钮
+
+将常开大按键的两端接到 ESP32-C3-DevKitM-1 的 GPIO4 与 GND。固件使用 GPIO4 内部上拉，由 USB 给开发板供电。构建并按需烧录 [PlatformIO 项目](../firmware/esp32c3_help_button/platformio.ini)。 [开发板引脚说明](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c3/esp32-c3-devkitm-1/user_guide.html)
+
+```sh
+pio run -d firmware/esp32c3_help_button
+pio run -d firmware/esp32c3_help_button -t upload
+pio device monitor -b 115200
+```
+
+演示交付中的 `niannian-esp32c3-help.bin` 是 ESP32-C3 合并镜像，烧录起始地址为 `0x0`。
+
+在未连接时长按大按键 4 秒打开 60 秒配对窗口。Android 12 或更新版本上，先登录并选择家庭，再在老人端「家庭与授权设置 → 蓝牙求助按钮」搜索。选择与串口地址尾号一致的按钮，并在系统对话框输入串口显示的一次配对码。建议在启用 kiosk 前完成配对。固件仅接受当前通过配对授权的平板。更换平板时，先关闭旧平板的按钮连接，再重新开启物理配对窗口。Android 应用绑定与老人账号、家庭关联。
+
+服务 UUID 为 `a969ba54-806f-4d1b-b763-640c13563949`，事件特征为 `a969ba55-806f-4d1b-b763-640c13563949`。特征经配对认证后发送 GATT indication，载荷为一个协议版本字节 `01` 后接 16 字节大端 UUID v4。Android 以前台连接接收事件，以该 UUID 作为现有求助接口的幂等键。断连会尝试重连，断网时可在结果提示中用同一请求重试。开发板未提供电池信息。求助与通知结果以服务端记录为准。
 
 ### 外部关注通知（默认关闭）
 
@@ -216,7 +256,7 @@ API 和 worker 同时配置 `CONTACT_ENCRYPTION_KEY`（用 `python -c "from cryp
 .\.venv\Scripts\python.exe infra/ntfy/setup_windows.py --host 192.168.1.10 --port 8443
 ```
 
-账号、主题和配置保存在被 Git 忽略且限制本机访问的 `artifacts/ntfy-runtime/private/`；手机连接信息为 `phone-connection.json`。把公开证书 `artifacts/ntfy-runtime/niannian-ntfy-ca.crt` 导入 ntfy 的“设置 → 高级 → 管理证书”，再按连接信息添加账号和订阅。发布密钥不交给手机；不同收件人须配置各自主题/只读账号。
+账号、主题和配置保存在被 Git 忽略且限制本机访问的 `artifacts/ntfy-runtime/private/`。手机连接信息为 `phone-connection.json`。在 ntfy 的“设置 → 高级 → 管理证书”中，为订阅地址导入公开服务器证书 `artifacts/ntfy-runtime/niannian-ntfy-server.crt`，再按连接信息添加只读账号和订阅。ntfy Android 会核对服务器证书指纹，重新运行配置脚本后需在手机上更新证书。后端通过 `NTFY_CA_FILE` 验证 CA `niannian-ntfy-ca.crt`，发布密钥也仅由后端使用。不同收件人须配置各自的主题和只读账号。
 
 本机启动入口为 `infra/ntfy/start_windows.ps1`，停止入口为 `infra/ntfy/stop_windows.ps1`。配置完成后可在管理员终端运行 `infra/ntfy/install_service.ps1`，安装为自动启动的 `NianNianNtfy` Windows 服务，使用 LocalService 和专属服务 SID，只获 ntfy 程序读取与私有数据目录权限；此时启停/重新配置也需管理员终端。本次本机已安装该服务，独立于开发会话运行。需要手机同网连接时运行 `infra/ntfy/allow_lan.ps1 -ServerIp <电脑地址> -Port 8443`，规则仅允许本地子网访问这个程序/端口。电脑需保持开机；IP 改变时先停止，再用新地址运行配置脚本，根 CA 与账号保留，手机同步修改服务地址。此方案不提供跨网公网地址。后端 API/worker 重启后读取新 `.env`。
 
@@ -242,7 +282,7 @@ Windows 使用 `gradlew.bat`；按需运行 `:shared:lintDebug`。APK 位于各 
 
 双端首页“选择城市”接入 [Open-Meteo 城市搜索](https://open-meteo.com/en/docs/geocoding-api)与[天气接口](https://open-meteo.com/en/docs)，需设备可访问 `geocoding-api.open-meteo.com`、`api.open-meteo.com` 的 HTTPS。首次无默认城市；手动选择按本机账户/家庭/长辈分别保存，可清除，不表示长辈实时位置。页面显示城市、摄氏温度、天气、数据时间和来源，前台每 15 分钟刷新，可手动重试；退后台隐藏天气，恢复前台重新获取，超过 3 小时的数据不展示。使用公共非商业接口，商用部署需按服务方条款配置。
 
-老人语音生活查询共用当前会话和系统 ASR/TTS：先在首页选择天气城市，再进入聊天问“今天会下雨吗”“今天几号”“今天有什么安排”。旧版本保存的城市缺少公共编号时重新选择一次；不自动按定位或城市名猜测。天气对话由后端访问上述 Open-Meteo 域名取得当天预报，需服务器也能出站 HTTPS。无城市或网络失败有明确反馈，日期和提醒查询不依赖 LLM 可用。提醒查询后说“第一项完成了”或“第一项稍后处理”，保存成功会报出结果并刷新本机提醒；具体识别范围和默认延后时间见 [AI 说明](ai.md)。本功能沿用现有表，无新增迁移。
+老人语音生活查询共用当前会话的识别与朗读。先在首页选择天气城市，再进入聊天问“今天会下雨吗”“今天几号”“今天有什么安排”。旧版本保存的城市缺少公共编号时重新选择一次；不自动按定位或城市名猜测。天气对话由后端访问上述 Open-Meteo 域名取得当天预报，需服务器也能出站 HTTPS。无城市或网络失败有明确反馈，日期和提醒查询不依赖 LLM 可用。提醒查询后说“第一项完成了”或“第一项稍后处理”，保存成功会报出结果并刷新本机提醒；具体识别范围和默认延后时间见 [AI 说明](ai.md)。本功能沿用现有表，无新增迁移。
 
 首页动态与留言页共用真实文字消息；“看到啦”提交已读回执，收到消息不自动算已读。照片通过“分享照片到家庭记忆”进入已有上传/授权流程。原声留言和视频通话仍无服务端能力：界面明确标注未接入，不模拟播放、拨通或家人回话。
 
@@ -324,6 +364,6 @@ docker compose --env-file infra/linux/.env -f infra/linux/docker-compose.yml dow
 
 沿用 API、普通 worker、PostgreSQL 和私有 S3 存储；升级前执行 Alembic 迁移。设置 APP_ENV=dev、FAMILY_VOICE_ENABLED=true、FAMILY_VOICE_WORKSPACE_ID（百炼北京业务空间）和 FAMILY_VOICE_API_KEY。模型固定 cosyvoice-v3.5-flash，客户端不配置密钥。修改业务空间不能继续使用旧空间的音色，需使用原配置清理后重新制作。未配置时录入入口明确提示制作不可用。
 
-家属双端录制 24 kHz、16-bit 单声道 WAV（10—60 秒，建议 15—20 秒），本人批准后由普通 worker 制作；READY 后本人试听并启用。老人同意云端文本处理且已有 VOICE 自授权后选择使用。Android 保留系统 ASR；Windows 本次使用文字输入，sounddevice 负责录放音、websockets 负责会话连接，系统普通声音不可用则保留文字。Windows 使用 requirements/pyproject 中声明的依赖后重新打包，验证 PortAudio DLL 随包提供。
+家属双端录制 24 kHz、16-bit 单声道 WAV（10—60 秒，建议 15—20 秒），本人批准后由普通 worker 制作；READY 后本人试听并启用。老人同意云端文本处理且已有 VOICE 自授权后选择使用。Android 沿用当前会话的识别路径；Windows 本次使用文字输入，sounddevice 负责录放音、websockets 负责会话连接，系统普通声音不可用则保留文字。Windows 使用 requirements/pyproject 中声明的依赖后重新打包，验证 PortAudio DLL 随包提供。
 
 至少两位知情测试者完成录入、代录确认、试听启用、双端选择、打断和撤回后，才能记录真实音色闭环验收通过。没有获准样本或未开通模型时，只报告代码与模拟适配器测试结果，不报告真实复刻验收成功。

@@ -4,6 +4,7 @@ from sqlalchemy import and_, or_, select
 
 from app.modules.audit import service as audit
 from app.modules.auth.service import codec
+from app.modules.consent import service as consent
 from app.modules.family import service as family
 from app.modules.memory.models import FileAsset, Memory
 from app.platform.errors import AppError
@@ -70,6 +71,28 @@ async def detail(db, actor, memory_id, request_id):
     row = await access(db, actor, memory_id)
     await audit.record(db, actor.user_id, 'MEMORY_READ', 'MEMORY', row.id, row.family_id, request_id)
     return await view(db, row)
+
+
+async def recall_prompts(db, actor, family_id, request_id):
+    subject = actor.user_id
+    member = await authorize(db, actor, family_id, subject, 'MEMORY_READ')
+    if member.role != 'ELDER':
+        return {'titles': []}
+    try:
+        await consent.explicit_scope(db, family_id, subject, subject, 'FAMILY_MEMORY')
+    except AppError as error:
+        if error.status_code in (403, 404):
+            return {'titles': []}
+        raise
+    rows = await db.scalars(select(Memory.title).where(
+        Memory.family_id == family_id, Memory.subject_user_id == subject,
+        Memory.required_consent_scope == 'FAMILY_MEMORY', Memory.type.in_(('EVENT', 'PLACE', 'PREFERENCE')),
+        Memory.verification_status == 'CONFIRMED', Memory.verified_at.is_not(None),
+        Memory.revoked_at.is_(None), Memory.deleted_at.is_(None),
+        or_(Memory.expires_at.is_(None), Memory.expires_at > utcnow()),
+    ).order_by(Memory.updated_at.desc(), Memory.id.desc()).limit(8))
+    await audit.record(db, subject, 'MEMORY_LIST_READ', 'MEMORY', family_id=family_id, request_id=request_id)
+    return {'titles': list(dict.fromkeys(rows.all()))}
 
 
 async def attachments(db, row, ids):

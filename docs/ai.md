@@ -2,14 +2,14 @@
 
 ## 当前可用范围
 
-文字会话支持可配置的 OpenAI 兼容 Chat Completions 服务（JSON 模式），默认仍为明确标记的 Mock。开发环境通过 `LLM_PROVIDER=openai_compatible`、URL、模型及密钥显式启用。已接入 DeepSeek V4.1 Flash（`deepseek-flash`），通过虚构输入的真实供应商调用及隔离库 WebSocket 两轮对话验证。Android 老人端已接入设备语音识别 → 现有 LLM → 系统中文朗读，真机语音联调尚未验证。配置见 [部署说明](deployment.md#真实-llm-文字联调)。
+文字会话支持可配置的 OpenAI 兼容 Chat Completions 服务（JSON 模式），默认仍为明确标记的 Mock。开发环境通过 `LLM_PROVIDER=openai_compatible`、URL、模型及密钥显式启用。已接入 DeepSeek V4.1 Flash（`deepseek-flash`），通过虚构输入的真实供应商调用及隔离库 WebSocket 两轮对话验证。含中文模型的 Android 老人端已在 Pixel 7 / API 35 模拟器用合成语音完成本机转写、真实 DeepSeek 回答和系统朗读，虚拟扬声器采集到实际音频。实体手机语音联调尚待验证。配置见 [部署说明](deployment.md#真实-llm-文字联调)。
 
 | 能力 | 实现入口 | 当前行为 |
 | --- | --- | --- |
 | 文字编排 | `backend/app/ai/conversation.py` | 透明 AI 身份、结构化回复校验、规则警告优先、失败兜底、授权记忆复验 |
 | LLM | `backend/app/integrations/openai_compatible.py` | DeepSeek 官方 HTTPS 服务、关闭深度思考、非流式 JSON 回复；未配置时使用 Mock |
 | Embedding | `backend/app/integrations/embedding.py` | 可启用本地 BGE 中文模型、512 维真实语义向量；离线推理、不外发记忆；未启用时为明确标记的 8 维 Mock |
-| Android ASR / TTS | `android/shared/.../conversation/AndroidConversationVoice.kt` | 系统 SpeechRecognizer 收音识别，TextToSpeech 中文朗读；依赖已安装的服务，可能联网 |
+| Android ASR / TTS | `OfflineConversationVoice.kt`、`AndroidConversationVoice.kt` | 含模型的老人端使用本机 Vosk 中文转写，普通包使用系统 SpeechRecognizer；中文朗读使用 TextToSpeech |
 | Android 基础数字人 | `android/shared/.../conversation/PersimmonCompanionOrb.kt` | Compose Canvas 2D 柿子形象；待机、听您说话、思考中、正在回答；口型随设备实际播放启停 |
 | THA3 自定义形象 | `modules/avatar`、`integrations/avatar_preprocess.py` / `tha3_renderer.py`、Android `AvatarGenerationModel` / `AvatarModel` / `CompanionAvatar` | 手机照片经千问/豆包生成立绘，服务端抠图与构图后由真实 THA3 生成四态包，下载预览并手动确认启用；也支持离线 ZIP 导入 |
 | 旧编排 ASR / TTS / Avatar 占位 | `backend/app/integrations/mock/adapters.py` | 仍为 Mock 占位，不解码/返回音频；Android 语音不调用它们 |
@@ -48,7 +48,7 @@ Mock 编排超时 8 秒，真实 LLM 默认 20 秒（`LLM_TIMEOUT_SECONDS`，上
 
 ## 会话、回顾与主动邀请
 
-WSS 保持本人文字输入；协商 pcm_v1 的客户端可接收家人音色 PCM 输出。Android 点击说话后由系统 ASR 收音，最终识别结果先匹配本地控制口令，其余以 `text.input` 提交；最终 `assistant.text` 交给系统 TTS。后端不接收原始音频，`audio.chunk`、`audio.end` 等消息名仍返回不可用。语音能力与 `llm_mode` 独立，Mock 回复也可以朗读，不能据此声称用了真实 LLM。
+WSS 保持本人文字输入；协商 pcm_v1 的客户端可接收家人音色 PCM 输出。Android 点击说话后，等麦克风就绪再提示收音。最终识别结果先匹配本地控制口令，其余以 `text.input` 提交；最终 `assistant.text` 交给系统 TTS。后端不接收原始音频，`audio.chunk`、`audio.end` 等消息名仍返回不可用。语音能力与 `llm_mode` 独立，Mock 回复也可以朗读，不能据此声称用了真实 LLM。
 
 日期、天气和当天安排通过 [conversation/daily.py](../backend/app/modules/conversation/daily.py) 的确定性查询接入同一语音/文字通道，不调用 RAG 或 LLM，真实/Mock 闲聊模式均可用。支持“今天几号／星期几／现在几点”“今天会下雨吗／需要带伞吗”“今天有什么安排”。日期由服务端时钟按设备传来的 IANA 时区计算，未传默认 Asia/Shanghai；天气只查首页手选城市，使用 Open-Meteo 当地当天预报、温度区间和最高降水概率，明确预报性质及日期。没有城市、无有效预报或查询超时均明确说明，不用当前晴天推断全天无雨。返回的 `source_labels` 在 Android 每条回答下展示实际来源。
 
@@ -60,7 +60,9 @@ WSS 保持本人文字输入；协商 pcm_v1 的客户端可接收家人音色 P
 
 识别或打字输入完整短句“再说一遍”“慢一点／说慢一点”“恢复语速”“停一下／停止”“结束聊天”时，Android 直接执行重播、设置语速、打断或结束，不交给 LLM，不计为新聊天轮次。允许首尾空白和句末句号、逗号、感叹号；问句、引语、转述和更长句子仍作为普通输入。反复说“慢一点”保持慢速，不切换回正常语速；有上一条回答时重新请求服务器再播，没有回答则只保存本次会话的语速选择。“今天少打扰我”继续由既有服务端主动陪伴设置处理。
 
-进入收音仍先打断，播放时没有后台收音；要说控制口令需先点“打断并说话”，直接点停止可立即停止。打断保留本连接已完成回答及其权限依赖，新问题开始时清除上一条重播资格，取消未完成轮次不能重播其结果；断线、结束、后台和换家庭清除临时内容。重播重新请求服务器复验记忆权限，不直接朗读缓存回答；日期、天气、提醒查询重新取数，反馈重播只核对已有结果、不重复写入。主动邀请不自动播音。语音实现遵循 Android [SpeechRecognizer](https://developer.android.com/reference/android/speech/SpeechRecognizer) 和 [TextToSpeech](https://developer.android.com/reference/android/speech/tts/TextToSpeech) 生命周期。具体协议在 [openapi.yaml](openapi.yaml)，传输与留存边界见 [security](security.md)。
+老人端首次打开应用时展示 AI 身份、能力和分项授权说明，可主动朗读或进入授权设置。每次新会话仍展示简短身份提示。有语音授权时，首次点击说话会先用设备声音朗读简短提示，随后才收音。停止、退出或撤回授权会取消等待中的音频和收音，重连或同一会话内打断后恢复说话不会再次朗读提示。
+
+进入收音仍先打断，播放时没有后台收音；要说控制口令需先点“打断并说话”，直接点停止可立即停止。打断保留本连接已完成回答及其权限依赖，新问题开始时清除上一条重播资格，取消未完成轮次不能重播其结果。断线清除本连接聊天记录，只在内存中保留本人未获得有效回复的输入，供重新编辑；重连不会自动发送。鉴权失败、结束、退到后台或切换家庭会清除此输入。重播重新请求服务器复验记忆权限，不直接朗读缓存回答；日期、天气、提醒查询重新取数，反馈重播只核对已有结果、不重复写入。主动邀请不自动播音。语音实现遵循 Android [SpeechRecognizer](https://developer.android.com/reference/android/speech/SpeechRecognizer) 和 [TextToSpeech](https://developer.android.com/reference/android/speech/tts/TextToSpeech) 生命周期。具体协议在 [openapi.yaml](openapi.yaml)，传输与留存边界见 [security](security.md)。
 
 老人首页和聊天入口共用 `ConversationPanel`，移除了聊天页固定示例回复和持续“正在听”的模拟状态。`ConversationState.companionPhase` 由本地录音、识别、请求等待、待播和实际播音派生；服务端 `LISTENING` / `SPEAKING` 不能单独让形象显示收音或动嘴。TTS `onStart` 才标记实际播音，`onDone`、`onStop`、失败、按钮打断、切后台、断线和 VOICE 撤权立即清除待播/播音标记并丢弃旧回调。ASR 自动结束收音后进入识别等待。基础口型是播放期间的开合循环，不是音素对齐或音量分析。
 
