@@ -73,6 +73,8 @@ API 根地址 `http://127.0.0.1:8000`；`/docs`、`/openapi.json` 查看当前�
 docker compose --env-file infra/linux/.env -f infra/linux/docker-compose.yml --profile monitoring up -d --build
 ```
 
+使用 HTTPS 部署时，在下方 `deploy-tls.sh` 命令前加 `COMPOSE_PROFILES=monitoring`，保留网关和回环绑定配置。
+
 `ops-monitor` 不依赖 API/数据库启动成功，只共享内部网络及专用状态卷，不持有数据库、S3 或家庭通知密钥。主机令牌文件应放在仅运维可进入的目录，挂载后须允许容器内 `niannian` 服务用户只读。阈值配置见 `infra/linux/.env.example`。非 Docker 可通过相同 `OPS_*` 环境变量指定 `OPS_API_URL`、`OPS_STATE_FILE` 后直接运行；`--once` 用于单次检查。整台主机断电或 ntfy 本身不可达时，同机进程不能保证送达：需要在独立主机运行同一监控进程，且 ntfy 位于独立可达服务。配置存在及模拟供应商测试不代表运维人员已收到真实推送。
 
 APP_ENV 从进程环境选择 dev/test/demo，应用读取 `backend/config/<环境>.env`，再加载忽略提交的根 `.env`；环境变量优先。demo 要求 demo_data=true 且 provider_mode=mock、Embedding 为 Mock；test 禁止真实外部 LLM，但允许显式启用本地 Embedding 做离线验证。填入供应商密钥不会自动启用真实 AI。
@@ -286,7 +288,7 @@ niannian-elder-demo
 
 ## Linux 服务端
 
-主机准备 Docker Engine、Compose v2、curl、openssl 或 od；用户需有 Docker 权限。在仓库根目录：
+主机准备 Docker Engine、Compose v2、curl 和 OpenSSL，运行账号须有 Docker 权限。只在受控局域网做 HTTP 演示时，从仓库根目录运行：
 
 ```bash
 bash infra/linux/deploy.sh --host <局域网IP或DNS>
@@ -296,7 +298,7 @@ bash infra/linux/deploy.sh --host <局域网IP或DNS>
 
 默认 API 为 8000、S3 为 9000；PostgreSQL 不映射主机端口，MinIO 控制台 9001 只绑定回环。端口可在该 `.env` 修改。首次部署现在同时生成联系人数据专用 Fernet 密钥；升级旧 `.env` 时需按“外部关注通知”一节补充 `CONTACT_ENCRYPTION_KEY`。
 
-Windows 与 Android 共用后端时使用 HTTPS/WSS。准备覆盖目标主机名的 PEM 完整证书链和未加密私钥，然后运行：
+Windows 与 Android 共用后端时使用 HTTPS/WSS。准备覆盖目标主机名的 PEM 完整证书链和未加密私钥，文件参数使用实际文件的绝对路径。首次部署可直接运行：
 
 ```bash
 bash infra/linux/deploy-tls.sh \
@@ -305,16 +307,20 @@ bash infra/linux/deploy-tls.sh \
   --private-key /absolute/path/private.key
 ```
 
-TLS 部署将原始 API/MinIO 端口限制到 Linux 回环，通过 nginx 暴露 `https://主机:443`、`wss://主机:443` 和照片端点 `https://主机:9443`；脚本会核对证书主机名、证书/私钥是否匹配、HTTPS 健康接口及私有桶 403。Android 和 Windows 均填写同一个 HTTPS API 地址，照片预签名地址由服务端自动返回 9443 端点。自签或私有 CA 证书只有在指定平板和 Windows 已信任该 CA 后才可使用；不要关闭 Android 证书验证或放开任意局域网明文 HTTP。
+脚本先验证证书有效期、主机名、信任链及私钥配对，首次执行时再生成权限 600 的 `infra/linux/.env`。TLS 部署把原始 API 和 MinIO 端口绑定到 Linux 回环，通过 nginx 提供 443 上的 HTTPS/WSS 和 9443 上的照片预签名地址。启动后脚本检查 HTTPS 就绪、WSS 鉴权路径和私有桶的匿名访问拒绝。更新 HTTPS 部署时再次运行同一条命令。
+
+如需在首次启动前修改端口或配置运维告警，可先运行 `bash infra/linux/deploy.sh --init-only --host api.example.test` 生成 `.env`，编辑后再执行 TLS 部署命令。
+
+Android 和 Windows 均填写同一个 HTTPS API 地址。正式联调优先使用两端系统均已信任的证书。使用私有 CA 时，向脚本加 `--ca-certificate /absolute/path/root-ca.pem`，并确认 Windows 和指定 Android 设备上的应用信任该 CA。应用发布版默认使用系统信任库。
 
 ```bash
 docker compose --env-file infra/linux/.env -f infra/linux/docker-compose.yml ps
 docker compose --env-file infra/linux/.env -f infra/linux/docker-compose.yml logs -f api worker
 # 停止服务但保留数据库/照片卷：
-docker compose --env-file infra/linux/.env -f infra/linux/docker-compose.yml down
+docker compose --env-file infra/linux/.env -f infra/linux/docker-compose.yml down --remove-orphans
 ```
 
-不要给已有数据随意执行 `down --volumes`。按需用 `bash infra/linux/smoke.sh` 检查部署状态；构建 MinIO 需要访问上游，首次构建耗时取决于网络和 CPU。
+停止时保留数据库和照片卷。HTTP 部署可用 `bash infra/linux/smoke.sh` 检查，HTTPS 部署可用 `bash infra/linux/smoke-tls.sh --host api.example.test`，私有 CA 和自定义端口参数与部署脚本一致。首次构建 MinIO 需要访问上游，耗时取决于网络和 CPU。
 
 ## 常见问题与开发检查
 
