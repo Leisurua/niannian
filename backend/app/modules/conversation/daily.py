@@ -230,6 +230,10 @@ async def publish(db, actor, conversation, prepared, text, payload, settings, re
         source='ONLINE', feedback_status='PENDING', created_at=now).on_conflict_do_nothing(constraint='uq_reminder_occurrence'))
     execution = await db.scalar(select(ReminderExecution).where(ReminderExecution.reminder_id == parent.id,
         ReminderExecution.occurrence_key == item.occurrence_key).with_for_update())
+    if status == 'LATER' and execution.feedback_status == 'LATER' and execution.next_due_at and execution.next_due_at > now:
+        scheduled = execution.next_due_at.astimezone(zone).strftime('%m月%d日%H:%M')
+        return Answer('FEEDBACK', f'“{current.title[:100]}”已安排在{scheduled}再提醒，没有重复更改。',
+            prepared.choices, prepared.sources)
     due = now + timedelta(minutes=minutes) if status == 'LATER' else None
     try:
         result = await reminders.feedback(db, actor, execution.id, ReminderFeedback(status=status, next_due_at=due),

@@ -30,3 +30,4 @@ class OfflineReminderFeedback(Input):
     feedback_at: AwareDatetime
     status: Literal['DONE', 'LATER', 'SKIPPED']
     next_due_at: AwareDatetime | None = None
+    note: str | None = Field(default=None, max_length=500)

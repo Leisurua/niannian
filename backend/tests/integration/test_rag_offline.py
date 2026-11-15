@@ -199,10 +199,13 @@ def test_offline_new_occurrence_idempotent_and_cannot_infer_delivery(system, sta
     body['status'] = status
     if status == 'LATER':
         body['next_due_at'] = (utcnow() + timedelta(minutes=10)).isoformat()
+    if status == 'SKIPPED':
+        body['note'] = '测试：当时不方便'
     path = '/v1/reminders/' + rule['id'] + '/offline-feedback'
     response = post(client, path, home[4], body, key='offline-one')
     assert response.status_code == 200, response.text
     assert response.json()['source'] == 'OFFLINE'
+    assert response.json().get('feedback_note') == body.get('note')
     assert 'triggered_at' not in response.json()
     assert post(client, path, home[4], body, key='offline-one').json() == response.json()
     assert post(client, path, home[4], body | {'status': 'SKIPPED' if status != 'SKIPPED' else 'DONE'}, key='offline-one').status_code == 409

@@ -1,6 +1,9 @@
+import asyncio
 import hashlib
 import io
-from uuid import UUID
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+from uuid import UUID, uuid5
 
 import pytest
 from app.modules.memory.file_validation import (
@@ -13,6 +16,69 @@ from pydantic import ValidationError
 
 FAMILY = UUID('0192f1e4-6ed8-7c21-a4c1-5d58db7c3001')
 SUBJECT = UUID('0192f1e4-6ed8-7c21-a4c1-5d58db7c3002')
+
+
+@pytest.mark.parametrize('content', [
+    '我喜欢每天服用降压药。', '我喜欢每天量血压。', '我年轻时患过糖尿病。',
+    '我喜欢记录胰岛素的剂量。', '我喜欢每天吃阿司匹林。',
+    '我喜欢每天服用降 压 药。', '我喜欢每天服用降压\u200b药。',
+])
+def test_chat_health_drafts_cannot_use_family_memory_permission(monkeypatch, content):
+    from app.ai.signal_candidates import extract_semantic
+    from app.modules.memory import service
+
+    text = '请把这段记忆交给家人确认：' + content
+    candidates = extract_semantic([dict(category='PREFERENCE_OR_TABOO', evidence=content,
+        subject='SELF', assertion='AFFIRMED')], conversation_id=FAMILY,
+        message_id=uuid5(FAMILY, 'turn-1'), current_text=text)
+    assert candidates
+    create = AsyncMock()
+    authorize = AsyncMock()
+    monkeypatch.setattr(service, 'create', create)
+    monkeypatch.setattr(service.consent, 'explicit_scope', authorize)
+    saved = asyncio.run(service.draft_from_turn(None, SimpleNamespace(user_id=SUBJECT),
+        SimpleNamespace(id=FAMILY, family_id=FAMILY), text, 'turn-1', candidates, None))
+    assert saved is False
+    create.assert_not_awaited()
+    authorize.assert_not_awaited()
+
+
+def test_ordinary_chat_draft_still_requires_owner_and_reviewer_grants(monkeypatch):
+    from app.ai.signal_candidates import extract_semantic
+    from app.modules.memory import service
+    from app.platform.errors import AppError
+
+    content = '我年轻时在纺织厂工作。'
+    text = '请把这段记忆交给家人确认：' + content
+    candidates = extract_semantic([dict(category='LIFE_STORY', evidence=content,
+        subject='SELF', assertion='AFFIRMED')], conversation_id=FAMILY,
+        message_id=uuid5(FAMILY, 'turn-1'), current_text=text)
+    create = AsyncMock()
+    owner_grant = AsyncMock()
+    reviewer_grant = AsyncMock()
+    monkeypatch.setattr(service, 'create', create)
+    monkeypatch.setattr(service.consent, 'explicit_scope', owner_grant)
+    monkeypatch.setattr(service, 'authorize', reviewer_grant)
+    monkeypatch.setattr(service.family, 'active_subjects', AsyncMock(return_value=[SUBJECT, FAMILY]))
+
+    def save():
+        return asyncio.run(service.draft_from_turn(None, SimpleNamespace(user_id=SUBJECT),
+            SimpleNamespace(id=FAMILY, family_id=FAMILY), text, 'turn-1', candidates, None))
+
+    assert save()
+    draft = create.call_args.args[2]
+    assert draft.content == content and draft.verification_status == 'PENDING'
+    assert draft.required_consent_scope == 'FAMILY_MEMORY'
+    assert reviewer_grant.await_count == 2
+    assert owner_grant.call_args.args[-1] == 'FAMILY_MEMORY'
+    create.reset_mock()
+    owner_grant.side_effect = AppError('PERMISSION_CONSENT_REQUIRED', '已撤回', 403)
+    assert not save()
+    create.assert_not_awaited()
+    owner_grant.side_effect = None
+    reviewer_grant.side_effect = AppError('PERMISSION_CONSENT_REQUIRED', '未授权', 403)
+    assert not save()
+    create.assert_not_awaited()
 
 
 def draft(**changes):

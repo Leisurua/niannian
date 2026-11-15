@@ -89,6 +89,7 @@ fun FamilyVoicesPanel(model: VoiceProfilesModel, family: String, user: String, m
     }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("家人声音", fontSize = 24.sp)
+        if (state.available == false) Text("当前连接的服务未开启云端音色制作。")
         Text("允许协助家人录音，声音本人必须登录授权并试听确认。只录本人单独说话，不含背景音乐；请勿朗读隐私信息。")
         Text("朗读参考：你好，我是你的家人。今天过得怎么样？记得按时吃饭，也要喝些温水。有空的时候，我们一起聊聊最近的生活。")
         members.filter { it.status == "ACTIVE" }.forEach { member ->
@@ -157,8 +158,12 @@ fun VoicePicker(model: VoiceProfilesModel, conversation: ConversationModel, fami
         dismissButton = { TextButton(onClick = { approval = null }) { Text("使用普通声音") } }) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text("当前声音：${chat.voiceName} · AI合成", fontSize = 20.sp)
-        TextButton(onClick = { expanded = !expanded; if (expanded) model.refresh(true) }) { Text(if (expanded) "收起声音选择" else "选择／试听家人声音") }
+        OutlinedButton(onClick = { expanded = !expanded; if (expanded) model.refresh(true) },
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+            Text(if (expanded) "收起声音选择" else "选择／试听家人声音", fontSize = 18.sp)
+        }
         if (expanded) {
+            if (state.available == false) Text("当前连接的服务未开启家人声音朗读，可使用念念普通声音。")
             Button(enabled = !state.busy, onClick = { previewJob?.cancel(); player.stop(); model.select(null, state.cloudAllowed) { conversation.selectVoice(null, "念念普通声音") } }) { Text("念念普通声音") }
             state.voices.filter { it.status == "ACTIVE" }.forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -193,7 +198,9 @@ fun VoicePicker(model: VoiceProfilesModel, conversation: ConversationModel, fami
             }) { Text("撤回云端朗读授权") }
             if (state.message.isNotBlank()) Text(state.message)
             if (message.isNotBlank()) Text(message)
-            if (state.voices.isEmpty()) Text("暂无已获本人授权并发布的家人音色。")
+            if (state.available == true && !state.busy && state.message.isBlank() && state.voices.isEmpty()) {
+                Text("暂无已获本人授权并发布的家人音色。")
+            }
         }
     }
 }

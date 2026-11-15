@@ -215,6 +215,11 @@ async def detail(db, actor, event_id, request_id):
     result['can_handle'] = actor.user_id != row.owner_user_id and await can_handle(db, actor, row)
     if actor.user_id == row.owner_user_id:
         result['history'] = await action_history(db, row.id)
+        if help.is_request(row) and row.status not in ('RESOLVED', 'FALSE_POSITIVE'):
+            from app.modules.notification.contacts import event_contacts
+            contacts = await event_contacts(db, actor, row, own_help=True)
+            if contacts:
+                result['contacts'] = contacts
         if row.last_action_at:
             result['actioned_at'] = iso_utc(row.last_action_at)
         if row.resolved_at:

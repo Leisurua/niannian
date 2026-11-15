@@ -170,7 +170,8 @@ async def offline_feedback(db, actor, reminder_id, body, key, settings, request_
     if parent.owner_user_id != actor.user_id or not parent.active:
         raise AppError('REMINDER_NOT_FOUND', '提醒不存在或无权反馈。', 404)
     check_version(parent, body.reminder_version)
-    idem = audit.Idempotency(key, f'offline-feedback:{parent.id}', body.model_dump(mode='json'))
+    payload = body.model_dump(mode='json', exclude={'note'} if body.note is None else None)
+    idem = audit.Idempotency(key, f'offline-feedback:{parent.id}', payload)
     previous = await idem.previous(db, actor.user_id, max(86400, settings.idempotency_seconds))
     if previous:
         return execution_view(await db.get(ReminderExecution, previous))
@@ -193,6 +194,7 @@ async def offline_feedback(db, actor, reminder_id, body, key, settings, request_
     if row.feedback_status in ('DONE', 'SKIPPED'):
         raise AppError('ETAG_MISMATCH', '提醒已有反馈，请刷新核对。', 409)
     row.feedback_status, row.feedback_at, row.next_due_at = body.status, now, body.next_due_at
+    row.feedback_note = body.note
     await audit.record(db, actor.user_id, 'REMINDER_OFFLINE_FEEDBACK', 'REMINDER_EXECUTION', row.id,
         parent.family_id, request_id, metadata=idem.metadata)
     return execution_view(row)

@@ -99,7 +99,7 @@ def test_proactive_minimum_gap_uses_elapsed_time_across_dst_fold():
 def test_baseline_combinations(utterance, category, severity):
     result = evaluate(utterance)
     assert (result.kind, result.category, result.severity) == ('SCAM_RISK', category, severity)
-    assert result.rule_version == '1.1.0'
+    assert result.rule_version == '1.2.0'
     assert 'TRANSFER' in result.blocked_actions
     assert '核实' in result.message
     assert '一定是诈骗' not in result.message
@@ -131,9 +131,9 @@ def test_invalid_rule_input(utterance):
         evaluate(utterance)
 
 
-def test_rule_ids_unique_and_baseline_contains_six_approved_combinations():
-    assert len({rule.rule_id for rule in RULES}) == 6
-    assert len({rule.category for rule in RULES}) == 6
+def test_rule_ids_and_categories_are_unique():
+    assert len({rule.rule_id for rule in RULES}) == len(RULES)
+    assert len({rule.category for rule in RULES}) == len(RULES)
 
 
 def payload(**changes):
@@ -237,9 +237,12 @@ def test_safety_survives_llm_and_tts_outage_without_sensitive_side_effects():
 
 
 def test_summary_keeps_only_curated_themes_and_never_echoes_raw_input():
-    from app.modules.conversation.summary import TOPICS, controlled_text, topic_for
+    from app.modules.conversation.summary import LEGACY_TOPICS, TOPICS, controlled_text, topic_for
     private = '虚构私密文本，不应出现在摘要里'
     assert topic_for(private) in TOPICS and private not in topic_for(private)
     assert controlled_text(private) is None
     assert controlled_text('\n'.join(TOPICS)) is None
     assert controlled_text('\n'.join(TOPICS[:2])) == '\n'.join(TOPICS[:2])
+    assert controlled_text(LEGACY_TOPICS[0]) == LEGACY_TOPICS[0]
+    assert topic_for('今天会下雨吗') == TOPICS[3]
+    assert 'Mock' not in TOPICS[3]

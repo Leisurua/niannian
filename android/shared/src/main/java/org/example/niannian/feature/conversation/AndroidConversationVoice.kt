@@ -95,10 +95,10 @@ class AndroidConversationVoice(context: Context, private val offlineOnly: Boolea
         val stamp = epoch
         val utterance = stamp.toString()
         failedSpeech = failed
-        fun fail() {
+        fun fail(message: String = "朗读暂时不可用，请查看文字；可在系统设置中检查中文语音引擎。") {
             if (stamp != epoch || closed) return
             stop()
-            failed("朗读暂时不可用，请查看文字；可在系统设置中检查中文语音引擎。")
+            failed(message)
         }
         pendingSpeech = {
             if (stamp == epoch && !closed) {
@@ -118,11 +118,15 @@ class AndroidConversationVoice(context: Context, private val offlineOnly: Boolea
                             @Deprecated("Android callback")
                             override fun onError(utteranceId: String?) = deliver(utteranceId) { fail() }
                             override fun onError(utteranceId: String?, errorCode: Int) = deliver(utteranceId) { fail() }
-                            override fun onStop(utteranceId: String?, interrupted: Boolean) = deliver(utteranceId) { stop(); finished() }
+                            override fun onStop(utteranceId: String?, interrupted: Boolean) = deliver(utteranceId) {
+                                fail("朗读已被中断，语音交流已暂停。需要继续时请点说话。")
+                            }
                         })
                         val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
                             .setAudioAttributes(attributes).setOnAudioFocusChangeListener({ change ->
-                                if (change < 0 && stamp == epoch) { stop(); finished() }
+                                if (change < 0 && stamp == epoch) {
+                                    fail("其他应用正在使用音频，语音交流已暂停。需要继续时请点说话。")
+                                }
                             }, main).build()
                         focus = request
                         if (audio.requestAudioFocus(request) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
@@ -168,7 +172,30 @@ class AndroidConversationVoice(context: Context, private val offlineOnly: Boolea
     }
 
     override fun startPcm(started: () -> Unit, finished: () -> Unit, failed: (String) -> Unit) {
-        stop(); pcm.start(started, finished, failed)
+        stop()
+        if (closed) return
+        val stamp = epoch
+        fun fail(message: String) {
+            if (stamp != epoch || closed) return
+            stop()
+            failed(message)
+        }
+        try {
+            val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                .setAudioAttributes(attributes).setOnAudioFocusChangeListener({ change ->
+                    if (change < 0) fail("其他应用正在使用音频，语音交流已暂停。需要继续时请点说话。")
+                }, main).build()
+            focus = request
+            if (audio.requestAudioFocus(request) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                fail("暂时无法使用音频，语音交流已暂停。")
+                return
+            }
+            pcm.start({ if (stamp == epoch && !closed) started() }, {
+                if (stamp == epoch && !closed) { stop(); finished() }
+            }, ::fail)
+        } catch (_: Exception) {
+            fail("声音播放不可用，请查看文字。")
+        }
     }
     override fun pcmChunk(bytes: ByteArray) = pcm.chunk(bytes)
     override fun endPcm() = pcm.finish()

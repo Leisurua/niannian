@@ -73,6 +73,16 @@ fun NotificationPanel(model: NotificationModel, family: String, user: String, su
                     Text(event.helpMessage, fontSize = 20.sp)
                     event.deliveries.forEach { Text(it) }
                     Text("电话回执见上方；是否联系到本人仍需核实，家属人工联系记录见下方。")
+                    if (elder) event.contacts.forEach { contact ->
+                        OutlinedButton(enabled = !state.busy, onClick = {
+                            model.dialHelpContact(event.id, contact.phone) { phone ->
+                                contactNotice = try {
+                                    context.startActivity(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", phone, null)))
+                                    "已打开系统拨号，请在拨号页确认。通话结果请查看系统电话。"
+                                } catch (_: Exception) { "此设备没有可用的拨号应用。" }
+                            }
+                        }) { Text("打电话给 ${contact.name}", fontSize = 20.sp) }
+                    }
                 }
                 Text("处理状态：${signalStatusLabel(event.status)}", fontSize = 20.sp)
                 if (event.actionedAt.isNotBlank()) Text("最近处理：${event.actionedAt}")

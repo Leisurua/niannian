@@ -360,6 +360,8 @@ docker compose --env-file infra/linux/.env -f infra/linux/docker-compose.yml dow
 
 ## 家人音色联调
 
+Android 家属端在「守护」首页或底部「家庭设置」打开「家人声音 · 音色克隆」。老人端登录并加入家庭后，在底部「聊聊」打开「选择／试听家人声音」。如果页面提示当前服务未开启，检查手机连接的后端环境和音色配置。
+
 没有配置百炼凭据时，在项目根目录的本机终端运行 `.\.venv\Scripts\python.exe scripts/configure_family_voice.py`，按提示输入北京地域业务空间 ID 和 API Key（隐藏输入）。脚本先查询音色列表验证鉴权，成功后才保存本机 `.env` 并开启 FAMILY_VOICE_ENABLED；失败不修改配置。`--check` 仅检查已有配置。不要通过聊天、命令行参数或 Git 提交密钥。配置后以 APP_ENV=dev 重启 API 和普通 worker。此检查只验证音色管理鉴权，不代表合成模型权限与真实音色效果已通过验收。获取凭据见[百炼官方说明](https://help.aliyun.com/zh/model-studio/get-api-key/)。
 
 沿用 API、普通 worker、PostgreSQL 和私有 S3 存储；升级前执行 Alembic 迁移。设置 APP_ENV=dev、FAMILY_VOICE_ENABLED=true、FAMILY_VOICE_WORKSPACE_ID（百炼北京业务空间）和 FAMILY_VOICE_API_KEY。模型固定 cosyvoice-v3.5-flash，客户端不配置密钥。修改业务空间不能继续使用旧空间的音色，需使用原配置清理后重新制作。未配置时录入入口明确提示制作不可用。

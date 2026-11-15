@@ -1,4 +1,4 @@
-"""W6 controlled Mock recap. Only curated themes, never transcripts, are stored."""
+"""Controlled recap. Only curated themes, never transcripts, are stored."""
 from datetime import timedelta
 
 from sqlalchemy import select, update
@@ -14,9 +14,10 @@ from app.platform.identifiers import utcnow
 TOPICS = (
     '这次交流谈到了日常生活。', '这次交流了解了念念的 AI 身份与能力边界。',
     '这次交流询问了家庭记忆；内容以当前授权和已确认记录为准。',
-    '这次交流询问了天气或日程；Mock 不提供真实天气或执行结果。',
+    '这次交流询问了天气或日程；详情以相应数据来源为准。',
     '这次交流提到了需要核实的问题，可主动联系身边的人。',
 )
+LEGACY_TOPICS = ('这次交流询问了天气或日程；Mock 不提供真实天气或执行结果。',)
 
 
 def topic_for(text):
@@ -35,13 +36,13 @@ def controlled_text(value):
     if not value or len(value) > 1000:
         return None
     lines = value.split('\n')
-    if not 1 <= len(lines) <= 4 or len(set(lines)) != len(lines) or any(line not in TOPICS for line in lines):
+    if not 1 <= len(lines) <= 4 or len(set(lines)) != len(lines) or any(line not in TOPICS + LEGACY_TOPICS for line in lines):
         return None
     return '\n'.join(lines)
 
 
 async def eligible(db, row):
-    if (row.deleted_at or row.status == 'DELETED' or row.provider_metadata.get('provider') != 'mock'
+    if (row.deleted_at or row.status == 'DELETED'
             or row.summary_text and row.summary_retention_until is None
             or row.summary_retention_until and row.summary_retention_until <= utcnow()):
         return None
@@ -75,7 +76,9 @@ async def add_topic(db, row, topic):
     if row.summary_retention_until is None:
         row.summary_retention_until = min(now + timedelta(hours=24), grant.expires_at or now + timedelta(hours=24))
     previous = controlled_text(row.summary_text) if row.summary_status in ('PENDING', 'READY') else None
-    lines = list(dict.fromkeys((previous.split('\n') if previous else []) + [topic]))[-4:]
+    previous_lines = previous.split('\n') if previous else []
+    previous_lines = [TOPICS[3] if line in LEGACY_TOPICS else line for line in previous_lines]
+    lines = list(dict.fromkeys(previous_lines + [topic]))[-4:]
     row.summary_text = '\n'.join(lines)
     row.summary_status = 'PENDING'
     row.summary_version += 1

@@ -86,7 +86,10 @@ def test_standing_grant_two_sessions_reason_audit_and_revoke(system):
     assert all(read(client, cid, home[4], None).json()['summary'] for cid in ids)
 
 
-def test_summary_denial_preserves_basic_conversation_and_never_stores_raw_text(system):
+@pytest.mark.parametrize('provider', ['mock', 'openai_compatible'])
+def test_summary_denial_preserves_basic_conversation_and_never_stores_raw_text(system, monkeypatch, provider):
+    from app.ai.conversation import MockConversationLLM
+    monkeypatch.setattr(MockConversationLLM, 'provider', provider, raising=False)
     client, engine, factory, _ = system
     home = household(client)
     grant(client, home, 'CONVERSATION_SUMMARY')
@@ -99,12 +102,17 @@ def test_summary_denial_preserves_basic_conversation_and_never_stores_raw_text(s
 
 
 @pytest.mark.parametrize('change', ['self_revoke', 'reader_expiry', 'owner_membership', 'reader_membership', 'deleted', 'deleted_state', 'retention', 'other_family'])
-def test_summary_current_permissions_and_resource_states(system, change):
+@pytest.mark.parametrize('provider', ['mock', 'openai_compatible'])
+def test_summary_current_permissions_and_resource_states(system, monkeypatch, change, provider):
+    from app.ai.conversation import MockConversationLLM
+    monkeypatch.setattr(MockConversationLLM, 'provider', provider, raising=False)
     client, engine, factory, _ = system
     home = household(client)
     own = self_grant(client, home)
     sharing = grant(client, home, 'CONVERSATION_SUMMARY')
     cid = converse(client, home)
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT provider_metadata->>'provider' FROM conversation WHERE id=:id"), {'id': cid}).scalar() == provider
     drain(factory)
     assert read(client, cid, home[2]).json()['summary']
     headers = home[2]
@@ -164,6 +172,27 @@ def test_empty_failure_no_raw_fallback_dead_task_and_old_version_fence(system):
     asyncio.run(maintenance())
     result = read(client, cid2, home[4], None).json()
     assert result['summary_status'] == 'FAILED' and result['summary'] is None
+
+
+def test_legacy_weather_recap_keeps_one_theme_when_updated(system):
+    client, engine, factory, _ = system
+    home = household(client)
+    self_grant(client, home)
+    cid = converse(client, home)
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE conversation SET summary_text=:value, summary_status='READY' WHERE id=:id"),
+            {'value': summary.LEGACY_TOPICS[0], 'id': cid})
+
+    async def update_topic():
+        async with factory() as db:
+            row = await db.get(Conversation, UUID(cid))
+            await summary.add_topic(db, row, summary.TOPICS[3])
+            await summary.request(db, row)
+            await db.commit()
+
+    asyncio.run(update_topic())
+    drain(factory)
+    assert read(client, cid, home[4], None).json()['summary'] == summary.TOPICS[3]
 
 
 def preferences(client, home):

@@ -52,7 +52,7 @@ val LocalConversationVoiceFactory = staticCompositionLocalOf<(Context) -> Conver
 
 @Composable
 fun ConversationPanel(model: ConversationModel, familyId: String, userId: String, unavailable: Boolean,
-    startWithVoice: Boolean = false) {
+    startWithVoice: Boolean = false, handsFree: Boolean = false, onClose: (() -> Unit)? = null) {
     val state by model.state.collectAsState()
     val owner = LocalLifecycleOwner.current
     val context = LocalContext.current
@@ -67,20 +67,20 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
     val voice = remember(context, voiceFactory) { voiceFactory(context) }
     var draft by remember(familyId, userId) { mutableStateOf("") }
     var permissionSession by remember(familyId, userId) { mutableStateOf<String?>(null) }
-    var pendingVoiceEntry by remember(familyId, userId) { mutableStateOf(startWithVoice) }
+    var pendingVoiceEntry by remember(familyId, userId) { mutableStateOf(startWithVoice || handsFree) }
     val microphone = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val requestedSession = permissionSession
         permissionSession = null
         if (requestedSession != null && model.state.value.id == requestedSession && model.state.value.family == familyId
             && model.state.value.user == userId && owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
-            if (granted) model.voiceEntry(announceIdentity = true) else model.voicePermissionDenied()
+            if (granted) model.voiceEntry(announceIdentity = true, handsFree = handsFree) else model.voicePermissionDenied()
         }
     }
     val chatScroll = rememberScrollState()
     fun requestVoice() {
         if (!model.state.value.connected || unavailable || permissionSession != null) return
         if (!model.state.value.voiceAllowed || context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            model.voiceEntry(announceIdentity = true)
+            model.voiceEntry(announceIdentity = true, handsFree = handsFree)
         } else {
             model.interrupt()
             permissionSession = model.state.value.id
@@ -94,7 +94,12 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
         }
     }
     LaunchedEffect(state.messages) { chatScroll.animateScrollTo(chatScroll.maxValue) }
-    LaunchedEffect(familyId, userId) { model.bind(familyId, userId); updateWeatherCity() }
+    LaunchedEffect(familyId, userId) {
+        model.bind(familyId, userId)
+        updateWeatherCity()
+        if (handsFree && !unavailable) model.start()
+    }
+    LaunchedEffect(state.recapId) { if (handsFree && state.recapId.isNotEmpty()) onClose?.invoke() }
     DisposableEffect(weatherPrefs, weatherProfile, model) {
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (key == weatherProfile) updateWeatherCity()
@@ -118,7 +123,7 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
     Card(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("念念 AI 陪伴", fontSize = 26.sp)
-            Text("需要家人帮助时，点说话并说“我要向家人求助”。发送和处理结果以实际记录为准。", fontSize = 18.sp)
+            if (onClose != null) Control("返回", true, onClose)
             val phase = state.companionPhase
             val canSpeak = state.connected && !unavailable && permissionSession == null
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -152,6 +157,9 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
                     modifier = Modifier.weight(1f).heightIn(min = 56.dp)) { Text("停止", fontSize = 20.sp) }
             }
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                org.example.niannian.feature.voice.LocalVoiceProfiles.current?.let {
+                    org.example.niannian.feature.voice.VoicePicker(it, model, familyId, userId)
+                }
                 if (state.proactiveInvitationId.isNotBlank()) {
                     Text(state.proactiveInvitationText, fontSize = 22.sp,
                         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
@@ -165,12 +173,12 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
                     "mock" -> "闲聊为 Mock 演示 · 日期、天气和提醒查询使用实际数据"
                     else -> "连接后可说话或打字"
                 }, color = MaterialTheme.colorScheme.primary)
-                org.example.niannian.feature.voice.LocalVoiceProfiles.current?.let {
-                    org.example.niannian.feature.voice.VoicePicker(it, model, familyId, userId)
-                }
+                Text("需要家人帮助时，点说话并说“我要向家人求助”。发送和处理结果以实际记录为准。", fontSize = 18.sp)
                 Text("我是 AI，不是真实家人。会话回顾需要本人明确授权；不会自动联系家人。", fontSize = 18.sp)
                 Text("可以问“今天几号”“今天会下雨吗”“今天有什么安排”，再说“第一项完成了”或“第一项稍后处理”。天气使用首页选择的城市。", fontSize = 18.sp)
-                Text("点击说话后可说“再说一遍”“慢一点”“恢复语速”“停一下”或“结束聊天”。播放时不收音，请先点“打断并说话”；也可以直接点停止。", fontSize = 18.sp)
+                Text(if (handsFree) "回答结束后可继续说话或说“结束聊天”。播报时可说“停一下”；回答本身含这个口令时，请点停止。"
+                    else "点击说话后可说“再说一遍”“慢一点”“恢复语速”“停一下”或“结束聊天”。播放时可点“打断并说话”或停止。", fontSize = 18.sp)
+                if (state.llmMode == "real") Text("想让家人核对一段往事，可以说“请把这段记忆交给家人确认：”再说一句自己的往事或偏好。", fontSize = 18.sp)
                 Text("已内置中文模型时，声音在本机识别。系统识别和朗读服务可能联网。应用不保存录音；控制口令直接执行，其他文字用于查询或 AI 对话。请勿说出密码或验证码。", fontSize = 18.sp)
                 Column(Modifier.fillMaxWidth().heightIn(max = 360.dp).verticalScroll(chatScroll),
                     verticalArrangement = Arrangement.spacedBy(12.dp)) {

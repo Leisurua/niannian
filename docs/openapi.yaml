@@ -4505,6 +4505,9 @@ components:
           - DONE
           - LATER
           - SKIPPED
+        note:
+          type: string
+          maxLength: 500
         next_due_at:
           $ref: '#/components/schemas/Timestamp'
     ReminderFeedbackRequest:

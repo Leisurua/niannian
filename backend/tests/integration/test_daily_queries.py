@@ -62,13 +62,18 @@ def test_voice_reminder_done_later_and_worker_use_same_persistent_execution(syst
         ws.send_json(ws_frame(cid, 'repeat', 8))
         assert ws.receive_json()['payload']['text'] == later['text']
         assert ws.receive_json()['payload']['state'] == 'IDLE'
+        with engine.connect() as connection:
+            first_due = connection.execute(text("SELECT next_due_at FROM reminder_execution WHERE feedback_status='LATER'")).scalar_one()
+        repeated_later = ask(ws, cid, 9, '第二项二十分钟后再提醒我', timezone='UTC')
+        assert '没有重复更改' in repeated_later['text'] and not repeated_later.get('reminders_changed')
     with engine.connect() as connection:
         rows = connection.execute(text('SELECT feedback_status,next_due_at FROM reminder_execution ORDER BY scheduled_at')).all()
         assert len(rows) == 2 and [r[0] for r in rows] == ['DONE', 'LATER']
         later_time = rows[1][1]
+        assert later_time == first_due
         assert 1190 < (later_time - now).total_seconds() < 1230
         assert connection.execute(text("SELECT count(*) FROM audit_log WHERE action='REMINDER_FEEDBACK'")).scalar() == 2
-        assert connection.execute(text('SELECT count(*) FROM interaction_metric')).scalar() == 5
+        assert connection.execute(text('SELECT count(*) FROM interaction_metric')).scalar() == 6
         assert connection.execute(text('SELECT count(*) FROM interaction_metric WHERE simulated')).scalar() == 0
     async def run():
         async with factory() as db:

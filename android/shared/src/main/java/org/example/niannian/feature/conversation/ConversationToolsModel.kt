@@ -87,7 +87,7 @@ class ConversationToolsModel(private val gateway: ConversationToolsGateway, priv
         if (stamp != generation) return@action
         val content = if (result.optString("summary_status") == "READY" && !result.isNull("summary")) result.optString("summary") else ""
         require(content.length <= 1000)
-        current.value = current.value.copy(summary = content, message = if (content.isEmpty()) "这次还没有可回顾的摘要；可能正在生成、已过期或尚未授权。" else "Mock · 这是本次会话摘要。访问已记录；不会展示逐字稿。")
+        current.value = current.value.copy(summary = content, message = if (content.isEmpty()) "这次还没有可回顾的摘要；可能正在生成、已过期或尚未授权。" else "这是本次会话的固定主题回顾。访问已记录；不会展示逐字稿。")
         expiry?.cancel()
         expiry = tasks.launch { delay(5000); if (stamp == generation) current.value = current.value.copy(summary = "",
             message = "摘要已隐藏。再次查看会重新检查当前授权并记录访问。") }

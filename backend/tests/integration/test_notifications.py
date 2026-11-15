@@ -298,7 +298,11 @@ def test_summary_and_notification_grants_are_independent(system, scope):
         assert client.get('/v1/conversations/' + cid, headers={**home[2],'X-Access-Reason':'FAMILY_CHECK_IN'}).status_code == 404
 
 
-def test_wss_to_inapp_minimal_event_and_idempotent_read(system):
+@pytest.mark.parametrize(('utterance', 'category'), [
+    (UTTERANCE, 'VERIFICATION_CODE_AND_SECRECY'),
+    ('有人冒充我女儿。还让我保密。', 'IMPERSONATION_AND_SECRECY'),
+])
+def test_wss_to_inapp_minimal_event_and_idempotent_read(system, utterance, category):
     client, engine, factory, _ = system
     home = household(client)
     grant(client, home, 'NOTIFICATION_TO_FAMILY')
@@ -306,7 +310,7 @@ def test_wss_to_inapp_minimal_event_and_idempotent_read(system):
     cid = start(client, home)
     with client.websocket_connect('/v1/ws/conversations/' + cid, headers=home[4]) as ws:
         handshake(ws, cid)
-        ws.send_json(ws_frame(cid, 'text.input', 2, {'text': UTTERANCE}))
+        ws.send_json(ws_frame(cid, 'text.input', 2, {'text': utterance}))
         frames = [ws.receive_json() for _ in range(5)]
         assert [f['type'] for f in frames] == ['assistant.state','warning','signal.created','assistant.text','assistant.state']
         event_id = frames[2]['payload']['signal_event_id']
@@ -316,11 +320,11 @@ def test_wss_to_inapp_minimal_event_and_idempotent_read(system):
     assert inbox.headers['cache-control'] == 'no-store'
     item, = inbox.json()['items']
     assert item['status'] == 'SENT' and item['signal_event_id'] == event_id
-    assert 'Mock' not in item['summary'] and UTTERANCE not in str(item)
+    assert 'Mock' not in item['summary'] and utterance not in str(item)
     assert item['provider'] == 'in_app' and item['simulated'] is False
     assert client.get('/v1/signal-events/' + event_id, headers=home[2]).json()['recognition_mode'] == 'RULE'
     detail = client.get('/v1/signal-events/' + event_id, headers=home[2])
-    assert detail.json()['reason']['category'] == 'VERIFICATION_CODE_AND_SECRECY'
+    assert detail.json()['reason']['category'] == category
     assert detail.json()['status'] == 'NOTIFIED'
     assert 'confidence' not in detail.json() and 'source_message_id' not in detail.json()
     before = client.get('/v1/notifications/' + item['id'], headers=home[2]).json()
@@ -338,10 +342,17 @@ def test_wss_to_inapp_minimal_event_and_idempotent_read(system):
         assert conn.execute(text('SELECT source_message_id FROM signal_event')).scalar() is None
 
 
-def test_elder_help_button_progress_idempotency_and_family_handling(system):
+def test_elder_help_button_progress_idempotency_and_family_handling(system, monkeypatch):
+    from cryptography.fernet import Fernet
+    from app.platform.config import get_settings
+    monkeypatch.setenv('CONTACT_ENCRYPTION_KEY', Fernet.generate_key().decode())
+    get_settings.cache_clear()
     client, engine, factory, _ = system
     home = household(client)
-    grant(client, home, 'NOTIFICATION_TO_FAMILY')
+    grant_id = grant(client, home, 'NOTIFICATION_TO_FAMILY')
+    contact = dict(phone='+12025550101', share_phone=True, emergency=True)
+    saved = client.put(f'/v1/families/{home[0]}/my-contact', headers={**home[2], 'If-Match': '0'}, json=contact)
+    assert saved.status_code == 200, saved.text
     pref(client, home)
     path = '/v1/signal-events/help-requests'
     body = {'family_id': home[0], 'source': 'BUTTON', 'kind': 'CONTACT_FAMILY'}
@@ -362,6 +373,7 @@ def test_elder_help_button_progress_idempotency_and_family_handling(system):
     drain(factory)
     owner = client.get('/v1/signal-events/' + event_id, headers=home[4]).json()
     assert owner['status'] == 'NOTIFIED' and owner['can_handle'] is False
+    assert owner['contacts'][0]['phone'] == contact['phone']
     family_detail = client.get('/v1/signal-events/' + event_id, headers=home[2]).json()
     assert family_detail['can_handle'] is True and family_detail['recommended_action'] == 'CONTACT_FAMILY_NOW'
     handled = post(client, '/v1/signal-events/' + event_id + '/actions', home[2],
@@ -372,6 +384,8 @@ def test_elder_help_button_progress_idempotency_and_family_handling(system):
     with engine.connect() as conn:
         assert conn.execute(text("SELECT count(*) FROM signal_event WHERE trigger_category='EXPLICIT_HELP_BUTTON'")).scalar() == 1
         assert conn.execute(text("SELECT count(*) FROM audit_log WHERE action='HELP_REQUESTED'")).scalar() == 1
+    post(client, '/v1/consents/' + grant_id + '/revoke', home[4])
+    assert 'contacts' not in client.get('/v1/signal-events/' + event_id, headers=home[4]).json()
 
 
 def test_elder_help_without_authorized_recipient_records_failure(system):

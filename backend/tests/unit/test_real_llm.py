@@ -10,6 +10,7 @@ import pytest
 from app.ai.conversation import AIOrchestrator, UNAVAILABLE, configured_orchestrator
 from app.integrations.openai_compatible import OpenAICompatibleLLM
 from app.modules.conversation import api
+from app.modules.safety.rules import ACTION_REFUSAL, SCAM_ADVICE
 from app.platform.config import Settings
 from app.platform.errors import AppError
 
@@ -30,9 +31,9 @@ def response(value=None, finish="stop"):
         "message": {"content": json.dumps(output() if value is None else value)}}]})
 
 
-def turn(llm, **kwargs):
+def turn(llm, *, text="我喜欢种花", **kwargs):
     return asyncio.run(AIOrchestrator(llm=llm).handle(
-        request_id="fictional-request", conversation_id=uuid4(), text="我喜欢种花", **kwargs))
+        request_id="fictional-request", conversation_id=uuid4(), text=text, **kwargs))
 
 
 def test_real_json_roundtrip_and_short_context():
@@ -124,6 +125,40 @@ def test_deterministic_safety_does_not_call_real_provider():
     result = asyncio.run(AIOrchestrator(llm=adapter(forbidden)).handle(
         request_id="safety", conversation_id=uuid4(), text="救命"))
     assert result.avatar_state.value == "WARNING"
+
+
+@pytest.mark.parametrize("text", [
+    "念念，请帮我转账。", "请帮我把验证码发给他。", "能不能帮我打开陌生链接？",
+])
+def test_sensitive_delegation_is_refused_without_provider_or_family_event(text):
+    def forbidden(_):
+        pytest.fail("Refusal must precede external requests")
+
+    result = turn(adapter(forbidden), text=text)
+    assert result.assistant_text == ACTION_REFUSAL
+    assert result.avatar_state.value == "WARNING"
+    assert result.signal_candidates == ()
+
+
+def test_grounded_scam_evidence_gives_local_advice_without_family_event():
+    text = "对方让我把银行卡背面的三位数字念给他。"
+    result = turn(adapter(lambda _: response(output(scam_evidence=text))), text=text)
+    assert result.assistant_text == SCAM_ADVICE
+    assert result.avatar_state.value == "WARNING"
+    assert result.signal_candidates == ()
+    assert text not in str(result)
+
+
+@pytest.mark.parametrize(("text", "evidence"), [
+    ("对方让我把银行卡背面的三位数字念给他。", "他让我把钱转去安全账户。"),
+    ("如果对方让我把卡背面的数字念给他，该怎么办？", "对方让我把卡背面的数字念给他"),
+    ("对方让我别念卡背面的数字。", "对方让我别念卡背面的数字。"),
+    ("这是防诈骗宣传，遇到让你转账并保密的人要小心。", "这是防诈骗宣传，遇到让你转账并保密的人要小心。"),
+])
+def test_ungrounded_scam_evidence_does_not_change_reply_or_notify(text, evidence):
+    result = turn(adapter(lambda _: response(output(scam_evidence=evidence))), text=text)
+    assert result.assistant_text == output()["reply"]
+    assert result.signal_candidates == ()
 
 
 def test_explicit_configuration_keeps_demo_auth_independent():
