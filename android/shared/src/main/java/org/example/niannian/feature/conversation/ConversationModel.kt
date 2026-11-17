@@ -54,6 +54,8 @@ enum class CompanionPhase(val label: String) {
     IDLE("待机 · 念念在这里"), LISTENING("听您说话"), THINKING("思考中"), SPEAKING("正在回答")
 }
 
+internal const val CONVERSATION_IDENTITY = "您好，我是念念 AI。"
+
 class ConversationModel(private val gateway: ConversationGateway, private val scope: CoroutineScope? = null) : ViewModel() {
     private val current = MutableStateFlow(ConversationState())
     val state = current.asStateFlow()
@@ -74,6 +76,7 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
     private var interrupted = false
     private val earlyFrames = mutableListOf<String>()
     private var weatherCityId: Int? = null
+    private var introducedSessionId = ""
     private val tasks get() = scope ?: viewModelScope
 
     fun attachVoice(device: ConversationVoice) { stopVoice(); voice?.close(); voice = device }
@@ -105,6 +108,7 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
         interrupted = false
         earlyFrames.clear()
         weatherCityId = null
+        introducedSessionId = ""
         current.value = ConversationState()
     }
 
@@ -169,10 +173,12 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
         earlyFrames.clear()
         socket?.close()
         socket = null
+        val accessDenied = code in listOf(4401, 4403)
         current.value = current.value.copy(connected = false, busy = false, reply = "", messages = emptyList(),
-            retryText = "", llmMode = "", voiceAllowed = false, voiceEnabled = false,
-            state = if (code in listOf(4401, 4403)) "ERROR" else "OFFLINE",
-            message = if (code in listOf(4401, 4403)) "无法访问此会话，请检查登录和家庭资格。"
+            retryText = if (accessDenied) "" else current.value.retryText,
+            llmMode = "", voiceAllowed = false, voiceEnabled = false,
+            state = if (accessDenied) "ERROR" else "OFFLINE",
+            message = if (accessDenied) "无法访问此会话，请检查登录和家庭资格。"
                 else "连接已断开。本次输入不会自动重发，请重新连接。")
     }
 
@@ -226,7 +232,12 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
                         current.value.speaking -> "SPEAKING"
                         else -> value
                     }, busy = value == "THINKING" || (value == "SPEAKING" && current.value.busy))
-                    if (!current.value.busy) deadline?.cancel()
+                    if (!current.value.busy) {
+                        deadline?.cancel()
+                        if (current.value.reply.isNotEmpty() && current.value.message.isEmpty()) {
+                            current.value = current.value.copy(retryText = "")
+                        }
+                    }
                 }
                 "assistant.text" -> {
                     val text = payload.getString("text")
@@ -356,11 +367,12 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
             .put("speech_rate", if (current.value.slowSpeech) 0.8 else 1.0)
         weatherCityId?.let { payload.put("weather_city_id", it) }
         if (invitationId != null) payload.put("proactive_invitation_id", invitationId).put("proactive_response", invitationResponse)
+        current.value = current.value.copy(retryText = if (invitationId == null) text else "")
         if (!send("text.input", payload)) return false
         replyFloor = clientSequence
         interrupted = false
         current.value = current.value.copy(busy = true, state = "THINKING", reply = "", message = "",
-            retryText = text, messages = (current.value.messages + ChatMessage(true, text)).takeLast(20))
+            messages = (current.value.messages + ChatMessage(true, text)).takeLast(20))
         val stamp = generation
         deadline?.cancel()
         deadline = tasks.launch { delay(25000); if (stamp == generation && current.value.busy) disconnected(0) }
@@ -371,6 +383,7 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
         stopVoice()
         deadline?.cancel()
         interrupted = true
+        current.value = current.value.copy(retryText = "")
         if (send("interrupt")) {
             replyFloor = clientSequence
             current.value = current.value.copy(busy = false, state = "IDLE", message = "已停止。可以重新说话或打字。")
@@ -397,20 +410,39 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
             current.value = current.value.copy(slow = !current.value.slow)
         }
     }
-    fun voiceEntry() {
+    fun voiceEntry(announceIdentity: Boolean = false) {
         if (!current.value.connected) return
         if (!current.value.voiceAllowed) return voicePermissionDenied("请先在“家庭与授权设置 → 用于我与念念的交流”中允许语音处理，或继续打字。")
         val device = voice ?: return voicePermissionDenied("设备语音服务未就绪，您可以继续打字。")
         interrupt()
         if (!current.value.connected) return
+        val id = current.value.id
+        if (announceIdentity && introducedSessionId != id) {
+            introducedSessionId = id
+            speak(CONVERSATION_IDENTITY) { startListening(device) }
+        } else startListening(device)
+    }
+
+    private fun startListening(device: ConversationVoice) {
         val stamp = voiceGeneration
-        current.value = current.value.copy(recording = true, state = "LISTENING", voiceEnabled = true,
-            message = "请说话，说完可点“说完了”。")
+        current.value = current.value.copy(recognizing = true, state = "THINKING", voiceEnabled = true,
+            message = "正在准备麦克风…")
         voiceDeadline = tasks.launch {
-            delay(30000)
-            if (stamp == voiceGeneration && current.value.recording) finishListening()
+            delay(15000)
+            if (stamp == voiceGeneration) voiceFailure("麦克风准备超时，请重试或继续打字。")
         }
         device.listen(
+            ready = {
+                if (stamp == voiceGeneration && !current.value.recording) {
+                    current.value = current.value.copy(recording = true, recognizing = false, state = "LISTENING",
+                        message = "请说话，说完可点“说完了”。")
+                    voiceDeadline?.cancel()
+                    voiceDeadline = tasks.launch {
+                        delay(30000)
+                        if (stamp == voiceGeneration && current.value.recording) finishListening()
+                    }
+                }
+            },
             partial = { text -> if (stamp == voiceGeneration && current.value.recording) {
                 current.value = current.value.copy(partialTranscript = text.take(2000))
             } },
@@ -450,15 +482,24 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
         current.value = current.value.copy(state = "IDLE", message = message)
     }
 
-    private fun speak(text: String) {
+    private fun speak(text: String, onComplete: (() -> Unit)? = null) {
         if (!current.value.voiceAllowed) return
         val device = voice ?: return
         stopVoice()
         val stamp = voiceGeneration
         current.value = current.value.copy(speechPending = true)
+        fun complete(error: String? = null) {
+            if (stamp != voiceGeneration) return
+            if (error != null) voiceFailure(error)
+            else {
+                stopVoice()
+                current.value = current.value.copy(state = "IDLE")
+            }
+            onComplete?.invoke()
+        }
         voiceDeadline = tasks.launch {
             delay(10000)
-            if (stamp == voiceGeneration) voiceFailure("朗读启动超时，请查看文字或稍后重试。")
+            complete("朗读启动超时，请查看文字或稍后重试。")
         }
         device.speak(text, current.value.slowSpeech,
             started = { if (stamp == voiceGeneration) {
@@ -466,11 +507,10 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
                 voiceDeadline?.cancel()
                 voiceDeadline = tasks.launch {
                     delay(180000)
-                    if (stamp == voiceGeneration) voiceFailure("朗读已停止，您可以继续聊天。")
+                    complete("朗读已停止，您可以继续聊天。")
                 }
             } },
-            finished = { if (stamp == voiceGeneration) { stopVoice(); current.value = current.value.copy(state = "IDLE") } },
-            failed = { message -> if (stamp == voiceGeneration) voiceFailure(message) })
+            finished = { complete() }, failed = { complete(it) })
     }
 
     fun toggleSpeech() {

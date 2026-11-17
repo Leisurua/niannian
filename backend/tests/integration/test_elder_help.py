@@ -1,6 +1,6 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import text
@@ -36,6 +36,26 @@ def test_help_without_contacts_is_persisted_and_only_owner_can_request(system):
     with engine.connect() as conn:
         assert conn.execute(text('SELECT count(*) FROM signal_event')).scalar() == 1
         assert conn.execute(text('SELECT count(*) FROM notification')).scalar() == 0
+
+
+def test_ble_help_replay_uses_one_request_and_current_family_authorization(system):
+    client, engine, _, _ = system
+    home = household(client)
+    grant(client, home, 'NOTIFICATION_TO_FAMILY')
+    pref(client, home)
+    body = {'family_id': home[0], 'source': 'BLE'}
+    key = str(uuid4())
+    first = post(client, PATH, home[4], body, key=key)
+    assert first.status_code == 200 and first.json()['status'] == 'VALIDATED'
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE signal_event SET detected_at=detected_at-interval '3 minutes'"))
+    repeated = post(client, PATH, home[4], body, key=key)
+    assert repeated.status_code == 200 and repeated.json()['duplicate']
+    assert repeated.json()['id'] == first.json()['id']
+    assert post(client, PATH, home[2], body, key=key).status_code == 403
+    with engine.connect() as conn:
+        assert conn.execute(text('SELECT trigger_category FROM signal_event')).scalar() == 'EXPLICIT_HELP_BLE'
+        assert conn.execute(text('SELECT count(*) FROM notification')).scalar() == 1
 
 
 def test_help_reuses_delivery_contacts_and_family_progress_without_claiming_connection(system):

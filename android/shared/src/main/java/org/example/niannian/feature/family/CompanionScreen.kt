@@ -53,14 +53,14 @@ fun CompanionScreen(model: CompanionModel, environmentLabel: String,
     conversation: ConversationModel? = null, notifications: NotificationModel? = null,
     messages: MessageModel? = null, onNotifications: () -> Unit = {}, offlineContent: @Composable () -> Unit = {},
     avatar: AvatarModel? = null, avatarGeneration: AvatarGenerationModel? = null,
-    notificationSettings: @Composable () -> Unit = {}) {
+    notificationSettings: @Composable () -> Unit = {}, elderDeviceSettings: @Composable (CompanionState) -> Unit = {}) {
     val state by model.state.collectAsState()
     AvatarHost(avatar, homeFamily(state), state.userId,
         state.loggedIn && !state.offline && state.error.isBlank(), state.busy,
         state.selfPermissions.filter { it.scope == "PORTRAIT" }.toString(), avatarGeneration) {
         CompositionLocalProvider(LocalVoiceProfiles provides model.voiceProfiles) {
             CompanionScreenContent(model, environmentLabel, reminders, memories, tools, conversation, notifications,
-                messages, onNotifications, offlineContent, notificationSettings)
+                messages, onNotifications, offlineContent, notificationSettings, elderDeviceSettings)
         }
     }
 }
@@ -69,7 +69,8 @@ fun CompanionScreen(model: CompanionModel, environmentLabel: String,
 private fun CompanionScreenContent(model: CompanionModel, environmentLabel: String,
     reminders: ReminderModel, memories: MemoryModel, tools: ConversationToolsModel,
     conversation: ConversationModel?, notifications: NotificationModel?, messages: MessageModel?,
-    onNotifications: () -> Unit, offlineContent: @Composable () -> Unit, notificationSettings: @Composable () -> Unit) {
+    onNotifications: () -> Unit, offlineContent: @Composable () -> Unit, notificationSettings: @Composable () -> Unit,
+    elderDeviceSettings: @Composable (CompanionState) -> Unit) {
     val state by model.state.collectAsState()
     val mutationUnavailable = state.busy || state.offline || state.pendingWrite
     var address by remember(state.address) { mutableStateOf(state.address) }
@@ -79,6 +80,9 @@ private fun CompanionScreenContent(model: CompanionModel, environmentLabel: Stri
     var consentChange by remember { mutableStateOf<ConsentChange?>(null) }
     var showFamilySettings by rememberSaveable { mutableStateOf(false) }
     var showAccount by rememberSaveable { mutableStateOf(false) }
+    if (model.elder) {
+        HomeTheme { ElderWelcome { showFamilySettings = true } }
+    }
     if (showAccount) {
         AccountPanel(model, clearPrivateCache = reminders::clearAccountCache) { showAccount = false }
         return
@@ -122,7 +126,7 @@ private fun CompanionScreenContent(model: CompanionModel, environmentLabel: Stri
                     else "允许生成我的会话回顾。仅保存脱敏主题，最长 24 小时；不保存逐字稿。分享给家人和通知分别授权。"
                     else if (target.self && target.scope == "VOICE")
                     if (revoking) "停止设备语音识别和朗读，您仍可打字聊天。"
-                    else "允许点击说话和朗读回复。设备语音服务可能联网处理声音和朗读内容；应用不保存录音。此项不授予家属权限，可随时撤回。"
+                    else "允许点击说话和朗读回复。内置中文模型在本机识别声音；系统识别和朗读服务可能联网。应用不保存录音。此项不授予家属权限，可随时撤回。"
                     else if (target.self) if (revoking) "撤回后，念念将不能在您的交流中继续引用这项记忆，基础聊天仍可用。"
                     else "允许在您与念念的交流中引用已确认的${label}。此项不会授权家人查看，不会开启通知；有效至您撤回，您随时可以关闭。"
                     else if (revoking) "撤回后，当前家庭创建者不能继续使用这项授权。其他授权保持原设置，授权历史会保留。"
@@ -145,6 +149,7 @@ private fun CompanionScreenContent(model: CompanionModel, environmentLabel: Stri
                 Text(if (model.elder) "← 返回「念念 · 今日」首页" else "← 返回「念念 · 子女端」首页", fontSize = 18.sp)
             }
             Text("家庭与授权设置", fontSize = 28.sp)
+            if (model.elder) elderDeviceSettings(state)
             Button(onClick = { showAccount = true }, enabled = !state.busy) { Text("本人数据管理 / 删除回执") }
             Text(environmentLabel, color = MaterialTheme.colorScheme.primary)
             Text("念念是 AI 陪伴助手，不是真实家人。此版本使用虚构 DEMO 账户，不提供诊断、真实通话或已经送达的承诺。", fontSize = 18.sp)
@@ -244,7 +249,7 @@ private fun CompanionScreenContent(model: CompanionModel, environmentLabel: Stri
                 Action("刷新当前状态", state.busy) { model.reload() }
                 Action("退出本机", state.busy) { model.logout() }
                 Action("退出本账号所有设备", state.busy) { model.logout(true) }
-                Text("语音依赖设备服务，真机效果待验证；摄像头、BLE、电话和 kiosk 尚未启用。")
+                Text("语音依赖设备服务。实际联系结果请查看求助记录。")
             }
         }
     }

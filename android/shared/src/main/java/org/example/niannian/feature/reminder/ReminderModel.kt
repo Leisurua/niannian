@@ -33,6 +33,22 @@ data class ReminderCard(val key: String, val reminderId: String, val title: Stri
 data class ReminderState(val family: String = "", val user: String = "", val busy: Boolean = false, val offline: Boolean = false,
     val cards: List<ReminderCard> = emptyList(), val rules: List<JSONObject> = emptyList(), val message: String = "", val error: String = "")
 
+internal fun reminderCards(data: JSONObject, now: Instant): List<ReminderCard> {
+    val byId = data.optJSONArray("rules")?.objects().orEmpty().associateBy { it.getString("id") }
+    val entries = data.optJSONObject("occurrences") ?: JSONObject()
+    return entries.keys().asSequence().mapNotNull { key ->
+        val e = entries.getJSONObject(key)
+        val r = byId[e.getString("reminder_id")] ?: return@mapNotNull null
+        val instant = parseApiInstant(e.optString("next_due_at").takeIf { e.getString("status") == "LATER" && it.isNotBlank() }
+            ?: e.getString("scheduled_at"))
+        val action = e.optJSONObject("action")
+        ReminderCard(key, r.getString("id"), r.getString("title"), r.getString("content"),
+            instant.atZone(ZoneId.of(r.getString("timezone"))).toString(), e.getString("status"), action != null,
+            action?.optBoolean("failed") == true || (action?.optInt("attempts") ?: 0) >= 5,
+            r.getString("type") == "MEDICATION", instant <= now && !ReminderCalendar.inQuietHours(now, parseRule(r).quiet))
+    }.sortedBy { it.time }.toList()
+}
+
 class ReminderModel(private val gateway: ReminderGateway, store: ReminderStore, val elder: Boolean,
     private val taskScope: CoroutineScope? = null, private val clock: () -> Instant = Instant::now,
     private val onCacheChanged: () -> Unit = {}) : ViewModel() {
@@ -73,21 +89,8 @@ class ReminderModel(private val gateway: ReminderGateway, store: ReminderStore, 
     private suspend fun show(stamp: Int) {
         val data = ledger.snapshot()
         if (stamp != generation) return
-        val now = clock()
         val rules = data.optJSONArray("rules")?.objects().orEmpty()
-        val byId = rules.associateBy { it.getString("id") }
-        val entries = data.optJSONObject("occurrences") ?: JSONObject()
-        val cards = entries.keys().asSequence().mapNotNull { key ->
-            val e = entries.getJSONObject(key)
-            val r = byId[e.getString("reminder_id")] ?: return@mapNotNull null
-            val instant = parseApiInstant(e.optString("next_due_at").takeIf { e.getString("status") == "LATER" && it.isNotBlank() } ?: e.getString("scheduled_at"))
-            val action = e.optJSONObject("action")
-            ReminderCard(key, r.getString("id"), r.getString("title"), r.getString("content"),
-                instant.atZone(ZoneId.of(r.getString("timezone"))).toString(), e.getString("status"), action != null,
-                action?.optBoolean("failed") == true || (action?.optInt("attempts") ?: 0) >= 5,
-                r.getString("type") == "MEDICATION", instant <= now && !ReminderCalendar.inQuietHours(now, parseRule(r).quiet))
-        }.sortedBy { it.time }.toList()
-        current.value = current.value.copy(cards = cards, rules = rules, message = data.optString("notice"))
+        current.value = current.value.copy(cards = reminderCards(data, clock()), rules = rules, message = data.optString("notice"))
     }
     private suspend fun sync(stamp: Int) {
         val bound = current.value

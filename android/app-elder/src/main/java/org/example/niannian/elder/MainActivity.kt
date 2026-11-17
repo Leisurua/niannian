@@ -8,7 +8,11 @@ import org.example.niannian.feature.memory.MemoryModel
 import org.example.niannian.feature.notification.NotificationModel
 import org.json.JSONObject
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import java.util.UUID
@@ -21,14 +25,31 @@ import org.example.niannian.feature.conversation.ConversationToolsModel
 import org.example.niannian.feature.conversation.ConversationGateway
 import org.example.niannian.feature.conversation.ConversationModel
 import org.example.niannian.feature.conversation.ConversationTransport
+import org.example.niannian.feature.conversation.LocalConversationVoiceFactory
 import org.example.niannian.feature.conversation.AvatarModel
 import org.example.niannian.feature.conversation.AvatarStorage
 import org.example.niannian.feature.conversation.AvatarGenerationModel
 
 class MainActivity : ComponentActivity() {
+    private val tabletMode by lazy { TabletMode(this) }
+    private val helpButton by lazy { BleHelpButton(applicationContext) }
+
+    override fun onResume() {
+        super.onResume()
+        tabletMode.resume()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         AppExecutionBoundary().run {
             super.onCreate(savedInstanceState)
+            onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    if (!tabletMode.locked) {
+                        isEnabled = false
+                        try { onBackPressedDispatcher.onBackPressed() } finally { isEnabled = true }
+                    }
+                }
+            })
             TelemetryLogger().info("APP_STARTED", mapOf("provider" to BuildConfig.PROVIDER_MODE))
             val preferences = getSharedPreferences("device-config", MODE_PRIVATE)
             val deviceId = preferences.getString("device-id", null) ?: UUID.randomUUID().toString().also {
@@ -38,8 +59,10 @@ class MainActivity : ComponentActivity() {
             val avatarStore = AvatarStorage.get(applicationContext)
             val repository = FamilyRepository(SecureSession(applicationContext) {
                 reminderStore.revokeEncryptionKey(); ReminderScheduler.cancel(applicationContext); avatarStore.invalidate()
+                helpButton.forgetOnSessionInvalidated()
             }, BuildConfig.DEBUG, onCacheInvalidated = {
                 reminderStore.revokeEncryptionKey(); ReminderScheduler.cancel(applicationContext); avatarStore.invalidate()
+                helpButton.forgetOnSessionInvalidated()
             })
             val transport = ConversationTransport()
             val toolsGateway = repository.toolsGateway()
@@ -84,14 +107,26 @@ class MainActivity : ComponentActivity() {
             val avatarGeneration = ViewModelProvider(this, factory)[AvatarGenerationModel::class.java]
             val runtime = RuntimeConfig.fromBuildValues(BuildConfig.ENVIRONMENT, BuildConfig.PROVIDER_MODE)
             setContent {
-                CompanionScreen(model, runtime.statusLabel, reminderModel, memoryModel, toolsModel,
-                    messages = messageModel,
-                    notifications = notificationModel,
-                    avatar = avatarModel,
-                    avatarGeneration = avatarGeneration,
-                    conversation = conversationModel,
-                    onNotifications = { ReminderScheduler.arm(applicationContext) },
-                    offlineContent = { CachedReminderEntry(reminderModel, reminderStore, repository.savedUserId()) { ReminderScheduler.arm(applicationContext) } })
+                val state by model.state.collectAsState()
+                val target = state.selected?.takeIf { state.loggedIn && state.userId.isNotBlank() && it.status == "ACTIVE" && it.role == "ELDER" }
+                    ?.let { HelpButtonTarget(state.userId, it.id) }
+                CompositionLocalProvider(LocalConversationVoiceFactory provides ::elderConversationVoice) {
+                    CompanionScreen(model, runtime.statusLabel, reminderModel, memoryModel, toolsModel,
+                        messages = messageModel,
+                        notifications = notificationModel,
+                        avatar = avatarModel,
+                        avatarGeneration = avatarGeneration,
+                        conversation = conversationModel,
+                        elderDeviceSettings = { state ->
+                            tabletMode.Settings()
+                            val family = state.selected?.takeIf { it.status == "ACTIVE" }?.id
+                            StandbySettings(reminderStore, repository::savedUserId, family ?: if (state.offline) null else "")
+                            BleHelpSettings(helpButton, target != null)
+                        },
+                        onNotifications = { ReminderScheduler.arm(applicationContext) },
+                        offlineContent = { CachedReminderEntry(reminderModel, reminderStore, repository.savedUserId()) { ReminderScheduler.arm(applicationContext) } })
+                }
+                BleHelpHost(helpButton, target, repository)
             }
         }
     }

@@ -45,6 +45,11 @@ class MemoryModel(private val gateway: MemoryGateway, private val taskScope: Cor
 
     suspend fun awaitIdle() { job?.join() }
 
+    internal suspend fun recallTitles(familyId: String): List<String> {
+        val titles = gateway.call("/v1/memories/recall-prompts?family_id=$familyId").getJSONArray("titles")
+        return (0 until titles.length()).map(titles::getString)
+    }
+
     fun bind(familyId: String, userId: String): Job? {
         if (current.value.familyId == familyId && current.value.userId == userId) return null
         clear()

@@ -76,3 +76,33 @@ def test_memory_id_enumeration_errors_are_identical(system):
     unknown = client.get('/v1/memories/'+str(uuid4()), headers=outsider)
     assert known.status_code == unknown.status_code == 404
     assert known.json()['error'] == unknown.json()['error']
+
+
+def test_recall_prompts_use_only_currently_authorized_confirmed_personal_titles(system):
+    client, engine, _, _ = system
+    home = household(client)
+    fid, _, ch, elder, eh = home
+    grant(client, home)
+    kept = memory(client, home, title='虚构的公园散步')
+    memory(client, home, title='待确认的题目', verification_status='PENDING')
+    expired = memory(client, home, title='过期题目')
+    with engine.begin() as conn:
+        conn.execute(text('UPDATE memory SET expires_at=:past WHERE id=:id'),
+            {'past': utcnow() - timedelta(seconds=1), 'id': UUID(expired['id'])})
+    memory(client, home, title='不喜欢的话题', type='TABOO')
+    revoked = memory(client, home, title='撤回的题目')
+    assert post(client, f"/v1/memories/{revoked['id']}/revoke", eh).status_code == 200
+    other_family = household(client, 'demo-other')
+    grant(client, other_family)
+    memory(client, other_family, title='另一个家庭的题目')
+    path = f'/v1/memories/recall-prompts?family_id={fid}'
+    assert client.get(path, headers=eh).json() == {'titles': []}
+    permission = post(client, '/v1/consents', eh, dict(family_id=fid, subject_user_id=elder,
+        grantee_user_id=elder, scope='FAMILY_MEMORY', source='SETTINGS')).json()['id']
+    response = client.get(path, headers=eh)
+    assert response.headers['cache-control'] == 'no-store'
+    assert response.json()['titles'] == [kept['title']]
+    assert client.get(path, headers=ch).json() == {'titles': []}
+    assert client.get(path, headers=other_family[2]).status_code == 404
+    assert post(client, f'/v1/consents/{permission}/revoke', eh).status_code == 201
+    assert client.get(path, headers=eh).json() == {'titles': []}

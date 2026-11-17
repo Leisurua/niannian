@@ -13,6 +13,10 @@ ConsentScope = Literal['VOICE', 'PORTRAIT', 'FAMILY_MEMORY', 'HEALTH_MEDICATION'
                        'CONVERSATION_SUMMARY', 'CAMERA_PROXIMITY', 'NOTIFICATION_TO_FAMILY']
 
 
+class RecallPrompts(BaseModel):
+    titles: list[str]
+
+
 class MemoryDraft(BaseModel):
     model_config = ConfigDict(extra='forbid', frozen=True)
 
