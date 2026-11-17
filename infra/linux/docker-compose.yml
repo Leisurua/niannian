@@ -16,6 +16,7 @@ x-backend-environment: &backend-environment
   NOTIFICATION_EXTERNAL_ENABLED: ${NOTIFICATION_EXTERNAL_ENABLED:-false}
   NOTIFICATION_PUSH_PROVIDER: ${NOTIFICATION_PUSH_PROVIDER:-mock}
   NTFY_BASE_URL: ${NTFY_BASE_URL:-}
+  NTFY_CA_FILE: ${NTFY_CA_FILE:-}
   PUSH_API_KEY: ${PUSH_API_KEY:-}
   TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
   TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
@@ -52,6 +53,14 @@ x-backend-service: &backend-service
     options:
       max-size: 10m
       max-file: "3"
+
+x-ntfy-ca-volumes: &ntfy-ca-volumes
+  - type: bind
+    source: ${NTFY_CA_DIRECTORY:-./ntfy-ca}
+    target: /etc/niannian/ntfy-ca
+    read_only: true
+    bind:
+      create_host_path: false
 
 services:
   ops-monitor:
@@ -151,6 +160,7 @@ services:
   api:
     <<: *backend-service
     command: ["python", "-m", "app", "--host", "0.0.0.0", "--port", "8000"]
+    volumes: *ntfy-ca-volumes
     ports:
       - "${API_BIND_ADDRESS:-0.0.0.0}:${API_PORT}:8000"
     healthcheck:
@@ -168,6 +178,7 @@ services:
   worker:
     <<: *backend-service
     command: ["python", "-m", "app.worker.main", "--serve"]
+    volumes: *ntfy-ca-volumes
     healthcheck:
       test: ["CMD", "python", "-m", "app.worker.main", "--healthcheck"]
       interval: 10s

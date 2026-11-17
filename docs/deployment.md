@@ -271,6 +271,8 @@ API 和 worker 同时配置 `CONTACT_ENCRYPTION_KEY`（用 `python -c "from cryp
 
 外发需显式设置 `APP_ENV=dev`、`NOTIFICATION_EXTERNAL_ENABLED=true`。ntfy 推送设置 `NOTIFICATION_PUSH_PROVIDER=ntfy`、`NTFY_BASE_URL`（HTTPS 私有服务）、`PUSH_API_KEY`；私有 CA 可设置 `NTFY_CA_FILE`，始终验证 TLS。接收者在联系人设置保存管理员分配给本人的主题，点击“打开 ntfy 订阅”，用本人只读账号登录并开启即时投递与系统通知，再在对应长辈的通知偏好开启 PUSH。主题须配置访问控制。此实现通过 ntfy 客户端接收后台推送，念念 APK 尚未内置厂商推送 SDK。[ntfy 官方发送接口](https://docs.ntfy.sh/publish/)、[手机即时投递与订阅](https://docs.ntfy.sh/subscribe/phone/)。
 
+Linux Compose 使用私有 CA 时，在 `infra/linux/.env` 设置 `NTFY_CA_DIRECTORY` 为主机上仅存放公开 CA 证书的目录，设置 `NTFY_CA_FILE=/etc/niannian/ntfy-ca/ca.crt` 为实际的容器内文件路径。API 和 worker 以只读方式挂载该目录，容器运行用户须能读取 CA 文件。使用系统信任库时留空即可。运维告警继续使用独立的 `OPS_CA_*` 配置和私有主题。
+
 服务端有独立的秒级通知派发循环，沿用当前授权、免打扰、租约和失败处理。普通关注线索可使用 IN_APP/PUSH；SMS/PHONE 仍限于既定风险/身体不适策略。ntfy 提示点击后通过 `niannian-family://notification/<notification-id>/<recipient-id>` 打开家属端，再核验账号和服务端授权后显示事件；链接不含令牌，不自动处理事件。Android 的 15 分钟定期收件用于补拉，不是及时推送的等待周期。系统省电、断网和关闭 ntfy 仍可能影响送达，不能承诺紧急通信。
 
 #### Windows 免费私有 ntfy
