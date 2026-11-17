@@ -41,7 +41,14 @@ class FamilyRepository(
         }
     }
     fun savedOrigin() = store.load().optString("origin", "http://10.0.2.2:8000")
-    fun clear() = store.clear()
+
+    suspend fun logout(allDevices: Boolean = false) = requestMutex.withLock {
+        try {
+            executeCall(if (allDevices) "/v1/auth/logout-all" else "/v1/auth/logout", "POST", null, false, null)
+        } finally {
+            store.clear()
+        }
+    }
 
     suspend fun exportAccount(userId: String, progress: (String) -> Unit = {}, output: () -> java.io.OutputStream) {
         call("/v1/me") // Renew the login using the existing refresh policy.
@@ -143,7 +150,7 @@ class FamilyRepository(
         try {
             executeCall("/v1/me/deletion", "POST", JSONObject().put("confirmation", "DELETE_MY_ACCOUNT")
                 .put("receipt_token", token), false, null)
-        } finally { clear() }
+        } finally { store.clear() }
     }
 
     fun receiptOrigin(server: String): String = ConnectionPolicy.origin(server, debug)
@@ -153,29 +160,32 @@ class FamilyRepository(
         exchange(ConnectionPolicy.origin(server, debug), "/v1/account-deletions/lookup", "POST",
             JSONObject().put("receipt_token", token), null, null)
     }
-    fun hasPending() = store.load().optBoolean("pending", false)
+    fun hasPending() = hasPendingWrite(store.load())
+    private fun hasPendingWrite(session: JSONObject) =
+        session.optBoolean("pending") && session.optString("pending_path") != "/v1/messages"
     fun pendingInvitation() = store.load().optString("invitation", "")
     fun invitationFamily() = store.load().optString("invitation_family", "")
-    fun saveInvitation(value: String, familyId: String = "") {
-        val session = store.load()
-        session.put("invitation", value).put("invitation_family", familyId)
-        store.save(session)
+    suspend fun saveInvitation(value: String, familyId: String = "") = requestMutex.withLock {
+        withContext(Dispatchers.IO) {
+            val session = store.load()
+            session.put("invitation", value).put("invitation_family", familyId)
+            store.save(session)
+        }
     }
 
-    private fun clearPending() {
-        val session = store.load()
+    private fun clearPending(session: JSONObject = store.load()) {
         session.put("pending", false)
         listOf("pending_path", "pending_method", "pending_body", "pending_key", "pending_fingerprint")
             .forEach { session.remove(it) }
         store.save(session)
     }
 
-    suspend fun retryPending(): RetriedWrite {
+    suspend fun retryPending(): RetriedWrite = requestMutex.withLock {
         val session = store.load()
-        check(session.optBoolean("pending")) { "没有需要重试的请求。" }
+        check(hasPendingWrite(session)) { "没有需要重试的请求。" }
         val path = session.getString("pending_path")
-        return RetriedWrite(path, call(path, session.getString("pending_method"),
-            JSONObject(session.getString("pending_body")), true))
+        RetriedWrite(path, executeCall(path, session.getString("pending_method"),
+            JSONObject(session.getString("pending_body")), true, null))
     }
 
     suspend fun retryMemoryPending() {
@@ -243,16 +253,18 @@ class FamilyRepository(
         } finally { connection.disconnect() }
     }
 
-    suspend fun login(address: String, elder: Boolean, deviceId: String) = withContext(Dispatchers.IO) {
-        val origin = ConnectionPolicy.origin(address, debug)
-        val body = JSONObject().put("credential", JSONObject().put("type", "DEMO")
-            .put("identifier", if (elder) "demo-elder" else "demo-child"))
-            .put("device", JSONObject().put("device_id", deviceId).put("name", if (elder) "演示长辈设备" else "演示家人设备").put("app_version", "0.1.0"))
-        val result = exchange(origin, "/v1/auth/login", "POST", body, null, null)
-        currentCoroutineContext().ensureActive()
-        onCacheInvalidated()
-        store.save(JSONObject().put("origin", origin).put("access_token", result.getString("access_token"))
-            .put("refresh_token", result.getString("refresh_token")).put("user_id", result.getJSONObject("user").getString("id")))
+    suspend fun login(address: String, elder: Boolean, deviceId: String) = requestMutex.withLock {
+        withContext(Dispatchers.IO) {
+            val origin = ConnectionPolicy.origin(address, debug)
+            val body = JSONObject().put("credential", JSONObject().put("type", "DEMO")
+                .put("identifier", if (elder) "demo-elder" else "demo-child"))
+                .put("device", JSONObject().put("device_id", deviceId).put("name", if (elder) "演示长辈设备" else "演示家人设备").put("app_version", "0.1.0"))
+            val result = exchange(origin, "/v1/auth/login", "POST", body, null, null)
+            currentCoroutineContext().ensureActive()
+            onCacheInvalidated()
+            store.save(JSONObject().put("origin", origin).put("access_token", result.getString("access_token"))
+                .put("refresh_token", result.getString("refresh_token")).put("user_id", result.getJSONObject("user").getString("id")))
+        }
     }
 
     private suspend fun refreshSessionOrRequireLogin(origin: String, session: JSONObject) {
@@ -346,9 +358,75 @@ class FamilyRepository(
         executeCall(path, method, body, false, null, key)
     }
 
-    suspend fun registerMessageDevice(body: JSONObject): JSONObject = requestMutex.withLock {
+    suspend fun registerMessageDevice(body: JSONObject, user: String): JSONObject = requestMutex.withLock {
+        withContext(Dispatchers.IO) { requireMessageContext(store.load(), body.getString("family_id"), user) }
         executeCall("/v1/devices/register", "POST", body, false, null, UUID.randomUUID().toString())
     }
+
+    private fun requireMessageContext(session: JSONObject, family: String, user: String) {
+        require(family.isNotBlank() && user.isNotBlank() && session.optString("user_id") == user &&
+            session.optString("active_family") == family) { "账号或家庭已切换，请重新打开留言。" }
+    }
+
+    private fun pendingMessages(session: JSONObject): JSONObject {
+        val messages = session.optJSONObject("pending_messages") ?: JSONObject()
+        if (session.optBoolean("pending") && session.optString("pending_path") == "/v1/messages") {
+            val body = JSONObject(session.getString("pending_body"))
+            val family = body.getString("family_id")
+            if (!messages.has(family)) {
+                messages.put(family, JSONObject().put("key", session.getString("pending_key")).put("body", body))
+            }
+            session.put("pending_messages", messages)
+            clearPending(session)
+        }
+        return messages
+    }
+
+    suspend fun pendingMessageDraft(family: String, user: String): String? = requestMutex.withLock {
+        withContext(Dispatchers.IO) {
+            val session = store.load()
+            if (session.optString("user_id") != user || session.optString("active_family") != family) null
+            else pendingMessages(session).optJSONObject(family)?.getJSONObject("body")
+                ?.getJSONObject("payload")?.getString("text")
+        }
+    }
+
+    suspend fun sendFamilyMessage(family: String, user: String, role: String, text: String): JSONObject =
+        requestMutex.withLock { withContext(Dispatchers.IO) {
+            val session = store.load()
+            requireMessageContext(session, family, user)
+            val messages = pendingMessages(session)
+            val pending = messages.optJSONObject(family)
+            val originalBody = pending?.getJSONObject("body")
+            require(originalBody == null || originalBody.getJSONObject("destination").getString("role") == role &&
+                originalBody.getJSONObject("payload").getString("text") == text) { "请先重试这个家庭上次的留言。" }
+            val body = originalBody ?: JSONObject().put("family_id", family).put("message_type", "TEXT").put("priority", "NORMAL")
+                .put("destination", JSONObject().put("type", "FAMILY_ROLE").put("role", role))
+                .put("payload", JSONObject().put("text", text))
+            val key = pending?.getString("key") ?: UUID.randomUUID().toString()
+            if (pending == null) {
+                messages.put(family, JSONObject().put("key", key).put("body", body))
+                store.save(session.put("pending_messages", messages))
+            }
+            fun forget() {
+                val saved = store.load()
+                val outstanding = saved.optJSONObject("pending_messages") ?: return
+                if (outstanding.optJSONObject(family)?.optString("key") == key) {
+                    outstanding.remove(family)
+                    if (outstanding.length() == 0) saved.remove("pending_messages")
+                    store.save(saved)
+                }
+            }
+            try {
+                val result = executeCall("/v1/messages", "POST", body, false, null, key)
+                forget()
+                result
+            } catch (error: ApiFailure) {
+                if (error.status in 400..499 && error.status !in listOf(401, 408, 429) &&
+                    error.code !in listOf("DEVICE_REGISTRATION_REQUIRED", "DEVICE_FAMILY_MISMATCH")) forget()
+                throw error
+            }
+        } }
 
     suspend fun acknowledgeMessage(id: String, read: Boolean): JSONObject = requestMutex.withLock {
         require(UUID.fromString(id).toString() == id)
@@ -357,10 +435,11 @@ class FamilyRepository(
     }
 
     private suspend fun executeCall(path: String, method: String, body: JSONObject?, idempotent: Boolean, expectedVersion: Long?, explicitKey: String? = null, reason: String? = null): JSONObject = withContext(Dispatchers.IO) {
-        var session = store.load()
+        val session = store.load()
         val origin = ConnectionPolicy.origin(session.getString("origin"), debug)
         var key: String? = explicitKey
         if (idempotent) {
+            pendingMessages(session)
             val fingerprint = MessageDigest.getInstance("SHA-256").digest((method + path + body.toString()).toByteArray())
                 .joinToString("") { "%02x".format(it) }
             require(!session.optBoolean("pending") || session.optString("pending_fingerprint") == fingerprint) {

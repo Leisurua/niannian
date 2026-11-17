@@ -1,6 +1,7 @@
 package org.example.niannian.feature.message
 
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -10,8 +11,10 @@ class MessageModelTest {
     private class Gateway : MessageGateway {
         var status = "QUEUED"; var fail = false; var registered = ""
         var sent = ""; val receipts = mutableListOf<Boolean>()
+        var pending: String? = null
+        var loseReply = false
         var wait: CompletableDeferred<Unit>? = null
-        override suspend fun register(family: String) { registered = family }
+        override suspend fun register(family: String, user: String) { registered = family }
         override suspend fun list(family: String, box: String): List<JSONObject> {
             wait?.await(); if (fail) error("offline")
             if (box == "OUTBOX") return emptyList()
@@ -23,8 +26,12 @@ class MessageModelTest {
             receipts.add(read); status = if (read) "READ" else "RECEIVED"
             return JSONObject().put("id", id).put("status", status)
         }
-        override suspend fun send(family: String, role: String, text: String): JSONObject {
-            sent = "$family:$role:$text"; return JSONObject()
+        override suspend fun pendingDraft(family: String, user: String) = pending.takeIf { family == "family" }
+        override suspend fun send(family: String, user: String, role: String, text: String): JSONObject {
+            sent = "$family:$role:$text"
+            if (loseReply) { pending = text; error("offline") }
+            pending = null
+            return JSONObject()
         }
     }
 
@@ -53,6 +60,26 @@ class MessageModelTest {
         assertEquals(1, model.state.value.items.size)
         assertTrue(model.state.value.loaded)
         assertEquals("", model.state.value.error)
+        model.clear()
+    }
+
+    @Test fun retryDraftIsRestoredOnlyForItsFamilyAndClearedAfterSuccess() = runBlocking {
+        val gateway = Gateway()
+        val model = MessageModel(gateway, false, this)
+        suspend fun loaded() = withTimeout(2000) { model.state.first { it.loaded && !it.busy } }
+        model.bind("family", "child"); loaded()
+        gateway.loseReply = true
+        model.send("虚构留言"); yield()
+        assertEquals("虚构留言", model.state.value.pendingDraft)
+        assertEquals(0, model.state.value.sentVersion)
+        model.bind("another-family", "child")
+        assertNull(loaded().pendingDraft)
+        model.bind("family", "child")
+        assertEquals("虚构留言", loaded().pendingDraft)
+        gateway.loseReply = false
+        model.send(model.state.value.pendingDraft!!); yield()
+        assertNull(model.state.value.pendingDraft)
+        assertEquals(1, model.state.value.sentVersion)
         model.clear()
     }
 

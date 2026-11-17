@@ -56,7 +56,9 @@ private class FakeApi {
     var failWrite = false
     var secondConsentPage = false
     var handler: ((Connection) -> Reply)? = null
-    val repository = FamilyRepository(store, false) { url ->
+    val repository = newRepository()
+
+    fun newRepository() = FamilyRepository(store, false) { url ->
         Connection(url) { request ->
             requests.add(request)
             if (offline) throw IOException("fictional offline")
@@ -93,6 +95,61 @@ private suspend fun CompanionModel.idle() = withTimeout(5000) {
 }
 
 class FamilyRecoveryTest {
+    @Test fun messageRetrySurvivesRestartAndDoesNotBlockAnotherFamilyOrAnUnrelatedWrite() = runBlocking {
+        val api = FakeApi()
+        api.store.save(api.store.load().put("user_id", "self").put("active_family", "family-a"))
+        api.failWrite = true
+        try {
+            api.repository.sendFamilyMessage("family-a", "self", "ELDER", "虚构留言")
+            fail("Expected lost response")
+        } catch (_: IOException) {}
+        val first = api.requests.single()
+        val reopened = api.newRepository()
+        assertFalse(reopened.hasPending())
+        assertEquals("虚构留言", reopened.pendingMessageDraft("family-a", "self"))
+        reopened.call("/v1/families/family-a/invitations", "POST", JSONObject(), true)
+        reopened.noteFamily("family-b")
+        assertNull(reopened.pendingMessageDraft("family-a", "self"))
+        assertNull(reopened.pendingMessageDraft("family-b", "self"))
+        assertTrue(runCatching { reopened.sendFamilyMessage("family-a", "self", "ELDER", "虚构留言") }.isFailure)
+        assertTrue(runCatching { reopened.sendFamilyMessage("family-b", "old-user", "ELDER", "虚构留言") }.isFailure)
+        assertEquals(2, api.requests.size)
+        reopened.sendFamilyMessage("family-b", "self", "ELDER", "另一家庭留言")
+        reopened.noteFamily("family-a")
+        assertTrue(runCatching { reopened.sendFamilyMessage("family-a", "self", "ELDER", "不同内容") }.isFailure)
+        reopened.sendFamilyMessage("family-a", "self", "ELDER", "虚构留言")
+        assertEquals(first.getRequestProperty("Idempotency-Key"), api.requests.last().getRequestProperty("Idempotency-Key"))
+        assertNotEquals(first.getRequestProperty("Idempotency-Key"), api.requests[2].getRequestProperty("Idempotency-Key"))
+        assertEquals(first.sentBody.toString("UTF-8"), api.requests.last().sentBody.toString("UTF-8"))
+        assertNull(reopened.pendingMessageDraft("family-a", "self"))
+
+        api.failWrite = true
+        assertTrue(runCatching {
+            reopened.sendFamilyMessage("family-a", "self", "ELDER", "退出前的未确认留言")
+        }.exceptionOrNull() is IOException)
+        reopened.logout()
+        assertFalse(reopened.hasSession())
+        assertFalse(api.store.load().has("pending_messages"))
+    }
+
+    @Test fun pendingMessageFromPreviousVersionRetainsItsKeyOutsideGeneralRetry() = runBlocking {
+        val api = FakeApi()
+        val content = JSONObject().put("family_id", "family-a").put("priority", "NORMAL").put("message_type", "TEXT")
+            .put("destination", JSONObject().put("type", "FAMILY_ROLE").put("role", "ELDER"))
+            .put("payload", JSONObject().put("text", "旧版未确认留言"))
+        api.store.save(api.store.load().put("user_id", "self").put("active_family", "family-b")
+            .put("pending", true).put("pending_path", "/v1/messages").put("pending_method", "POST")
+            .put("pending_key", "original-key").put("pending_body", content.toString()))
+        assertFalse(api.repository.hasPending())
+        api.repository.call("/v1/families/family-b/invitations", "POST", JSONObject(), true)
+        api.repository.noteFamily("family-a")
+        assertEquals("旧版未确认留言", api.repository.pendingMessageDraft("family-a", "self"))
+        api.repository.sendFamilyMessage("family-a", "self", "ELDER", "旧版未确认留言")
+        assertEquals("original-key", api.requests.last().getRequestProperty("Idempotency-Key"))
+        assertEquals(content.toString(), api.requests.last().sentBody.toString("UTF-8"))
+        assertEquals(2, api.requests.size)
+    }
+
     @Test fun accountExportStreamsZipOnlyForCurrentUser() = runBlocking {
         val api = FakeApi()
         api.store.save(api.store.load().put("user_id", "self"))

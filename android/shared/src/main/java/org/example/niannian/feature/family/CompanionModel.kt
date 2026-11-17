@@ -216,9 +216,8 @@ class CompanionModel(private val repository: FamilyRepository, val elder: Boolea
 
     fun logout(allDevices: Boolean = false) = action {
         var reachedServer = false
-        try { repository.call(if (allDevices) "/v1/auth/logout-all" else "/v1/auth/logout", "POST"); reachedServer = true }
+        try { repository.logout(allDevices); reachedServer = true }
         finally {
-            repository.clear()
             current.value = CompanionState(busy = true, address = current.value.address,
                 message = if (reachedServer) "已退出登录。" else "本机登录已清除；服务端及其他设备退出状态尚未确认。")
         }

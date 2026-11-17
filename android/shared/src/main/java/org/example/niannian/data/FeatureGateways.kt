@@ -50,18 +50,18 @@ fun FamilyRepository.portraitGateway(): PortraitGateway {
 fun FamilyRepository.messageGateway(deviceId: String, elder: Boolean): MessageGateway {
     val repository = this
     return object : MessageGateway {
-        override suspend fun register(family: String) {
+        override suspend fun register(family: String, user: String) {
             repository.registerMessageDevice(JSONObject().put("device_id", deviceId).put("family_id", family)
                 .put("device_type", if (elder) "ANDROID_TABLET" else "ANDROID_PHONE")
                 .put("client_kind", if (elder) "ELDER_MOBILE" else "FAMILY_MOBILE")
                 .put("app_version", "0.1.0").put("os_version", "Android ${android.os.Build.VERSION.RELEASE}".take(64))
-                .put("capabilities", JSONObject().put("rest_polling", true)))
+                .put("capabilities", JSONObject().put("rest_polling", true)), user)
         }
         override suspend fun list(family: String, box: String) = repository.readAll("/v1/messages?family_id=$family&box=$box&limit=100")
         override suspend fun acknowledge(id: String, read: Boolean) = repository.acknowledgeMessage(id, read)
-        override suspend fun send(family: String, role: String, text: String) = repository.call("/v1/messages", "POST",
-            JSONObject().put("family_id", family).put("destination", JSONObject().put("type", "FAMILY_ROLE").put("role", role))
-                .put("message_type", "TEXT").put("priority", "NORMAL").put("payload", JSONObject().put("text", text)), true)
+        override suspend fun pendingDraft(family: String, user: String) = repository.pendingMessageDraft(family, user)
+        override suspend fun send(family: String, user: String, role: String, text: String) =
+            repository.sendFamilyMessage(family, user, role, text)
     }
 }
 

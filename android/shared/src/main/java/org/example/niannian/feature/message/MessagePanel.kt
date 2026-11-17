@@ -28,15 +28,19 @@ fun MessagePanel(model: MessageModel, family: String, user: String, elder: Boole
         onDispose { lifecycle.removeObserver(observer); model.clear() }
     }
     if (unavailable || state.family != family || state.user != user) return
+    val pending = state.pendingDraft
+    val text = pending ?: draft
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("家人留言", fontSize = 24.sp)
             Text("前台每 3 秒同步，离线后重新连接可补收。已读需要本人点击确认。")
-            OutlinedTextField(draft, { draft = it.take(2000) }, modifier = Modifier.fillMaxWidth(),
-                label = { Text(if (elder) "给子女回复" else "给长辈留言") }, enabled = !state.busy)
-            Button(onClick = { model.send(draft) }, enabled = !state.busy && draft.isNotBlank(),
-                modifier = Modifier.heightIn(min = 56.dp)) { Text("发送留言", fontSize = 20.sp) }
-            if (elder) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(text, { draft = it.take(2000) }, modifier = Modifier.fillMaxWidth(),
+                label = { Text(if (elder) "给子女回复" else "给长辈留言") }, enabled = !state.busy, readOnly = pending != null)
+            Button(onClick = { model.send(text) }, enabled = !state.busy && text.isNotBlank(),
+                modifier = Modifier.heightIn(min = 56.dp)) {
+                Text(if (pending == null) "发送留言" else "重试未确认的留言", fontSize = 20.sp)
+            }
+            if (elder && pending == null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { draft = "我很好，不用担心。" }, enabled = !state.busy) { Text("我很好") }
                 OutlinedButton(onClick = { draft = "方便时请给我打个电话。" }, enabled = !state.busy) { Text("请给我打电话") }
             }

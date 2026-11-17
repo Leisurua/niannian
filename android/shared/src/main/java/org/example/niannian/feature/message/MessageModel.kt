@@ -9,17 +9,18 @@ import org.example.niannian.data.ApiFailure
 import org.json.JSONObject
 
 interface MessageGateway {
-    suspend fun register(family: String)
+    suspend fun register(family: String, user: String)
     suspend fun list(family: String, box: String): List<JSONObject>
     suspend fun acknowledge(id: String, read: Boolean): JSONObject
-    suspend fun send(family: String, role: String, text: String): JSONObject
+    suspend fun pendingDraft(family: String, user: String): String?
+    suspend fun send(family: String, user: String, role: String, text: String): JSONObject
 }
 
 data class FamilyLetter(val id: String, val text: String, val time: String, val outgoing: Boolean,
     val receipts: List<Pair<String, String>>)
 data class MessageState(val family: String = "", val user: String = "", val busy: Boolean = false,
     val items: List<FamilyLetter> = emptyList(), val notice: String = "", val sentVersion: Int = 0,
-    val error: String = "", val loaded: Boolean = false)
+    val error: String = "", val loaded: Boolean = false, val pendingDraft: String? = null)
 
 class MessageModel(private val gateway: MessageGateway, private val elder: Boolean,
     private val scope: CoroutineScope? = null) : ViewModel() {
@@ -42,14 +43,21 @@ class MessageModel(private val gateway: MessageGateway, private val elder: Boole
         polling = tasks.launch { while (isActive) { refresh(); delay(3000) } }
     }
 
-    private fun action(work: suspend (Int, String) -> Unit) {
+    private fun action(work: suspend (Int, String, String) -> Unit) {
         if (current.value.busy || current.value.family.isBlank()) return
-        val stamp = generation; val family = current.value.family
+        val stamp = generation
+        val (family, user) = current.value
         current.value = current.value.copy(busy = true)
         operation = tasks.launch {
             try {
-                if (!registered) { gateway.register(family); if (stamp != generation) return@launch; registered = true }
-                work(stamp, family)
+                if (!registered) {
+                    loadDraft(stamp, family, user)
+                    if (stamp != generation) return@launch
+                    gateway.register(family, user)
+                    if (stamp != generation) return@launch
+                    registered = true
+                }
+                work(stamp, family, user)
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
                 if (stamp == generation) {
@@ -57,7 +65,7 @@ class MessageModel(private val gateway: MessageGateway, private val elder: Boole
                     if (error is ApiFailure && error.status == 401) polling?.cancel()
                     current.value = current.value.copy(items = emptyList(), loaded = false, error =
                         if (error is ApiFailure || error is IllegalArgumentException) error.message.orEmpty()
-                        else "连接未完成，恢复后会自动补收。发送结果未确认时，请保留原内容重试。")
+                        else "连接未完成，恢复后会自动补收。发送结果未确认时，可以重试同一条留言。")
                 }
             } finally { if (stamp == generation) current.value = current.value.copy(busy = false) }
         }
@@ -85,18 +93,27 @@ class MessageModel(private val gateway: MessageGateway, private val elder: Boole
             loaded = true, error = "")
     }
 
-    fun refresh() = action { stamp, family -> load(stamp, family) }
+    private suspend fun loadDraft(stamp: Int, family: String, user: String) {
+        val draft = gateway.pendingDraft(family, user)
+        if (stamp == generation) current.value = current.value.copy(pendingDraft = draft)
+    }
 
-    fun send(text: String) = action { stamp, family ->
+    fun refresh() = action { stamp, family, _ -> load(stamp, family) }
+
+    fun send(text: String) = action { stamp, family, user ->
         val clean = text.trim()
         require(clean.isNotEmpty() && clean.length <= 2000) { "请输入 1 到 2000 个字符。" }
-        gateway.send(family, if (elder) "CHILD" else "ELDER", clean)
+        try {
+            gateway.send(family, user, if (elder) "CHILD" else "ELDER", clean)
+        } finally {
+            if (stamp == generation) loadDraft(stamp, family, user)
+        }
         if (stamp != generation) return@action
         current.value = current.value.copy(notice = "留言已保存，等待家人接收。", sentVersion = current.value.sentVersion + 1)
         load(stamp, family)
     }
 
-    fun read(item: FamilyLetter) = action { stamp, family ->
+    fun read(item: FamilyLetter) = action { stamp, family, _ ->
         require(!item.outgoing && current.value.items.any { it.id == item.id })
         for ((id, status) in item.receipts) if (status != "READ") gateway.acknowledge(id, true)
         if (stamp == generation) { current.value = current.value.copy(notice = "已告诉家人：这条留言您已读过。"); load(stamp, family) }
