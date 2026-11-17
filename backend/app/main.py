@@ -55,6 +55,8 @@ from app.modules.report.api import router as report_router
 app.include_router(report_router)
 from app.modules.weather.api import router as weather_router
 app.include_router(weather_router)
+from app.platform.ops_status import router as ops_status_router
+app.include_router(ops_status_router)
 
 
 @app.exception_handler(AppError)

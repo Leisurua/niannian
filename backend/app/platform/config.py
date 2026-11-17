@@ -1,6 +1,7 @@
 """Typed, secret-free runtime profiles for the three course environments."""
 
 import os
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -19,6 +20,8 @@ class Settings(BaseSettings):
     provider_mode: ProviderMode = "mock"
     demo_data: bool = False
     log_level: str = "INFO"
+    ops_status_token: SecretStr = Field(default=SecretStr(""), repr=False)
+    ops_build_revision: str = Field(default="", pattern=r'^(?:[0-9a-f]{7,40})?$')
     database_url: str = Field(default="postgresql+psycopg://localhost:5432/nianian", repr=False)
     llm_api_key: str | None = Field(default=None, repr=False)
     llm_provider: Literal["mock", "openai_compatible"] = "mock"
@@ -91,6 +94,11 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def keep_demo_fictional(self) -> "Settings":
+        ops_token = self.ops_status_token.get_secret_value()
+        if ops_token and not re.fullmatch(r'[0-9a-f]{64}', ops_token):
+            raise ValueError('OPS_STATUS_TOKEN must be 64 lowercase hexadecimal characters')
+        if ops_token and ops_token == self.auth_signing_key.get_secret_value():
+            raise ValueError('OPS_STATUS_TOKEN must differ from AUTH_SIGNING_KEY')
         if self.worker_stale_seconds < self.worker_heartbeat_seconds * 2:
             raise ValueError('WORKER_STALE_SECONDS must be at least twice WORKER_HEARTBEAT_SECONDS')
         if self.avatar_image_base_url:
@@ -108,7 +116,6 @@ class Settings(BaseSettings):
             if url.scheme != 'https' or not url.hostname or url.username or url.password or url.query or url.fragment:
                 raise ValueError('NTFY_BASE_URL must be HTTPS without credentials or query')
         if self.twilio_account_sid:
-            import re
             if not re.fullmatch(r'AC[0-9a-fA-F]{32}', self.twilio_account_sid):
                 raise ValueError('Invalid Twilio account SID')
         if self.twilio_status_callback_url:

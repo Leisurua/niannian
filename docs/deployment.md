@@ -84,6 +84,22 @@ docker compose --env-file infra/linux/.env -f infra/linux/docker-compose.yml --p
 
 `ops-monitor` 不依赖 API/数据库启动成功，只共享内部网络及专用状态卷，不持有数据库、S3 或家庭通知密钥。主机令牌文件应放在仅运维可进入的目录，挂载后须允许容器内 `niannian` 服务用户只读。阈值配置见 `infra/linux/.env.example`。非 Docker 可通过相同 `OPS_*` 环境变量指定 `OPS_API_URL`、`OPS_STATE_FILE` 后直接运行；`--once` 用于单次检查。整台主机断电或 ntfy 本身不可达时，同机进程不能保证送达：需要在独立主机运行同一监控进程，且 ntfy 位于独立可达服务。配置存在及模拟供应商测试不代表运维人员已收到真实推送。
 
+### 只读运维查询
+
+在 `infra/linux/.env` 设置独立的 `OPS_STATUS_TOKEN` 后重建 API 容器即可启用查询。用 `openssl rand -hex 32` 生成令牌，作为运维凭据保存在权限 600 的配置中。可选的 `OPS_BUILD_REVISION` 填写当前部署的 Git 提交号。TLS 部署会将 API 直连端口绑定回环，网关对查询路径返回 404。使用 HTTP 演示配置时，启用查询前同样设置 `API_BIND_ADDRESS=127.0.0.1`。
+
+在服务主机的 Bash 中查询，端口以 `API_PORT` 为准。
+
+```bash
+read -rsp '运维令牌 ' ops_token
+printf '\n'
+printf 'header = "Authorization: Bearer %s"\n' "$ops_token" |
+  curl --silent --show-error --config - http://127.0.0.1:8000/internal/ops/status
+unset ops_token
+```
+
+响应包含 API 版本、可选构建提交号、预期迁移头、待处理任务状态计数，以及当前保留的通知按渠道划分的失败和结果未知数量。数据库不可用时返回 503 和版本信息，计数为 `null`。家庭账户和 ntfy 凭据没有此查询权限。
+
 APP_ENV 从进程环境选择 dev/test/demo，应用读取 `backend/config/<环境>.env`，再加载忽略提交的根 `.env`；环境变量优先。demo 要求 demo_data=true 且 provider_mode=mock、Embedding 为 Mock；test 禁止真实外部 LLM，但允许显式启用本地 Embedding 做离线验证。填入供应商密钥不会自动启用真实 AI。
 
 ## 真实 LLM 文字联调

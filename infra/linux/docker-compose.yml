@@ -159,6 +159,10 @@ services:
 
   api:
     <<: *backend-service
+    environment:
+      <<: *backend-environment
+      OPS_STATUS_TOKEN: ${OPS_STATUS_TOKEN:-}
+      OPS_BUILD_REVISION: ${OPS_BUILD_REVISION:-}
     command: ["python", "-m", "app", "--host", "0.0.0.0", "--port", "8000"]
     volumes: *ntfy-ca-volumes
     ports:

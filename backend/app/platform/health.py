@@ -49,9 +49,17 @@ async def worker_is_fresh(db, stale_seconds):
     return (await worker_component(db, stale_seconds))['status'] == 'ok'
 
 
-async def _database_components(factory, settings):
+async def task_counts(db):
     from app.platform.tasks import Task
 
+    rows = (await db.execute(select(Task.status, func.count()).where(Task.status != 'SUCCEEDED')
+                             .group_by(Task.status))).all()
+    counts = dict.fromkeys(('pending', 'running', 'retry', 'dead'), 0)
+    counts.update({status.lower(): count for status, count in rows})
+    return counts
+
+
+async def _database_components(factory, settings):
     async with factory() as db:
         await db.execute(text('SELECT 1'))
         # A missing relation aborts the current PostgreSQL transaction.
@@ -70,10 +78,7 @@ async def _database_components(factory, settings):
             worker = {'status': 'unknown'}
         try:
             async with db.begin_nested():
-                rows = (await db.execute(select(Task.status, func.count()).where(Task.status != 'SUCCEEDED')
-                    .group_by(Task.status))).all()
-            counts = {name.lower(): 0 for name in ('PENDING', 'RUNNING', 'RETRY', 'DEAD')}
-            counts.update({status.lower(): count for status, count in rows})
+                counts = await task_counts(db)
             tasks = {'status': 'degraded' if counts['dead'] else 'ok', **counts}
         except Exception:
             tasks = {'status': 'unknown'}
