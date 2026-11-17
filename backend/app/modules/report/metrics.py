@@ -1,6 +1,6 @@
 import re
 from collections import Counter
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -110,7 +110,7 @@ def aggregate(rows, start, end, zone):
     hours = [0] * 24
     simulated, unclassified = 0, 0
     classification = Counter({method: 0 for method in ("RULE", "LOCAL_SEMANTIC", "RULE_FALLBACK")})
-    for row in rows:
+    for row in sorted(rows, key=lambda row: row.occurred_at.astimezone(timezone.utc)):
         local = row.occurred_at.astimezone(zone)
         if local.date().isoformat() not in days:
             continue
@@ -118,8 +118,9 @@ def aggregate(rows, start, end, zone):
         stamp = local.isoformat()
         day['turns'] += 1
         day['active_seconds'] += row.duration_seconds
-        day['first_interaction'] = min(day['first_interaction'] or stamp, stamp)
-        day['last_interaction'] = max(day['last_interaction'] or stamp, stamp)
+        if day['first_interaction'] is None:
+            day['first_interaction'] = stamp
+        day['last_interaction'] = stamp
         sessions.add(row.conversation_id)
         daily_sessions[day['date']].add(row.conversation_id)
         hours[local.hour] += 1

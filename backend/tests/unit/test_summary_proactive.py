@@ -243,6 +243,7 @@ def test_summary_keeps_only_curated_themes_and_never_echoes_raw_input():
     assert controlled_text(private) is None
     assert controlled_text('\n'.join(TOPICS)) is None
     assert controlled_text('\n'.join(TOPICS[:2])) == '\n'.join(TOPICS[:2])
-    assert controlled_text(LEGACY_TOPICS[0]) == LEGACY_TOPICS[0]
+    assert controlled_text(LEGACY_TOPICS[0]) == TOPICS[3]
+    assert controlled_text('\n'.join((LEGACY_TOPICS[0], TOPICS[3]))) == TOPICS[3]
     assert topic_for('今天会下雨吗') == TOPICS[3]
     assert 'Mock' not in TOPICS[3]

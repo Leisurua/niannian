@@ -17,7 +17,7 @@ from app.modules.reminder.service import tick
 from app.modules.weather.service import WeatherService
 from app.platform.config import get_settings
 from app.platform.identifiers import utcnow
-from backend.tests.support import URL, household, post, reminder_body, start, handshake, ws_frame
+from backend.tests.support import URL, grant, household, post, reminder_body, start, handshake, ws_frame
 
 pytestmark = pytest.mark.skipif(not URL, reason='Set TEST_DATABASE_URL to run PostgreSQL integration tests')
 
@@ -32,13 +32,13 @@ def ask(ws, cid, sequence, value, **context):
     return response['payload']
 
 
-def test_voice_reminder_done_later_and_worker_use_same_persistent_execution(system):
+def test_voice_reminder_feedback_and_worker_use_same_persistent_execution(system):
     client, engine, factory, _ = system
     home = household(client)
     now = utcnow()
     assert post(client, '/v1/consents', home[4], dict(family_id=home[0], subject_user_id=home[3],
         grantee_user_id=home[3], scope='INTERACTION_STATS', source='SETTINGS')).status_code == 201
-    for title, minute in [('喝水提醒', 1), ('散步提醒', 2)]:
+    for title, minute in [('喝水提醒', 1), ('散步提醒', 2), ('带伞提醒', 3)]:
         due = now + timedelta(minutes=minute)
         result = post(client, '/v1/reminders', home[2], reminder_body(home, title=title,
             schedule_time_local=due.strftime('%H:%M:%S'), start_date=now.date().isoformat()))
@@ -66,14 +66,19 @@ def test_voice_reminder_done_later_and_worker_use_same_persistent_execution(syst
             first_due = connection.execute(text("SELECT next_due_at FROM reminder_execution WHERE feedback_status='LATER'")).scalar_one()
         repeated_later = ask(ws, cid, 9, '第二项二十分钟后再提醒我', timezone='UTC')
         assert '没有重复更改' in repeated_later['text'] and not repeated_later.get('reminders_changed')
+        skipped = ask(ws, cid, 10, '请帮我跳过第三项', timezone='UTC')
+        assert skipped['reminders_changed'] is True and '已跳过“带伞提醒”的这一次提醒' in skipped['text']
+        repeated_skip = ask(ws, cid, 11, '第三项跳过', timezone='UTC')
+        assert '没有重复更改' in repeated_skip['text'] and not repeated_skip.get('reminders_changed')
     with engine.connect() as connection:
         rows = connection.execute(text('SELECT feedback_status,next_due_at FROM reminder_execution ORDER BY scheduled_at')).all()
-        assert len(rows) == 2 and [r[0] for r in rows] == ['DONE', 'LATER']
+        assert [r[0] for r in rows] == ['DONE', 'LATER', 'SKIPPED']
+        assert rows[2][1] is None
         later_time = rows[1][1]
         assert later_time == first_due
         assert 1190 < (later_time - now).total_seconds() < 1230
-        assert connection.execute(text("SELECT count(*) FROM audit_log WHERE action='REMINDER_FEEDBACK'")).scalar() == 2
-        assert connection.execute(text('SELECT count(*) FROM interaction_metric')).scalar() == 6
+        assert connection.execute(text("SELECT count(*) FROM audit_log WHERE action='REMINDER_FEEDBACK'")).scalar() == 3
+        assert connection.execute(text('SELECT count(*) FROM interaction_metric')).scalar() == 8
         assert connection.execute(text('SELECT count(*) FROM interaction_metric WHERE simulated')).scalar() == 0
     async def run():
         async with factory() as db:
@@ -82,7 +87,24 @@ def test_voice_reminder_done_later_and_worker_use_same_persistent_execution(syst
     asyncio.run(run())
     with engine.connect() as connection:
         assert connection.execute(text("SELECT count(*) FROM reminder_execution WHERE feedback_status='PENDING'")).scalar() == 1
-        assert connection.execute(text('SELECT count(*) FROM reminder_execution')).scalar() == 2
+        assert connection.execute(text('SELECT count(*) FROM reminder_execution')).scalar() == 3
+
+
+def test_voice_skip_does_not_bypass_medication_reason(system):
+    client, engine, _, _ = system
+    home = household(client)
+    grant(client, home, 'HEALTH_MEDICATION')
+    created = post(client, '/v1/reminders', home[2], reminder_body(home, type='MEDICATION',
+        title='虚构用药提醒', start_date=utcnow().date().isoformat(), schedule_time_local='00:00:00'))
+    assert created.status_code == 201, created.text
+    cid = start(client, home)
+    with client.websocket_connect('/v1/ws/conversations/' + cid, headers=home[4]) as ws:
+        handshake(ws, cid)
+        assert '虚构用药提醒' in ask(ws, cid, 2, '今天有什么提醒', timezone='UTC')['text']
+        blocked = ask(ws, cid, 3, '跳过第一项', timezone='UTC')
+        assert '填写原因' in blocked['text'] and not blocked.get('reminders_changed')
+    with engine.connect() as connection:
+        assert connection.execute(text('SELECT count(*) FROM reminder_execution')).scalar() == 0
 
 
 def test_spoken_replay_after_interrupt_refreshes_daily_query(system, monkeypatch):

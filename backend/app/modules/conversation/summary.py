@@ -18,6 +18,11 @@ TOPICS = (
     '这次交流提到了需要核实的问题，可主动联系身边的人。',
 )
 LEGACY_TOPICS = ('这次交流询问了天气或日程；Mock 不提供真实天气或执行结果。',)
+SOURCE = '本次会话回顾'
+
+
+def is_request(text):
+    return text.strip(' \t\r\n。？?！!') in ('刚才聊了什么', '我们刚才聊了什么', '刚刚聊了什么', '回顾本次会话', '回顾一下刚才聊的内容')
 
 
 def topic_for(text):
@@ -38,7 +43,7 @@ def controlled_text(value):
     lines = value.split('\n')
     if not 1 <= len(lines) <= 4 or len(set(lines)) != len(lines) or any(line not in TOPICS + LEGACY_TOPICS for line in lines):
         return None
-    return '\n'.join(lines)
+    return '\n'.join(dict.fromkeys(TOPICS[3] if line in LEGACY_TOPICS else line for line in lines))
 
 
 async def eligible(db, row):
@@ -77,7 +82,6 @@ async def add_topic(db, row, topic):
         row.summary_retention_until = min(now + timedelta(hours=24), grant.expires_at or now + timedelta(hours=24))
     previous = controlled_text(row.summary_text) if row.summary_status in ('PENDING', 'READY') else None
     previous_lines = previous.split('\n') if previous else []
-    previous_lines = [TOPICS[3] if line in LEGACY_TOPICS else line for line in previous_lines]
     lines = list(dict.fromkeys(previous_lines + [topic]))[-4:]
     row.summary_text = '\n'.join(lines)
     row.summary_status = 'PENDING'
@@ -103,6 +107,16 @@ async def readable(db, row):
         await invalidate(db, row)
         return None
     return controlled_text(row.summary_text) if row.summary_status == 'READY' else None
+
+
+async def current_reply(db, row):
+    if not await eligible(db, row):
+        await invalidate(db, row)
+        return '当前没有可用的会话回顾。请在家庭与授权设置中检查本人回顾授权。'
+    content = controlled_text(row.summary_text) if row.summary_status in ('PENDING', 'READY') else None
+    if not content:
+        return '本次会话还没有可回顾的主题。'
+    return '这是本次会话的主题回顾。' + content.replace('\n', '')
 
 
 async def prepare(db, resource_id, version):

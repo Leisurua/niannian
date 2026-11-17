@@ -168,7 +168,7 @@ def test_explicit_configuration_keeps_demo_auth_independent():
     assert settings.provider_mode == "mock"
 
 
-@pytest.mark.parametrize("thinking", [None, "disabled", "enabled"])
+@pytest.mark.parametrize("thinking", [None, "", "disabled", "enabled"])
 def test_deepseek_configuration_reaches_wire_and_discards_reasoning(thinking):
     settings = Settings(app_env="dev", provider_mode="mock", llm_provider="openai_compatible",
         llm_base_url="https://api.deepseek.com", llm_model="deepseek-flash",
@@ -197,7 +197,7 @@ def test_deepseek_configuration_reaches_wire_and_discards_reasoning(thinking):
     assert body["model"] == "deepseek-flash"
     assert body["response_format"] == {"type": "json_object"}
     assert body["stream"] is False
-    if thinking is None:
+    if not thinking:
         assert "thinking" not in body
     else:
         assert body["thinking"] == {"type": thinking}

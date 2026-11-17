@@ -1,0 +1,2 @@
+/infra/linux/*.sh text eol=lf
+/infra/linux/.env.example text eol=lf

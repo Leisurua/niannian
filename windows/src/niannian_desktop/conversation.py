@@ -51,10 +51,11 @@ class ConversationSocket:
                             audio_capabilities=['pcm_v1'], voice_profile_id=self.voice))
                     self.callback(event)
         except Exception:
-            if not self.closed.is_set():
-                self.failed('对话已断开，请检查登录、语音授权和网络，再重新开始。')
+            pass
         finally:
             self.socket = None
+            if not self.closed.is_set():
+                self.failed('对话已断开，请检查登录、语音授权和网络，再重新开始。')
 
     def validate(self, raw):
         if not isinstance(raw, str) or len(raw.encode('utf-8')) > 16384:
@@ -112,7 +113,7 @@ class ConversationPanel(VoicePanel):
         row = ttk.Frame(self); row.pack(fill='x', pady=8)
         ttk.Button(row, text='允许语音', command=lambda: self.voice_consent(True)).pack(side='left')
         ttk.Button(row, text='撤回全部语音', command=lambda: self.voice_consent(False)).pack(side='left')
-        for title, action in [('开始聊天', self.start), ('停止', self.interrupt), ('再说一遍', lambda: self.command('repeat')), ('慢一点', self.slower), ('结束', self.reset)]:
+        for title, action in [('开始聊天', self.start), ('停止', self.interrupt), ('再说一遍', lambda: self.command('repeat')), ('慢一点', self.slower), ('结束', self.end)]:
             ttk.Button(row, text=title, command=action).pack(side='left', padx=3)
         self.transcript = scrolledtext.ScrolledText(self, height=14, state='disabled', wrap='word', font=('Microsoft YaHei UI', 15))
         self.transcript.pack(fill='both', expand=True)
@@ -144,7 +145,7 @@ class ConversationPanel(VoicePanel):
                 return api.request('POST', '/v1/consents/' + latest['id'] + '/revoke', {})
         self.run(operation, lambda _: self.status.set('语音授权已更新。'))
 
-    def reset(self):
+    def reset(self, *, keep_draft=False):
         self.clear_invitation()
         super().reset()
         if getattr(self, 'connection', None):
@@ -155,7 +156,8 @@ class ConversationPanel(VoicePanel):
         self.voice_allowed = False
         if hasattr(self, 'transcript'):
             self.transcript.configure(state='normal'); self.transcript.delete('1.0', 'end'); self.transcript.configure(state='disabled')
-            self.input.set('')
+            if not keep_draft:
+                self.input.set('')
         if hasattr(self, 'title'):
             self.title.set('念念 AI · 普通声音')
 
@@ -213,7 +215,7 @@ class ConversationPanel(VoicePanel):
             self.status.set('请先登录并选择家庭。'); return
         if self.selected() and not self.cloud.get():
             self.status.set('请先同意云端文本处理，或选择普通声音。'); return
-        self.reset()
+        self.reset(keep_draft=self.connection is None)
         self.title.set('念念 AI · ' + self.choice.get() + ('（授权合成）' if self.selected() else ''))
         self.status.set('正在连接…')
         epoch = self.epoch
@@ -222,17 +224,26 @@ class ConversationPanel(VoicePanel):
             lambda message: self.post(lambda: self.failed_connection(message), epoch))
 
     def failed_connection(self, message):
-        self.reset(); self.status.set(message)
+        self.reset(keep_draft=True)
+        self.status.set(message)
+
+    def end(self):
+        if self.connection:
+            self.command('session.end', {'reason': 'USER'})
+        self.reset()
 
     def command(self, kind, payload=None):
+        if not self.connection:
+            self.status.set('尚未连接，请先开始聊天。')
+            return False
         try:
-            if not self.connection:
-                raise ValueError('请先开始聊天。')
-            if kind not in ("ping", "session.start"):
-                self.clear_invitation()
             self.connection.send(kind, payload)
         except Exception:
-            self.status.set('尚未连接，请先开始聊天。')
+            self.status.set('发送结果未确认，请核对连接后再试。')
+            return False
+        if kind not in ('ping', 'session.start'):
+            self.clear_invitation()
+        return True
 
     def clear_invitation(self):
         self.invitation = None
@@ -248,9 +259,9 @@ class ConversationPanel(VoicePanel):
         invitation = self.invitation
         text = {'ACCEPT': '我愿意聊一会儿', 'DECLINE': '暂时不聊', 'PAUSE_TODAY': '今天少打扰我'}[action]
         self.audio.stop(); self.playback = None
-        self.command('text.input', dict(text=text, proactive_invitation_id=invitation,
-            proactive_response=action, speech_rate=0.8 if self.slow else 1.0))
-        self.append('您：' + text)
+        if self.command('text.input', dict(text=text, proactive_invitation_id=invitation,
+                proactive_response=action, speech_rate=0.8 if self.slow else 1.0)):
+            self.append('您：' + text)
 
     def append(self, text):
         self.transcript.configure(state='normal')
@@ -264,8 +275,9 @@ class ConversationPanel(VoicePanel):
         if not text or len(text) > 2000 or not self.connection:
             self.status.set('请开始聊天，并输入 1–2000 字。'); return
         self.audio.stop(); self.playback = None
-        self.command('text.input', {'text': text, 'timezone': 'Asia/Shanghai', 'speech_rate': 0.8 if self.slow else 1.0})
-        self.append('您：' + text); self.input.set('')
+        if self.command('text.input', {'text': text, 'timezone': 'Asia/Shanghai', 'speech_rate': 0.8 if self.slow else 1.0}):
+            self.append('您：' + text)
+            self.input.set('')
 
     def interrupt(self):
         self.audio.stop(); self.playback = None
@@ -294,7 +306,9 @@ class ConversationPanel(VoicePanel):
         if kind == 'session.ready':
             if 'voice_allowed' in payload:
                 self.voice_allowed = payload['voice_allowed'] is True
-            self.status.set('已连接，可以打字聊天。'); return
+            mode = payload.get('llm_mode')
+            mode_label = {'real': '真实聊天服务', 'mock': 'Mock 演示'}.get(mode, '模式未知') if isinstance(mode, str) else '模式未知'
+            self.status.set(f'已连接 · {mode_label}，可以打字聊天。'); return
         reply = event.get('in_reply_to')
         if reply is not None and (type(reply) is not int or reply < self.connection.floor or reply > self.connection.sequence):
             return
@@ -315,7 +329,9 @@ class ConversationPanel(VoicePanel):
                 self.invitation_timer = self.after(int(remaining * 1000), self.clear_invitation)
                 self.append('念念邀请（选择后才开始交流）：' + text)
                 return
-            self.append('念念：' + text)
+            sources = payload.get('source_labels')
+            label = ' · '.join(sources) if isinstance(sources, list) and all(isinstance(item, str) for item in sources) else ''
+            self.append('念念：' + text + (f'\n来源：{label}' if label else ''))
             if self.voice_allowed and payload.get('speech_mode', 'device') == 'device' and reply is not None:
                 self.audio.speak(text, self.slow)
         elif kind == 'tts.start' and self.voice_allowed:

@@ -19,7 +19,7 @@
 | 记忆读写 | 本人，或获 MEMORY_READ/WRITE 的家属；跨主体需记忆指定 scope。OWNER_ONLY 仅本人；候选需可写权限才能查看，不能当事实 |
 | 记忆撤回/删除 | 仍校验家庭、主体与编辑权限；不要求先重新授予已撤回的数据 scope |
 | 照片 | 继承关联记忆当前权限，同时检查 family、owner、文件/记忆状态；不可用文件不返回字节 |
-| 生活提醒 | 本人或相应 REMINDER_READ/WRITE 家属；药物提醒写入需授权 CHILD/CAREGIVER、HEALTH_MEDICATION，老人不能自行改医嘱 |
+| 生活提醒 | 本人或相应 REMINDER_READ/WRITE 家属；药物提醒写入需授权 CHILD/CAREGIVER、HEALTH_MEDICATION，老人不能自行改医嘱。创建后禁止在用药和其他类型之间转换，提醒正文和历史反馈继续受原授权保护 |
 | 提醒反馈 | 执行记录的本人；离线反馈验证 owner/family、提醒版本、发生时间、期限与幂等键，不能伪造执行或送达 |
 | 会话/WSS | ACTIVE 老人本人创建文字会话，WSS 仅会话本人；连接与后续操作复查会话、令牌、家庭和设备状态 |
 | 摘要 | 本人明确允许生成；指定家属需 CONVERSATION_SUMMARY、SUMMARY_READ 和 FAMILY_CHECK_IN/FOLLOW_UP 理由，读取审计 |

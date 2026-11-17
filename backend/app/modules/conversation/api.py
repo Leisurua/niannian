@@ -297,8 +297,12 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                                 outgoing = [service.event(row, 'error', {'code': 'PROACTIVE_INVITATION_EXPIRED', 'retryable': False}),
                                     service.event(row, 'assistant.state', {'state': row.backend_state})]
                             elif invitation_response == 'DECLINE':
-                                outgoing = [service.event(row, 'assistant.text', {'text': '好的，暂时不聊。需要时随时找我。',
-                                    'source_labels': ['主动陪伴设置'], 'speech_mode': 'none'}),
+                                last_reply, last_records = '好的，暂时不聊。需要时随时找我。', ()
+                                last_daily = last_query = None
+                                last_source_labels = ['主动陪伴设置']
+                                row.backend_state = 'IDLE'
+                                outgoing = [service.event(row, 'assistant.text', {'text': last_reply,
+                                    'source_labels': last_source_labels, 'speech_mode': 'none'}),
                                     service.event(row, 'assistant.state', {'state': 'IDLE'})]
                             elif turn_task or not row.provider_metadata.get('identity_disclosed'):
                                 outgoing = [service.event(row, 'error', {'code': 'PROVIDER_TEMPORARILY_UNAVAILABLE', 'retryable': False})]
@@ -321,10 +325,21 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                                 try:
                                     await proactive.command(db, actor, row.family_id, actor.user_id, 'pause', {},
                                         f'ws-pause:{conversation_id}:{message.sequence}', settings, f'turn-{message.sequence}')
-                                    reply = '今天已减少主动互动，必要提醒和紧急联系仍可使用。'
+                                    last_reply = '今天已减少主动互动，必要提醒和紧急联系仍可使用。'
                                 except AppError:
-                                    reply = '当前没有已启用的主动陪伴设置；必要提醒和紧急联系仍可使用。'
-                                outgoing = [service.event(row, 'assistant.text', {'text': reply, 'source_labels': source_labels}),
+                                    last_reply = '当前没有已启用的主动陪伴设置；必要提醒和紧急联系仍可使用。'
+                                last_records = ()
+                                last_daily = last_query = None
+                                last_source_labels = ['主动陪伴设置']
+                                row.backend_state = 'IDLE'
+                                outgoing = [service.event(row, 'assistant.text', {'text': last_reply, 'source_labels': last_source_labels}),
+                                    service.event(row, 'assistant.state', {'state': 'IDLE'})]
+                            elif not invitation_response and recap.is_request(message.payload['text']):
+                                last_reply, last_records = await recap.current_reply(db, row), ()
+                                last_daily = last_query = None
+                                last_source_labels = [recap.SOURCE]
+                                row.backend_state = 'IDLE'
+                                outgoing = [service.event(row, 'assistant.text', {'text': last_reply, 'source_labels': last_source_labels}),
                                     service.event(row, 'assistant.state', {'state': 'IDLE'})]
                             else:
                                 if invitation_response == 'ACCEPT':
@@ -362,6 +377,8 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                                 if not await rag.revalidate(db, actor, last_records):
                                     last_reply, last_records = UNKNOWN, ()
                                     last_source_labels = source_labels
+                                if last_source_labels == [recap.SOURCE]:
+                                    last_reply = await recap.current_reply(db, row)
                                 if last_daily and last_daily.choices:
                                     current_choices = await daily.today_choices(db, actor, row,
                                         ZoneInfo(last_query.get('timezone', 'Asia/Shanghai')), utcnow())
@@ -445,7 +462,9 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                         last_interaction = utcnow()
                     for item in outgoing:
                         if item['type'] == 'assistant.text' and item['payload'].get('speech_mode') != 'none':
-                            await speech.begin(db, actor, row, item, last_records or (), identity=raw is not None and message.type == 'session.start')
+                            await speech.begin(db, actor, row, item, last_records or (),
+                                identity=raw is not None and message.type == 'session.start',
+                                device_only=item['payload'].get('source_labels') == [recap.SOURCE])
                     outgoing += await speech.drain(db, actor, row)
                     if permission_event:
                         outgoing.insert(0, permission_event)

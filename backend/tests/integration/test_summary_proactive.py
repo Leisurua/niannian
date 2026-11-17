@@ -59,6 +59,62 @@ def read(client, cid, headers, reason='FAMILY_CHECK_IN'):
     return client.get('/v1/conversations/' + cid, headers={**headers, **({'X-Access-Reason': reason} if reason else {})})
 
 
+def test_current_recap_and_repeat_use_only_authorized_topics(system, monkeypatch):
+    from app.modules.conversation import api
+    client, engine, _, _ = system
+    home = household(client)
+    grant(client, home, 'CONVERSATION_SUMMARY')
+    generated = []
+    generate = api.generate_turn
+
+    async def track_generation(*args, **kwargs):
+        generated.append(args[5])
+        return await generate(*args, **kwargs)
+
+    monkeypatch.setattr(api, 'generate_turn', track_generation)
+    cid = start(client, home)
+    with client.websocket_connect('/v1/ws/conversations/' + cid, headers=home[4]) as ws:
+        handshake(ws, cid)
+
+        def recap(sequence, command='text.input'):
+            ws.send_json(ws_frame(cid, command, sequence, {'text': '刚才聊了什么？'} if command == 'text.input' else {}))
+            reply = ws.receive_json()
+            assert reply['type'] == 'assistant.text' and reply['in_reply_to'] == sequence
+            assert reply['payload']['source_labels'] == [summary.SOURCE]
+            assert ws.receive_json()['payload']['state'] == 'IDLE'
+            return reply['payload']['text']
+
+        assert '检查本人回顾授权' in recap(2)
+        consent_id = self_grant(client, home)
+        assert '还没有可回顾' in recap(3)
+        utterance = '今天想种花，synthetic-private-recap'
+        ws.send_json(ws_frame(cid, 'text.input', 4, {'text': utterance}))
+        assert ws.receive_json()['payload']['state'] == 'THINKING'
+        assert ws.receive_json()['type'] == 'assistant.text'
+        assert ws.receive_json()['type'] == 'assistant.state'
+        with engine.begin() as conn:
+            conn.execute(text('UPDATE conversation SET summary_text=:value WHERE id=:id'),
+                {'value': '\n'.join((summary.TOPICS[0], summary.LEGACY_TOPICS[0])), 'id': cid})
+        recalled = recap(5)
+        assert summary.TOPICS[0] in recalled and 'synthetic-private-recap' not in recalled
+        assert summary.TOPICS[3] in recalled and summary.LEGACY_TOPICS[0] not in recalled
+        assert recap(6, 'repeat') == recalled
+
+        ws.send_json(ws_frame(cid, 'text.input', 7, {'text': '今天少打扰我'}))
+        pause = ws.receive_json()['payload']
+        assert pause['source_labels'] == ['主动陪伴设置']
+        assert ws.receive_json()['payload']['state'] == 'IDLE'
+        ws.send_json(ws_frame(cid, 'repeat', 8))
+        assert ws.receive_json()['payload'] == pause
+        assert ws.receive_json()['payload']['state'] == 'IDLE'
+
+        assert recap(9) == recalled
+        assert post(client, '/v1/consents/' + consent_id + '/revoke', home[4]).status_code == 201
+        assert '检查本人回顾授权' in recap(10, 'repeat')
+        assert '检查本人回顾授权' in recap(11)
+    assert generated == [utterance]
+
+
 def test_standing_grant_two_sessions_reason_audit_and_revoke(system):
     client, engine, factory, _ = system
     home = household(client)
@@ -182,6 +238,7 @@ def test_legacy_weather_recap_keeps_one_theme_when_updated(system):
     with engine.begin() as conn:
         conn.execute(text("UPDATE conversation SET summary_text=:value, summary_status='READY' WHERE id=:id"),
             {'value': summary.LEGACY_TOPICS[0], 'id': cid})
+    assert read(client, cid, home[4], None).json()['summary'] == summary.TOPICS[3]
 
     async def update_topic():
         async with factory() as db:
@@ -423,6 +480,7 @@ def test_invitation_is_silent_and_only_current_acceptance_calls_model(system, mo
             assert first['type'] == 'error' and first['payload']['code'] == 'PROACTIVE_INVITATION_EXPIRED'
         else:
             assert first['type'] == 'assistant.text'
+            assert first['payload']['source_labels'] == ['主动陪伴设置']
             if response == 'DECLINE':
                 assert first['payload']['speech_mode'] == 'none'
         assert ws.receive_json()['type'] == 'assistant.state'

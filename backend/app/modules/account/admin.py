@@ -1,6 +1,7 @@
 """Operator tools; no public administrator bypass endpoint."""
 import argparse
 import asyncio
+from codecs import BOM_UTF16_BE, BOM_UTF16_LE, BOM_UTF32_BE, BOM_UTF32_LE
 import hashlib
 import json
 from pathlib import Path
@@ -14,6 +15,23 @@ from app.modules.account.models import AccountDeletion, ProviderCopy
 from app.modules.account.service import confirm_copy, deletion_view
 from app.platform.config import get_settings
 from app.platform.runtime import configure_event_loop
+
+
+def verified_evidence_reference(operator, evidence_file):
+    operator = operator.strip()
+    evidence = Path(evidence_file).read_bytes()
+    encoding = 'utf-8-sig'
+    if evidence.startswith((BOM_UTF32_BE, BOM_UTF32_LE)):
+        encoding = 'utf-32'
+    elif evidence.startswith((BOM_UTF16_BE, BOM_UTF16_LE)):
+        encoding = 'utf-16'
+    try:
+        blank = not evidence.decode(encoding).strip()
+    except UnicodeDecodeError:
+        blank = not evidence.strip()
+    if not operator or blank:
+        raise ValueError('Operator and verified evidence are required')
+    return operator + ':' + hashlib.sha256(evidence).hexdigest()
 
 
 async def run(args):
@@ -32,8 +50,8 @@ async def run(args):
         else:
             # Evidence is kept in the operator's access-controlled system. This
             # database stores only its digest, so it cannot retain personal text.
-            evidence = hashlib.sha256(Path(args.evidence_file).read_bytes()).hexdigest()
-            await confirm_copy(db, UUID(args.deletion_id), args.kind, args.operator + ':' + evidence, args.provider)
+            evidence = verified_evidence_reference(args.operator, args.evidence_file)
+            await confirm_copy(db, UUID(args.deletion_id), args.kind, evidence, args.provider)
             await db.commit()
             print('COPY_CONFIRMATION_RECORDED')
 

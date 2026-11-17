@@ -131,9 +131,13 @@ fun ReminderPanel(model: ReminderModel, family: String, user: String, subjects: 
             }
             Text(if (editing == null) "添加提醒" else "编辑提醒", fontSize = 22.sp)
             if (!model.elder) subjects.forEach { (id, label) -> Action((if (id == target) "已选择：" else "选择长辈：") + label, state.busy) { target = id } }
-            Action(if (type == "MEDICATION") "用药提醒（点击改为喝水）" else "喝水提醒" , state.busy) { type = "WATER" }
-            Action("日程提醒", state.busy) { type = "CALENDAR" }
-            if (!model.elder) Action("用药提醒（需二次核对）", state.busy) { type = "MEDICATION" }
+            if (editing?.optString("type") == "MEDICATION") {
+                Text("用药提醒")
+            } else {
+                Action(if (type == "MEDICATION") "用药提醒（点击改为喝水）" else "喝水提醒", state.busy) { type = "WATER" }
+                Action("日程提醒", state.busy) { type = "CALENDAR" }
+                if (!model.elder && editing == null) Action("用药提醒（需二次核对）", state.busy) { type = "MEDICATION" }
+            }
             val disabled = unavailable || state.offline || state.busy
             OutlinedTextField(title, { title = it }, label = { Text("提醒名称") }, enabled = !disabled)
             OutlinedTextField(content, { content = it }, label = { Text("提醒内容（不自动修改医嘱）") }, enabled = !disabled)

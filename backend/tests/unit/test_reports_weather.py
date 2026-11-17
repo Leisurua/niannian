@@ -50,6 +50,16 @@ def test_period_validates_range_and_dst():
             period(start, end, zone, now=now)
 
 
+def test_aggregation_orders_first_and_last_across_dst_fallback():
+    rows = [SimpleNamespace(conversation_id='a', occurred_at=datetime.fromisoformat(stamp),
+        duration_seconds=1, emotions=[], topics=[], simulated=False)
+        for stamp in ('2026-11-01T06:10:00+00:00', '2026-11-01T05:50:00+00:00')]
+    result = aggregate(rows, date(2026, 11, 1), date(2026, 11, 2), ZoneInfo('America/New_York'))
+    day = result['days'][0]
+    assert day['first_interaction'] == '2026-11-01T01:50:00-04:00'
+    assert day['last_interaction'] == '2026-11-01T01:10:00-05:00'
+
+
 def transport(payload=None, status=200):
     def reply(request):
         assert 'authorization' not in request.headers

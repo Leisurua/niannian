@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["dev", "test", "demo"]
@@ -87,6 +87,11 @@ class Settings(BaseSettings):
     avatar_render_timeout: int = Field(default=300, ge=10, le=900)
 
     model_config = SettingsConfigDict(extra="ignore", case_sensitive=False, hide_input_in_errors=True)
+
+    @field_validator('llm_thinking', mode='before')
+    @classmethod
+    def empty_thinking_is_unset(cls, value):
+        return None if value == '' else value
 
     @model_validator(mode="after")
     def keep_demo_fictional(self) -> "Settings":
