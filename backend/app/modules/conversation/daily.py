@@ -48,7 +48,7 @@ def feedback_command(text):
     if any(word in value for word in ('不', '没', '未', '别', '无须', '无需', '如果', '假如', '假设', '要是',
             '可能', '也许', '大概', '好像', '应该', '准备', '打算', '说', '吗', '么', '?', '？', '“', '”', '"', "'", '「', '」', '‘', '’')):
         return None
-    value = re.sub(r'^(?:请|帮我|我把|我)', '', value)
+    value = re.sub(r'^(?:请)?(?:帮我|我把|我)?', '', value)
     done = re.fullmatch(r'(.*?)(?:已经|已)?(?:完成了?|做完了?|办完了?)', value)
     if done:
         return 'DONE', done[1], None
@@ -56,6 +56,9 @@ def feedback_command(text):
         return 'DONE', '药', None
     if value in ('喝过水了', '喝水了', '水喝了'):
         return 'DONE', '水', None
+    skipped = re.fullmatch(r'(?:(.*?)(?:先|暂时)?跳过|(?:先|暂时)?跳过(.+))', value)
+    if skipped:
+        return 'SKIPPED', skipped[1] if skipped[1] is not None else skipped[2], None
     later = re.fullmatch(r'(.*?)(?:稍后处理|稍后提醒我|稍后再提醒我|稍后提醒|等会儿?再提醒我|等会儿?处理)', value)
     if later:
         return 'LATER', later[1], 10
@@ -83,6 +86,8 @@ def intent(text):
     if feedback_command(text):
         return 'FEEDBACK'
     if any(word in value for word in ('完成', '做完', '稍后处理', '稍后提醒', '分钟后再提醒', '吃药了', '喝水了')):
+        return 'FEEDBACK_CLARIFY'
+    if '跳过' in value and ('提醒' in value or re.search(r'第[一二三四五六七八1-8][项个条]', value)):
         return 'FEEDBACK_CLARIFY'
     if any(word in value for word in ('天气', '下雨', '会冷', '气温', '温度', '带伞')):
         return 'WEATHER' if not any(word in value for word in ('明天', '后天', '昨天', '下周')) else 'UNSUPPORTED'
@@ -152,7 +157,7 @@ def arrangements(choices, zone, now):
     text = '今天的提醒安排：' + '；'.join(parts) + '。'
     if len(choices) > 8:
         text += f'另有{len(choices) - 8}项，请打开提醒页面查看。'
-    return text + '您可以说“第一项完成了”或“第一项稍后处理”；稍后处理默认十分钟后再提醒。'
+    return text + '您可以说“第一项完成了”“第一项稍后处理”或“第一项跳过”；稍后处理默认十分钟后再提醒。'
 
 
 def select_choice(command, context):
@@ -194,7 +199,7 @@ async def prepare_answer(db, actor, conversation, text, payload, weather, contex
     if kind == 'FEEDBACK':
         return Answer(kind, '', tuple(context), ('本人提醒反馈',))
     if kind == 'FEEDBACK_CLARIFY':
-        return Answer(kind, '尚未更改提醒。请先问“今天有什么安排”，再明确说“第一项完成了”或“第一项稍后处理”。')
+        return Answer(kind, '尚未更改提醒。请先问“今天有什么安排”，再明确说“第一项完成了”“第一项稍后处理”或“第一项跳过”。')
     return Answer(kind, '目前我能查询今天的日期、天气和提醒。请问“今天有什么安排”或“今天会下雨吗”。')
 
 
@@ -225,11 +230,18 @@ async def publish(db, actor, conversation, prepared, text, payload, settings, re
     item = next_occurrence(reminders.schedule(parent), current.scheduled_at, reminders.POLICY)
     if parent.version != chosen.version or not parent.active or not item or item.occurrence_key != current.occurrence_key:
         return Answer('FEEDBACK', '提醒已变更，请重新查询今天的安排。', sources=prepared.sources)
+    if status == 'SKIPPED' and parent.type == 'MEDICATION':
+        return Answer('FEEDBACK', '用药提醒需要记录跳过原因。请打开提醒页面，选择“跳过这次”并填写原因。',
+            prepared.choices, prepared.sources)
     await db.execute(insert(ReminderExecution).values(id=uuid7(), reminder_id=parent.id, owner_user_id=actor.user_id,
         occurrence_key=item.occurrence_key, scheduled_at=item.scheduled_at, local_date=item.local_date, local_time=item.local_time,
         source='ONLINE', feedback_status='PENDING', created_at=now).on_conflict_do_nothing(constraint='uq_reminder_occurrence'))
     execution = await db.scalar(select(ReminderExecution).where(ReminderExecution.reminder_id == parent.id,
         ReminderExecution.occurrence_key == item.occurrence_key).with_for_update())
+    if status == 'LATER' and execution.feedback_status == 'LATER' and execution.next_due_at and execution.next_due_at > now:
+        scheduled = execution.next_due_at.astimezone(zone).strftime('%m月%d日%H:%M')
+        return Answer('FEEDBACK', f'“{current.title[:100]}”已安排在{scheduled}再提醒，没有重复更改。',
+            prepared.choices, prepared.sources)
     due = now + timedelta(minutes=minutes) if status == 'LATER' else None
     try:
         result = await reminders.feedback(db, actor, execution.id, ReminderFeedback(status=status, next_due_at=due),
@@ -241,6 +253,11 @@ async def publish(db, actor, conversation, prepared, text, payload, settings, re
     updated = tuple(Choice(c.reminder_id, c.version, c.scheduled_at, c.occurrence_key, c.title,
         result['feedback_status'], due, current.triggered_at) if c.reminder_id == current.reminder_id and c.occurrence_key == current.occurrence_key else c
         for c in prepared.choices)
-    reply = f'已将“{current.title[:100]}”记录为完成。' if status == 'DONE' else (
-        f'已将“{current.title[:100]}”记录为稍后处理，{due.astimezone(zone).strftime("%m月%d日%H:%M")}再提醒。请保持设备联网并允许提醒通知。')
+    title = current.title[:100]
+    if due is not None:
+        reply = f'已将“{title}”记录为稍后处理，{due.astimezone(zone).strftime("%m月%d日%H:%M")}再提醒。请保持设备联网并允许提醒通知。'
+    elif status == 'SKIPPED':
+        reply = f'已跳过“{title}”的这一次提醒。'
+    else:
+        reply = f'已将“{title}”记录为完成。'
     return Answer('FEEDBACK', reply, updated, prepared.sources, reminders_changed=True)

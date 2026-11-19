@@ -14,9 +14,9 @@ from app.integrations.contracts import (
 )
 from app.integrations.mock import MockAvatar, MockLLM, MockTTS
 from app.ai.signal_candidates import SemanticSignal, extract_mock, extract_semantic
-from app.modules.safety.rules import evaluate, WARNING, EMERGENCY_COPY, RULE_VERSION
+from app.modules.safety.rules import evaluate, supports_scam_advice, WARNING, SCAM_ADVICE, EMERGENCY_COPY, RULE_VERSION
 
-PROMPT_VERSION = '1.3.0'
+PROMPT_VERSION = '1.4.0'
 IDENTITY = '你好，我是念念 AI，不是真实家人。闲聊为 Mock 演示；日期、天气和提醒会查询实际数据。今天想问什么？'
 REAL_IDENTITY = '你好，我是念念 AI，不是真实家人。闲聊文字会交给 AI 服务生成回复；日期、天气和提醒会查询实际数据。今天想问什么？'
 UNKNOWN = '我不确定，可以问问家人。当前没有可用且获准引用的家庭记忆。'
@@ -35,6 +35,7 @@ class ConversationOutput(BaseModel):
     needs_clarification: bool
     memory_candidates: list[dict] = Field(max_length=5)
     signal_candidates: list[SemanticSignal] = Field(max_length=3)
+    scam_evidence: str | None = Field(default=None, min_length=2, max_length=240)
     blocked_action: str | None
     uncertainty_reason: str | None = Field(max_length=240)
 
@@ -114,12 +115,12 @@ class AIOrchestrator:
         signal_mode = 'MOCK'
         if isinstance(text, str) and text.strip() and len(text) <= 2000:
             safety = evaluate(text)
-        if safety and safety.kind in ('SCAM_RISK', 'EMERGENCY'):
+        if safety and safety.message:
             candidates = extract_mock(text, conversation_id=conversation_id, message_id=uuid5(conversation_id, request_id))
             return TurnResult(safety.message, AvatarState.WARNING, None,
                 dict(request_id=request_id, conversation_id=str(conversation_id), provider='mock',
                     model='deterministic-safety', provider_version=RULE_VERSION, prompt_id='fixed-safety',
-                    prompt_version=RULE_VERSION, policy_version='1.1.0', latency_ms=0,
+                    prompt_version=RULE_VERSION, policy_version=RULE_VERSION, latency_ms=0,
                     result_status='SUCCEEDED', fallback_code=None, memory_candidate_count=0,
                     signal_candidate_count=len(candidates)), (), candidates, 'RULE')
         try:
@@ -153,7 +154,8 @@ class AIOrchestrator:
                 allowed_refs = {r.id for r in memory_records}
                 if (not output.reply.strip() or not set(output.memory_refs) <= allowed_refs
                         or output.memory_candidates or (not real and output.signal_candidates) or output.blocked_action is not None
-                        or (not real and (output.reply != expected_reply or output.memory_refs != expected_refs))):
+                        or (not real and (output.reply != expected_reply or output.memory_refs != expected_refs
+                            or output.scam_evidence is not None))):
                     raise ValueError('Untrusted response')
                 reply = output.reply
                 if real:
@@ -164,6 +166,8 @@ class AIOrchestrator:
                 optional_fallback = 'TTS_UNAVAILABLE'
                 # Even unquoted context can influence free-form output; revalidate all of it.
                 used = tuple(memory_records) if real else tuple(r for r in memory_records if r.id in output.memory_refs)
+                if real and supports_scam_advice(text, output.scam_evidence):
+                    reply, state, used = SCAM_ADVICE, AvatarState.WARNING, ()
                 try:
                     async with asyncio.timeout(min(2.0, self.timeout)):
                         speech = await self.tts.synthesize(TTSRequest(request_id=request_id, text=reply))

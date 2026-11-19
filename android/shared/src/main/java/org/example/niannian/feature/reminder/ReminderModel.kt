@@ -136,10 +136,12 @@ class ReminderModel(private val gateway: ReminderGateway, store: ReminderStore, 
     fun refresh() = action { sync(it) }
     fun retry(key: String) = action { stamp -> ledger.manualRetry(key); sync(stamp) }
     fun tick() = action { if (elder) show(it) }
-    fun feedback(key: String, status: String, confirmed: Boolean = false) = action { stamp ->
+    fun feedback(key: String, status: String, skipReason: String? = null) = action { stamp ->
         val card = current.value.cards.single { it.key == key }
-        require(elder && card.due && (!card.medication || status != "SKIPPED" || confirmed))
-        ledger.feedback(key, status, if (status == "LATER") clock().plusSeconds(600) else null)
+        val note = skipReason?.trim()
+        require(elder && card.due && (!card.medication || status != "SKIPPED" || !note.isNullOrBlank()))
+        require(note == null || status == "SKIPPED" && note.length in 1..500)
+        ledger.feedback(key, status, if (status == "LATER") clock().plusSeconds(600) else null, note)
         onCacheChanged()
         show(stamp)
         current.value = current.value.copy(message = "反馈已安全保存在本机，等待服务端确认。")
@@ -173,7 +175,8 @@ class ReminderModel(private val gateway: ReminderGateway, store: ReminderStore, 
     fun executions(id: String) = action { stamp ->
         val rows = gateway.list("/v1/reminders/$id/executions?limit=100")
         if (stamp == generation) current.value = current.value.copy(message = if (rows.isEmpty()) "尚无执行记录。" else rows.take(10).joinToString("\n") {
-            it.getString("scheduled_at") + " · " + feedbackLabel(it.getString("feedback_status"))
+            val note = it.optString("feedback_note").takeIf(String::isNotBlank)?.let { reason -> " · 原因：$reason" }.orEmpty()
+            it.getString("scheduled_at") + " · " + feedbackLabel(it.getString("feedback_status")) + note
         })
     }
 }

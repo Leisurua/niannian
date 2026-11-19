@@ -47,18 +47,21 @@ fun AvatarHost(model: AvatarModel?, family: String, user: String, usable: Boolea
     var pendingPhoto by remember(family, user) { mutableStateOf<android.net.Uri?>(null) }
     var photoOwner by remember(family, user) { mutableStateOf<String?>(null) }
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> pendingPhoto = uri }
-    LaunchedEffect(pendingPhoto, foreground, generationState?.available, generationState?.family, generationState?.user) {
+    LaunchedEffect(pendingPhoto, foreground, usable, generationState?.available, generationState?.family, generationState?.user) {
         val uri = pendingPhoto
         if (uri != null && foreground && usable && generationState?.available == true
             && generationState.family == family && generationState.user == user) {
-            pendingPhoto = null
-            if (photoOwner != "$family:$user") return@LaunchedEffect
+            if (photoOwner != "$family:$user") {
+                pendingPhoto = null
+                return@LaunchedEffect
+            }
             try {
                 val bytes = withContext(Dispatchers.IO) { prepareAvatarPhoto(context, uri) }
                 val snapshot = generationModel?.state?.value
                 if (snapshot?.family == family && snapshot.user == user) generationModel.selectedPhoto(bytes)
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { generationModel?.photoFailed() }
+            pendingPhoto = null
         }
     }
     var foregroundPackBinding by remember(family, user) { mutableStateOf<Pair<String, Int>?>(null) }

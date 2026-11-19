@@ -10,7 +10,7 @@ import org.json.JSONObject
 data class FamilyVoice(val id: String, val owner: String, val name: String, val status: String, val version: Int)
 data class VoiceProfilesState(val family: String = "", val user: String = "", val busy: Boolean = false,
     val voices: List<FamilyVoice> = emptyList(), val selected: String? = null,
-    val cloudAllowed: Boolean = false, val message: String = "", val available: Boolean = false)
+    val cloudAllowed: Boolean = false, val message: String = "", val available: Boolean? = null)
 val LocalVoiceProfiles = staticCompositionLocalOf<VoiceProfilesModel?> { null }
 
 class VoiceProfilesModel(private val repository: FamilyRepository, private val scope: CoroutineScope) {
@@ -44,7 +44,7 @@ class VoiceProfilesModel(private val repository: FamilyRepository, private val s
         val preference = if (elder) repository.call("/v1/voice-preferences?family_id=$family") else JSONObject()
         if (stamp == generation) current.value = current.value.copy(voices = rows,
             selected = preference.optString("voice_profile_id").takeUnless { it.isBlank() || it == "null" },
-            cloudAllowed = preference.optBoolean("cloud_tts_allowed"), available = result.optBoolean("available", true))
+            cloudAllowed = preference.optBoolean("cloud_tts_allowed"), available = result.opt("available") as? Boolean)
     }
     fun refresh(elder: Boolean) = action { load(elder, it) }
     fun upload(owner: String, name: String, audio: ByteArray) = action { stamp ->

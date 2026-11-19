@@ -77,13 +77,17 @@ fun ReminderPanel(model: ReminderModel, family: String, user: String, subjects: 
     }
     fun save(confirmed: Boolean) { model.save(target, title, content, date, time, zone, type, daily, confirmed, editing) }
     confirmation?.let { (kind, id) ->
+        var reason by remember(id) { mutableStateOf("") }
         AlertDialog(onDismissRequest = { confirmation = null }, title = { Text("请再次核对") },
-            text = { Text(when (kind) {
-                "medication" -> "请核对长辈、提醒时间与您录入的原始用药信息。念念不核验医嘱，也不会调整剂量。\n$title\n$content\n$date $time $zone"
-                "skip" -> "记录跳过这次提醒，不代表没有服药。"
-                else -> "停止并删除这条提醒？"
-            }) }, confirmButton = { Button(enabled = !state.busy, onClick = {
-                when (kind) { "medication" -> save(true); "skip" -> model.feedback(id, "SKIPPED", true); else -> model.delete(id) }
+            text = {
+                if (kind == "skip") Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("记录跳过这次提醒，不代表没有服药。获准查看用药提醒的家人可看到原因。")
+                    OutlinedTextField(reason, { reason = it.take(500) }, label = { Text("跳过原因") })
+                } else Text(if (kind == "medication")
+                    "请核对长辈、提醒时间与您录入的原始用药信息。念念不核验医嘱，也不会调整剂量。\n$title\n$content\n$date $time $zone"
+                    else "停止并删除这条提醒？")
+            }, confirmButton = { Button(enabled = !state.busy && (kind != "skip" || reason.isNotBlank()), onClick = {
+                when (kind) { "medication" -> save(true); "skip" -> model.feedback(id, "SKIPPED", reason); else -> model.delete(id) }
                 confirmation = null
             }) { Text("我已核对，确认") } }, dismissButton = { OutlinedButton(onClick = { confirmation = null }) { Text("取消") } })
     }
@@ -127,9 +131,13 @@ fun ReminderPanel(model: ReminderModel, family: String, user: String, subjects: 
             }
             Text(if (editing == null) "添加提醒" else "编辑提醒", fontSize = 22.sp)
             if (!model.elder) subjects.forEach { (id, label) -> Action((if (id == target) "已选择：" else "选择长辈：") + label, state.busy) { target = id } }
-            Action(if (type == "MEDICATION") "用药提醒（点击改为喝水）" else "喝水提醒" , state.busy) { type = "WATER" }
-            Action("日程提醒", state.busy) { type = "CALENDAR" }
-            if (!model.elder) Action("用药提醒（需二次核对）", state.busy) { type = "MEDICATION" }
+            if (editing?.optString("type") == "MEDICATION") {
+                Text("用药提醒")
+            } else {
+                Action(if (type == "MEDICATION") "用药提醒（点击改为喝水）" else "喝水提醒", state.busy) { type = "WATER" }
+                Action("日程提醒", state.busy) { type = "CALENDAR" }
+                if (!model.elder && editing == null) Action("用药提醒（需二次核对）", state.busy) { type = "MEDICATION" }
+            }
             val disabled = unavailable || state.offline || state.busy
             OutlinedTextField(title, { title = it }, label = { Text("提醒名称") }, enabled = !disabled)
             OutlinedTextField(content, { content = it }, label = { Text("提醒内容（不自动修改医嘱）") }, enabled = !disabled)

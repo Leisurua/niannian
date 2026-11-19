@@ -4,6 +4,12 @@ x-backend-environment: &backend-environment
   APP_ENV: ${APP_ENV:-demo}
   PROVIDER_MODE: mock
   DEMO_DATA: "true"
+  LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+  LLM_BASE_URL: ${LLM_BASE_URL:-}
+  LLM_MODEL: ${LLM_MODEL:-}
+  LLM_API_KEY: ${LLM_API_KEY:-}
+  LLM_THINKING: ${LLM_THINKING:-}
+  LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-20}
   EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-mock}
   EMBEDDING_MODEL_PATH: /srv/niannian/models/bge-small-zh-v1.5
   EMBEDDING_THREADS: ${EMBEDDING_THREADS:-2}

@@ -31,6 +31,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -254,6 +255,12 @@ internal fun FamilyDesignHome(
                         fontSize = 15.sp,
                         color = FInkSoft
                     )
+                    OutlinedButton(
+                        onClick = { feature = HomeFeature.VOICES },
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                    ) {
+                        Text("家人声音 · 音色克隆", color = FInk)
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))
@@ -910,7 +917,6 @@ internal fun FamilyDesignHome(
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         listOf(
-                                            HomeFeature.VOICES to "家人声音",
                                             HomeFeature.REMINDERS to "提醒管理",
                                             HomeFeature.MEMORIES to "记忆与照片",
                                             HomeFeature.MESSAGES to "家人留言",
@@ -940,6 +946,16 @@ internal fun FamilyDesignHome(
                             }
                             Spacer(modifier = Modifier.height(10.dp))
                         }
+                        OutlinedButton(
+                            onClick = {
+                                familySettingSheetOpen = false
+                                feature = HomeFeature.VOICES
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("家人声音 · 音色克隆", color = FInk)
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
                         Surface(
                             shape = CircleShape,
                             color = FPaperDeep,

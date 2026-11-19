@@ -74,9 +74,11 @@ def run(system, config, editor=None, renderer=None):
 
 
 def test_photo_job_only_activates_after_explicit_preview_confirmation(system, config):
-    client, engine, _, _ = system
+    from app.worker.tasks import run_one as run_ordinary_worker
+    client, engine, factory, storage = system
     home, path, _ = setup_job(system, config)
     assert client.get(path + '/pack', headers=home[4]).status_code == 409
+    assert not asyncio.run(run_ordinary_worker(factory, storage, kinds=('AVATAR_GENERATE',)))
     run(system, config)
     ready = client.get(path, headers=home[4]).json()
     assert ready['status'] == 'READY' and ready['confirmed_at'] is None

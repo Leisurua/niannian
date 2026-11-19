@@ -55,7 +55,9 @@ def test_real_semantic_questions_conversation_and_immediate_revoke(semantic):
         handshake(ws, cid)
         ws.send_json(ws_frame(cid, 'text.input', 2, {'text': '下周谁陪我去医院'}))
         assert ws.receive_json()['payload']['state'] == 'THINKING'
-        assert ws.receive_json()['payload']['text'] == 'Mock · 已确认的家庭记录：' + FACT
+        answer = ws.receive_json()['payload']
+        assert answer['text'] == 'Mock · 已确认的家庭记录：' + FACT
+        assert answer['source_labels'] == ['Mock', '获准家庭记忆']
         ws.receive_json()
         assert post(client, '/v1/consents/' + own + '/revoke', home[4]).status_code == 201
         # Deliberately leave the old vectors in the database.
@@ -63,7 +65,9 @@ def test_real_semantic_questions_conversation_and_immediate_revoke(semantic):
             assert connection.execute(text('SELECT count(*) FROM memory_embedding')).scalar() > 0
         assert retrieve(factory, home, '下周谁陪我去医院') == ()
         ws.send_json(ws_frame(cid, 'repeat', 3))
-        assert ws.receive_json()['payload']['text'] == UNKNOWN
+        repeated = ws.receive_json()['payload']
+        assert repeated['text'] == UNKNOWN
+        assert repeated['source_labels'] == ['Mock']
         ws.receive_json()
 
 

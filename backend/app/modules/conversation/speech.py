@@ -64,13 +64,15 @@ class Speech:
         await self.stop()
         return [event]
 
-    async def begin(self, db, actor, row, outgoing, records=(), *, identity=False):
+    async def begin(self, db, actor, row, outgoing, records=(), *, identity=False, device_only=False):
         if not self.enabled:
             return
         outgoing['payload']['speech_mode'] = 'none'
         if not await service.voice_allowed(db, row) or 'in_reply_to' not in outgoing:
             return
         outgoing['payload']['speech_mode'] = 'device'
+        if device_only:
+            return
         selected, allowed = await voices.selected(db, actor, row.family_id)
         if not selected or not allowed:
             return

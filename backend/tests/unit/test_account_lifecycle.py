@@ -1,10 +1,25 @@
 import asyncio
 from datetime import datetime, timezone
+from hashlib import sha256
 
 import pytest
 
 from app.modules.account.backups import prune
+from app.modules.account.admin import verified_evidence_reference
 from app.platform.storage import S3Storage
+
+
+def test_copy_confirmation_rejects_blank_evidence_and_requires_an_operator(tmp_path):
+    evidence = tmp_path / 'verified-report.txt'
+    for encoding in ('utf-8-sig', 'utf-16', 'utf-32'):
+        evidence.write_bytes(' \u3000\n'.encode(encoding))
+        with pytest.raises(ValueError):
+            verified_evidence_reference('operator-fixture', evidence)
+    evidence.write_bytes(b'fictional report')
+    with pytest.raises(ValueError):
+        verified_evidence_reference('  ', evidence)
+    assert verified_evidence_reference(' operator-fixture ', evidence) == (
+        'operator-fixture:' + sha256(b'fictional report').hexdigest())
 
 
 def test_backup_retention_uses_snapshot_time_and_only_managed_files(tmp_path):

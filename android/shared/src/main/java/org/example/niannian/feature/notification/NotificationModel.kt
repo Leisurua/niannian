@@ -209,6 +209,17 @@ class NotificationModel(private val gateway: NotificationGateway, private val sc
             expire(stamp)
         }
     }
+
+    fun dialHelpContact(eventId: String, phone: String, dial: (String) -> Unit) = action { stamp ->
+        require(current.value.owner == current.value.user)
+        val detail = gateway.call("/v1/signal-events/$eventId")
+        if (stamp != generation) return@action
+        showEvent(detail, eventId)
+        val event = current.value.event
+        if (event != null && event.helpMessage.isNotBlank() && event.contacts.any { it.phone == phone }) dial(phone)
+        else current.value = current.value.copy(message = "联系人已不可用，请检查家人共享和求助授权。")
+        expire(stamp)
+    }
     fun handle(actionName: String) {
         val event = current.value.event ?: return
         if (actionName !in event.actions) return

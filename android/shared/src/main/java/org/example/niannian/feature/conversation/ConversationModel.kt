@@ -77,6 +77,7 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
     private val earlyFrames = mutableListOf<String>()
     private var weatherCityId: Int? = null
     private var introducedSessionId = ""
+    private var handsFree = false
     private val tasks get() = scope ?: viewModelScope
 
     fun attachVoice(device: ConversationVoice) { stopVoice(); voice?.close(); voice = device }
@@ -95,6 +96,7 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
     }
 
     fun clear() {
+        handsFree = false
         clearInvitation()
         generation++
         stopVoice()
@@ -166,6 +168,7 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
     }
 
     private fun disconnected(code: Int) {
+        handsFree = false
         clearInvitation()
         generation++
         stopVoice()
@@ -283,8 +286,8 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
                         val stamp = voiceGeneration
                         current.value = current.value.copy(speechPending = true)
                         voice?.startPcm(
-                            { if (stamp == voiceGeneration) current.value = current.value.copy(speechPending = false, speaking = true) },
-                            { if (stamp == voiceGeneration) stopVoice() },
+                            { if (stamp == voiceGeneration) playbackStarted(stamp, current.value.reply) },
+                            { if (stamp == voiceGeneration) finishPlayback() },
                             { message -> if (stamp == voiceGeneration) voiceFailure(message) })
                     }
                 }
@@ -380,6 +383,7 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
     }
 
     fun interrupt() {
+        handsFree = false
         stopVoice()
         deadline?.cancel()
         interrupted = true
@@ -410,12 +414,13 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
             current.value = current.value.copy(slow = !current.value.slow)
         }
     }
-    fun voiceEntry(announceIdentity: Boolean = false) {
+    fun voiceEntry(announceIdentity: Boolean = false, handsFree: Boolean = false) {
         if (!current.value.connected) return
         if (!current.value.voiceAllowed) return voicePermissionDenied("请先在“家庭与授权设置 → 用于我与念念的交流”中允许语音处理，或继续打字。")
         val device = voice ?: return voicePermissionDenied("设备语音服务未就绪，您可以继续打字。")
         interrupt()
         if (!current.value.connected) return
+        this.handsFree = handsFree
         val id = current.value.id
         if (announceIdentity && introducedSessionId != id) {
             introducedSessionId = id
@@ -449,6 +454,7 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
             final = { text -> if (stamp == voiceGeneration) {
                 stopVoice()
                 if (text.isBlank() || text.length > 2000) {
+                    handsFree = false
                     current.value = current.value.copy(state = "IDLE", message = "没有听清或内容过长，请再说一次或打字。")
                 } else input(text)
             } },
@@ -478,8 +484,32 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
     }
 
     private fun voiceFailure(message: String) {
+        handsFree = false
         stopVoice()
         current.value = current.value.copy(state = "IDLE", message = message)
+    }
+
+    private fun resumeHandsFree() {
+        val value = current.value
+        if (handsFree && value.connected && value.voiceAllowed && value.voiceEnabled && !value.busy)
+            voice?.let(::startListening)
+    }
+
+    private fun playbackStarted(stamp: Int, text: String) {
+        current.value = current.value.copy(speechPending = false, speaking = true, state = "SPEAKING")
+        if (handsFree && playbackStopAllowed(text)) voice?.listenForPlaybackStop {
+            if (stamp == voiceGeneration && handsFree && current.value.speaking) {
+                interrupt()
+                handsFree = true
+                resumeHandsFree()
+            }
+        }
+    }
+
+    private fun finishPlayback(onComplete: (() -> Unit)? = null) {
+        stopVoice()
+        current.value = current.value.copy(state = "IDLE")
+        if (onComplete != null) onComplete() else resumeHandsFree()
     }
 
     private fun speak(text: String, onComplete: (() -> Unit)? = null) {
@@ -491,11 +521,7 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
         fun complete(error: String? = null) {
             if (stamp != voiceGeneration) return
             if (error != null) voiceFailure(error)
-            else {
-                stopVoice()
-                current.value = current.value.copy(state = "IDLE")
-            }
-            onComplete?.invoke()
+            else finishPlayback(onComplete)
         }
         voiceDeadline = tasks.launch {
             delay(10000)
@@ -503,7 +529,7 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
         }
         device.speak(text, current.value.slowSpeech,
             started = { if (stamp == voiceGeneration) {
-                current.value = current.value.copy(speechPending = false, speaking = true, state = "SPEAKING")
+                playbackStarted(stamp, text)
                 voiceDeadline?.cancel()
                 voiceDeadline = tasks.launch {
                     delay(180000)
@@ -515,6 +541,7 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
 
     fun toggleSpeech() {
         if (!current.value.voiceAllowed) return voicePermissionDenied("请先允许语音处理，或继续查看文字。")
+        handsFree = false
         stopVoice()
         current.value = current.value.copy(voiceEnabled = !current.value.voiceEnabled, state = if (current.value.busy) "THINKING" else "IDLE")
     }
@@ -534,6 +561,7 @@ class ConversationModel(private val gateway: ConversationGateway, private val sc
         val wasAllowed = current.value.voiceAllowed
         current.value = current.value.copy(voiceAllowed = allowed)
         if (!allowed) {
+            handsFree = false
             val active = current.value.voiceActive
             stopVoice()
             current.value = current.value.copy(voiceEnabled = false,

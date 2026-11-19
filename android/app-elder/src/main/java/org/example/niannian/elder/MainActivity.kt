@@ -13,6 +13,11 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import java.util.UUID
@@ -24,6 +29,7 @@ import org.example.niannian.feature.family.CompanionScreen
 import org.example.niannian.feature.conversation.ConversationToolsModel
 import org.example.niannian.feature.conversation.ConversationGateway
 import org.example.niannian.feature.conversation.ConversationModel
+import org.example.niannian.feature.conversation.ConversationPanel
 import org.example.niannian.feature.conversation.ConversationTransport
 import org.example.niannian.feature.conversation.LocalConversationVoiceFactory
 import org.example.niannian.feature.conversation.AvatarModel
@@ -120,7 +126,18 @@ class MainActivity : ComponentActivity() {
                         elderDeviceSettings = { state ->
                             tabletMode.Settings()
                             val family = state.selected?.takeIf { it.status == "ACTIVE" }?.id
-                            StandbySettings(reminderStore, repository::savedUserId, family ?: if (state.offline) null else "")
+                            var handsFree by remember(family, state.userId) { mutableStateOf(false) }
+                            val available = family != null && state.loggedIn && !state.offline && state.error.isBlank()
+                            StandbySettings(reminderStore, repository::savedUserId, family ?: if (state.offline) null else "",
+                                if (available) ({ handsFree = true }) else null)
+                            if (handsFree && available && family != null) {
+                                Dialog(onDismissRequest = { handsFree = false },
+                                    properties = DialogProperties(usePlatformDefaultWidth = false)) {
+                                    ConversationPanel(conversationModel, family,
+                                        state.userId, unavailable = false, handsFree = true,
+                                        onClose = { handsFree = false })
+                                }
+                            }
                             BleHelpSettings(helpButton, target != null)
                         },
                         onNotifications = { ReminderScheduler.arm(applicationContext) },

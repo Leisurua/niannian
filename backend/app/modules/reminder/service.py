@@ -1,13 +1,13 @@
 from datetime import timedelta
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 
 from app.modules.audit import service as audit
 from app.modules.auth.service import codec
 from app.modules.family import service as family
 from app.modules.reminder.models import Reminder, ReminderExecution
-from app.modules.reminder.schedule import CalendarPolicy, ScheduleRule, in_quiet_hours, next_occurrence
+from app.modules.reminder.schedule import CalendarPolicy, ScheduleRule, iana_zone, next_occurrence
 from app.platform.errors import AppError
 from app.platform.identifiers import iso_utc, utcnow, uuid7
 from app.platform.pagination import page_rows
@@ -93,11 +93,12 @@ async def create(db, actor, body, key, settings, request_id):
 
 async def update(db, actor, reminder_id, body, expected, request_id):
     row = await access(db, actor, reminder_id, write=True)
+    await db.refresh(row, with_for_update=True)
     check_version(row, expected)
     if body.owner_user_id != row.owner_user_id or body.family_id and body.family_id != row.family_id:
         raise AppError('PERMISSION_DENIED', '不能通过修改提醒变更所属家庭或长辈。', 403)
-    if body.type == 'MEDICATION':
-        await authorize(db, actor, row.family_id, row.owner_user_id, 'REMINDER_WRITE', 'HEALTH_MEDICATION', allow_self=False)
+    if (row.type == 'MEDICATION') != (body.type == 'MEDICATION'):
+        raise AppError('RESOURCE_STATE_CONFLICT', '不能在用药提醒与其他类型之间转换，请单独创建所需类型的提醒。', 409)
     assign(row, body, utcnow())
     row.version += 1
     await audit.record(db, actor.user_id, 'REMINDER_UPDATED', 'REMINDER', row.id, row.family_id, request_id)
@@ -170,7 +171,8 @@ async def offline_feedback(db, actor, reminder_id, body, key, settings, request_
     if parent.owner_user_id != actor.user_id or not parent.active:
         raise AppError('REMINDER_NOT_FOUND', '提醒不存在或无权反馈。', 404)
     check_version(parent, body.reminder_version)
-    idem = audit.Idempotency(key, f'offline-feedback:{parent.id}', body.model_dump(mode='json'))
+    payload = body.model_dump(mode='json', exclude={'note'} if body.note is None else None)
+    idem = audit.Idempotency(key, f'offline-feedback:{parent.id}', payload)
     previous = await idem.previous(db, actor.user_id, max(86400, settings.idempotency_seconds))
     if previous:
         return execution_view(await db.get(ReminderExecution, previous))
@@ -193,6 +195,7 @@ async def offline_feedback(db, actor, reminder_id, body, key, settings, request_
     if row.feedback_status in ('DONE', 'SKIPPED'):
         raise AppError('ETAG_MISMATCH', '提醒已有反馈，请刷新核对。', 409)
     row.feedback_status, row.feedback_at, row.next_due_at = body.status, now, body.next_due_at
+    row.feedback_note = body.note
     await audit.record(db, actor.user_id, 'REMINDER_OFFLINE_FEEDBACK', 'REMINDER_EXECUTION', row.id,
         parent.family_id, request_id, metadata=idem.metadata)
     return execution_view(row)
@@ -207,25 +210,51 @@ async def tick(db, settings, now=None):
     for row in due:
         rule = schedule(row)
         item = next_occurrence(rule, row.next_due_at, POLICY)
-        if item and item.scheduled_at <= now:
-            await db.execute(insert(ReminderExecution).values(id=uuid7(), reminder_id=row.id, owner_user_id=row.owner_user_id,
-                occurrence_key=item.occurrence_key, scheduled_at=item.scheduled_at, local_date=item.local_date, local_time=item.local_time,
-                source='ONLINE', feedback_status='PENDING', attempt_count=0, created_at=now).on_conflict_do_nothing(
-                    constraint='uq_reminder_occurrence'))
-            count += 1
-            following = next_occurrence(rule, item.scheduled_at + timedelta(seconds=1), POLICY)
-            row.next_due_at = following.scheduled_at if following else None
-    pending = (await db.execute(select(ReminderExecution, Reminder).join(Reminder).where(
-        Reminder.active.is_(True), Reminder.deleted_at.is_(None),
-        ReminderExecution.feedback_status.in_(('PENDING', 'LATER'))).limit(500).with_for_update(skip_locked=True))).all()
-    for execution, parent in pending:
-        quiet = in_quiet_hours(now, schedule(parent).quiet_hours, POLICY)
-        if execution.feedback_status == 'LATER' and execution.next_due_at <= now and not quiet:
-            execution.feedback_status, execution.next_due_at, execution.triggered_at = 'PENDING', None, now
-            execution.attempt_count += 1
-        elif execution.feedback_status == 'PENDING':
-            if execution.triggered_at is None and not quiet:
-                execution.triggered_at, execution.attempt_count = now, execution.attempt_count + 1
-            elif execution.triggered_at and execution.triggered_at + timedelta(seconds=settings.reminder_feedback_seconds) <= now:
-                execution.feedback_status = 'NO_RESPONSE'
+        if item is None or item.scheduled_at > now:
+            row.next_due_at = item.scheduled_at if item else None
+            continue
+        await db.execute(insert(ReminderExecution).values(id=uuid7(), reminder_id=row.id, owner_user_id=row.owner_user_id,
+            occurrence_key=item.occurrence_key, scheduled_at=item.scheduled_at, local_date=item.local_date, local_time=item.local_time,
+            source='ONLINE', feedback_status='PENDING', attempt_count=0, created_at=now).on_conflict_do_nothing(
+                constraint='uq_reminder_occurrence'))
+        count += 1
+        following = next_occurrence(rule, item.scheduled_at + timedelta(seconds=1), POLICY)
+        row.next_due_at = following.scheduled_at if following else None
+    execution = ReminderExecution
+    active_rule = and_(Reminder.active.is_(True), Reminder.deleted_at.is_(None))
+    due_to_trigger = or_(
+        and_(execution.feedback_status == 'LATER', execution.next_due_at <= now),
+        and_(execution.feedback_status == 'PENDING', execution.triggered_at.is_(None), execution.scheduled_at <= now),
+    )
+    start, end = Reminder.quiet_hours_start, Reminder.quiet_hours_end
+    zones = (await db.scalars(select(Reminder.quiet_hours_timezone).join(execution)
+        .where(active_rule, due_to_trigger, start != end).distinct())).all()
+    # Use the same timezone rules as schedule(), even if PostgreSQL has different tzdata.
+    clocks = {}
+    for zone in zones:
+        try:
+            clocks[zone] = now.astimezone(iana_zone(zone)).time()
+        except ValueError:
+            continue
+    outside_quiet_hours = or_(start.is_(None), start == end)
+    if clocks:
+        # A new or unrecognized zone has no clock and will not trigger in this batch.
+        local_clock = case(clocks, value=Reminder.quiet_hours_timezone)
+        outside_quiet_hours = or_(outside_quiet_hours,
+            and_(start < end, or_(local_clock < start, local_clock >= end)),
+            and_(start > end, end <= local_clock, local_clock < start))
+    feedback_expired = and_(execution.feedback_status == 'PENDING',
+        execution.triggered_at <= now - timedelta(seconds=settings.reminder_feedback_seconds))
+    ready = (await db.scalars(select(execution).join(Reminder)
+        .where(active_rule, or_(and_(due_to_trigger, outside_quiet_hours), feedback_expired))
+        .order_by(func.coalesce(execution.next_due_at, execution.triggered_at, execution.scheduled_at), execution.id)
+        .limit(500).with_for_update(skip_locked=True))).all()
+    for row in ready:
+        if row.feedback_status == 'LATER':
+            row.feedback_status, row.next_due_at, row.triggered_at = 'PENDING', None, now
+            row.attempt_count += 1
+        elif row.triggered_at is None:
+            row.triggered_at, row.attempt_count = now, row.attempt_count + 1
+        else:
+            row.feedback_status = 'NO_RESPONSE'
     return count

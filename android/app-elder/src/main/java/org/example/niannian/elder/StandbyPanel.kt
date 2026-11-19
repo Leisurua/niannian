@@ -47,14 +47,16 @@ import org.example.niannian.feature.conversation.AndroidConversationVoice
 import org.example.niannian.feature.reminder.ReminderStorage
 
 @Composable
-internal fun StandbySettings(store: ReminderStorage, savedUser: () -> String, family: String?) {
+internal fun StandbySettings(store: ReminderStorage, savedUser: () -> String, family: String?,
+    onVoiceChat: (() -> Unit)? = null) {
     var open by remember { mutableStateOf(false) }
     DeviceButton("打开念念待机页") { open = true }
-    if (open) StandbyPanel(store, savedUser, family) { open = false }
+    if (open) StandbyPanel(store, savedUser, family, onVoiceChat?.let { launch -> { open = false; launch() } }) { open = false }
 }
 
 @Composable
-private fun StandbyPanel(store: ReminderStorage, savedUser: () -> String, family: String?, close: () -> Unit) {
+private fun StandbyPanel(store: ReminderStorage, savedUser: () -> String, family: String?,
+    onVoiceChat: (() -> Unit)?, close: () -> Unit) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val lifecycleState by lifecycle.currentStateFlow.collectAsState()
@@ -70,6 +72,7 @@ private fun StandbyPanel(store: ReminderStorage, savedUser: () -> String, family
     var waiting by remember { mutableStateOf(false) }
     var awake by remember { mutableStateOf(false) }
     var readAfterWake by remember { mutableStateOf(false) }
+    var chatAfterWake by remember { mutableStateOf(false) }
     var reading by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("") }
 
@@ -143,7 +146,9 @@ private fun StandbyPanel(store: ReminderStorage, savedUser: () -> String, family
         wakeJob = scope.launch {
             try {
                 waitForWakePhrase(context) { status = "语音待机中。请说“你好，小念”。" }
-                wake()
+                if (chatAfterWake && onVoiceChat != null && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                    onVoiceChat()
+                } else wake()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -236,8 +241,14 @@ private fun StandbyPanel(store: ReminderStorage, savedUser: () -> String, family
                 if (cameraStatus.isNotBlank()) Text(cameraStatus, fontSize = 18.sp)
                 if (!awake) {
                     Text("可点击唤醒。开启语音待机后，麦克风只在此页由本机识别唤醒词。", fontSize = 20.sp)
-                    Checkbox(checked = readAfterWake, onCheckedChange = { readAfterWake = it })
+                    Checkbox(checked = readAfterWake, onCheckedChange = { readAfterWake = it; if (it) chatAfterWake = false })
                     Text("唤醒后，用离线中文声音朗读本人已到期的提醒标题", fontSize = 18.sp)
+                    if (onVoiceChat != null && wakeAvailable) {
+                        Checkbox(checked = chatAfterWake, enabled = !waiting, onCheckedChange = {
+                            chatAfterWake = it; if (it) readAfterWake = false
+                        })
+                        Text("说唤醒词后进入免按键聊天。答完继续听，播报时仅在本机识别“停一下”。")
+                    }
                     DeviceButton("点击唤醒", action = ::wake)
                     if (wakeAvailable) {
                         DeviceButton(if (waiting) "关闭语音待机" else "开启语音待机") {

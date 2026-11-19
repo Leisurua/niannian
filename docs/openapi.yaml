@@ -1435,6 +1435,7 @@ paths:
       tags:
       - Reminders
       operationId: updateReminder
+      description: 在用药与其他类型之间转换会返回 409 RESOURCE_STATE_CONFLICT。请另建所需类型的提醒。
       parameters:
       - $ref: '#/components/parameters/IfMatch'
       requestBody:
@@ -4505,6 +4506,9 @@ components:
           - DONE
           - LATER
           - SKIPPED
+        note:
+          type: string
+          maxLength: 500
         next_due_at:
           $ref: '#/components/schemas/Timestamp'
     ReminderFeedbackRequest:

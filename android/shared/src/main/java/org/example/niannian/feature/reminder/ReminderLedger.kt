@@ -159,7 +159,7 @@ class ReminderLedger(private val store: ReminderStore, private val clock: () -> 
         }
         return times.minOrNull()
     }
-    suspend fun feedback(key: String, status: String, next: Instant? = null) = transaction { data, now ->
+    suspend fun feedback(key: String, status: String, next: Instant? = null, note: String? = null) = transaction { data, now ->
         require(status in setOf("DONE", "LATER", "SKIPPED"))
         require(if (status == "LATER") next != null && next > now && next <= now.plusSeconds(86400) else next == null)
         val item = data.getJSONObject("occurrences").getJSONObject(key)
@@ -169,6 +169,7 @@ class ReminderLedger(private val store: ReminderStore, private val clock: () -> 
         require(!item.has("action") || item.getString("status") == "LATER" && status in setOf("DONE", "SKIPPED") && !item.has("next_action"))
         val body = JSONObject().put("reminder_version", item.getLong("version")).put("scheduled_at", item.getString("scheduled_at"))
             .put("feedback_at", now.toString()).put("status", status)
+        note?.let { body.put("note", it) }
         next?.let { body.put("next_due_at", it.toString()); item.put("next_due_at", it.toString()) }
         if (status == "LATER") item.put("presented", false)
         val slot = if (item.has("action")) "next_action" else "action"
