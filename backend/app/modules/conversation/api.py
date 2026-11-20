@@ -27,6 +27,7 @@ from app.platform.errors import AppError
 from app.platform.uow import transaction
 
 router = APIRouter(prefix='/v1', tags=['Conversations'])
+TURN_TIMEOUT_SECONDS = 22
 _connections = {}
 
 
@@ -37,6 +38,13 @@ class DailyTurn(TurnResult):
 
 async def generate_turn(factory, bearer, settings, orchestrator, conversation_id, text_input, request_id, history=(),
                         query_payload=None, weather=None, reminder_context=()):
+    async with asyncio.timeout(TURN_TIMEOUT_SECONDS):
+        return await _prepare_turn(factory, bearer, settings, orchestrator, conversation_id, text_input,
+            request_id, history, query_payload, weather, reminder_context)
+
+
+async def _prepare_turn(factory, bearer, settings, orchestrator, conversation_id, text_input, request_id, history,
+                        query_payload, weather, reminder_context):
     async with factory() as db:
         # Authentication failures must never fall through into an external LLM call.
         actor = await authenticate(db, bearer[7:], settings)
@@ -391,6 +399,15 @@ async def socket(websocket: WebSocket, conversation_id: UUID):
                         else:
                             outgoing = service.handle(row, message)
                         outgoing = [{**item, 'in_reply_to': message.sequence} for item in outgoing]
+                    if turn_task is not None and turn_task in done and isinstance(turn_task.exception(), TimeoutError):
+                        turn_task = None
+                        row.backend_state = 'IDLE'
+                        outgoing.extend({**event, 'in_reply_to': pending_sequence} for event in (
+                            service.event(row, 'error', {'code': 'TURN_TIMEOUT', 'retryable': True}),
+                            service.event(row, 'assistant.state', {'state': 'IDLE'}),
+                        ))
+                        pending_topic = pending_signal_input = None
+                        pending_sequence = pending_query_payload = None
                     if turn_task and turn_task in done:
                         result_start = len(outgoing)
                         result = turn_task.result()

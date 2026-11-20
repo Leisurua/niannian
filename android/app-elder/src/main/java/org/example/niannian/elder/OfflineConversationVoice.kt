@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 import org.example.niannian.feature.conversation.AndroidConversationVoice
 import org.example.niannian.feature.conversation.ConversationVoice
 import org.json.JSONObject
+import org.vosk.Recognizer
 import org.vosk.android.RecognitionListener
 import org.vosk.android.SpeechService
 
@@ -44,6 +45,7 @@ private class OfflineConversationVoice(private val context: Context, private val
                 previous?.join()
                 previousStop?.join()
                 val text = withOfflineRecognizer(context) { recognizer ->
+                    if (BuildConfig.VOSK_LONG_ENDPOINT) recognizer.setEndpointerMode(Recognizer.EndpointerMode.LONG)
                     withContext(Dispatchers.Main) {
                         val microphone = SpeechService(recognizer, OFFLINE_SAMPLE_RATE)
                         try {
@@ -90,6 +92,8 @@ private class OfflineConversationVoice(private val context: Context, private val
     }
 
     override fun finishListening() { finishCapture?.invoke() }
+
+    override val supportsPlaybackStop = true
 
     override fun listenForPlaybackStop(onStop: () -> Unit) {
         val previous = playbackStop

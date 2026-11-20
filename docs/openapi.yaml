@@ -49,6 +49,8 @@ x-websocket-channels:
       fallback text and an error event. Recent context is connection-local and cleared on disconnect; clients must not automatically
       replay input. Solicited events carry in_reply_to with the originating client sequence, including asynchronous turn results
       and interrupt acknowledgements. The initial ready, unsolicited invitations and protocol rejection errors may omit it.
+      Ordinary turn retrieval and generation share a 22-second budget. On timeout the connection remains open and
+      the server sends a solicited error (TURN_TIMEOUT, retryable true) followed by assistant.state IDLE for the same input.
       Clients validate server sequence continuity before discarding events older than the latest input or interrupt.
       interrupt cancels pending generation but retains the last completed reply and its permission dependencies within
       this connection, allowing a spoken repeat after device ASR starts. New text generation clears replay eligibility;
