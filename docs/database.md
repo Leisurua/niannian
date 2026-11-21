@@ -17,13 +17,15 @@ PostgreSQL/pgvector 是唯一事实库，异步 SQLAlchemy 模型注册于 [plat
 
 ### user
 
-身份与可访问状态；实际登录仍为虚构 Demo，手机号字段不代表短信能力。 模型：[User](../backend/app/modules/auth/models.py)。
+身份、个人账号凭证与可访问状态。模型：[User](../backend/app/modules/auth/models.py)。
 
 | 字段 | PostgreSQL 类型 | NULL / 键 | 默认或关联 |
 | --- | --- | --- | --- |
 | `id` | `UUID` | PK | 应用: uuid7() |
 | `global_status` | `VARCHAR(16)` | NOT NULL | SQL: ACTIVE |
 | `display_name` | `VARCHAR(120)` | NOT NULL | — |
+| `username` | `VARCHAR(32)` | NULL / UNIQUE | 个人账号名，统一为小写 |
+| `password_hash` | `TEXT` | NULL | 带随机盐及工作因子的密码摘要 |
 | `phone_ciphertext` | `TEXT` | NULL | — |
 | `phone_hash` | `CHAR(64)` | NULL | — |
 | `phone_last4` | `CHAR(4)` | NULL | — |
@@ -38,6 +40,7 @@ PostgreSQL/pgvector 是唯一事实库，异步 SQLAlchemy 模型注册于 [plat
 - CHECK `global_status IN ('ACTIVE','SUSPENDED','DELETED')`
 - CHECK `jsonb_typeof(accessibility_settings) = 'object'`
 - CHECK `length(display_name) > 0`
+- CHECK `(username IS NULL) = (password_hash IS NULL)`
 - UNIQUE `phone_hash`
 
 ### family
@@ -702,7 +705,7 @@ UNIQUE `(message_id, recipient_member_id)`，索引 `(recipient_member_id, messa
 
 ## 迁移和生命周期
 
-保留现有全部 Alembic 历史，当前迁移头为 `20261101_operational_readiness`。从 backend/ 运行 `python -m alembic upgrade head`；修改数据库时新增兼容迁移，不因为文档整理重写旧迁移或删除已有数据。普通功能修改不要求空库回退演练。
+保留现有全部 Alembic 历史，当前迁移头为 `20261121_password_accounts`。从 backend/ 运行 `python -m alembic upgrade head`；修改数据库时新增兼容迁移，不因为文档整理重写旧迁移或删除已有数据。普通功能修改不要求空库回退演练。
 
 ### service_heartbeat
 

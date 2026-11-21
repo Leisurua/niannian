@@ -16,7 +16,13 @@ object ConnectionPolicy {
 
     fun invitation(value: String): String {
         val token = value.trim()
-        require(token.matches(Regex("[A-Za-z0-9_-]{16,512}"))) { "请粘贴家人提供的完整邀请码。" }
+        if (token.matches(Regex("(?:[A-Za-z2-7]{4}[- ]){3}[A-Za-z2-7]{4}"))) {
+            return token.replace("-", "").replace(" ", "").uppercase()
+        }
+        require(token.matches(Regex("[A-Za-z0-9_-]{16,512}"))) { "请输入家人提供的完整家庭配对码。" }
         return token
     }
+
+    fun displayPairingCode(token: String): String =
+        if (token.matches(Regex("[A-Z2-7]{16}"))) token.chunked(4).joinToString("-") else token
 }

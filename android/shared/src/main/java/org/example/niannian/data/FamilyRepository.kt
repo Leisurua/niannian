@@ -25,7 +25,20 @@ class FamilyRepository(
     private val onCacheInvalidated: () -> Unit = {},
     private val connectionFactory: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection }
 ) {
+    val configuredOrigin = org.example.niannian.shared.BuildConfig.API_ORIGIN.ifBlank { null }
     private val requestMutex = Mutex()
+
+    init {
+        if (configuredOrigin != null) {
+            val session = store.load()
+            if (session.has("access_token") && (session.optString("origin") != configuredOrigin ||
+                    !session.optBoolean("personal_account"))) {
+                store.clear()
+                onCacheInvalidated()
+            }
+        }
+    }
+
     fun hasSession() = store.load().has("access_token")
     fun savedUserId() = store.load().optString("user_id")
     fun savedFamilyId() = store.load().optString("active_family")
@@ -39,7 +52,7 @@ class FamilyRepository(
             }
         }
     }
-    fun savedOrigin() = store.load().optString("origin", "http://10.0.2.2:8000")
+    fun savedOrigin() = configuredOrigin ?: store.load().optString("origin", if (debug) "http://10.0.2.2:8000" else "")
     fun clear() = store.clear()
 
     suspend fun exportAccount(userId: String, output: () -> java.io.OutputStream) {
@@ -99,9 +112,10 @@ class FamilyRepository(
     fun hasPending() = store.load().optBoolean("pending", false)
     fun pendingInvitation() = store.load().optString("invitation", "")
     fun invitationFamily() = store.load().optString("invitation_family", "")
-    fun saveInvitation(value: String, familyId: String = "") {
+    fun invitationInviter() = store.load().optString("invitation_inviter", "")
+    fun saveInvitation(value: String, familyId: String = "", inviter: String = "") {
         val session = store.load()
-        session.put("invitation", value).put("invitation_family", familyId)
+        session.put("invitation", value).put("invitation_family", familyId).put("invitation_inviter", inviter)
         store.save(session)
     }
 
@@ -186,17 +200,47 @@ class FamilyRepository(
         } finally { connection.disconnect() }
     }
 
-    suspend fun login(address: String, elder: Boolean, deviceId: String) = withContext(Dispatchers.IO) {
-        val origin = ConnectionPolicy.origin(address, debug)
+    suspend fun login(address: String, elder: Boolean, deviceId: String) {
+        check(configuredOrigin == null) { "请使用个人账号登录。" }
         val body = JSONObject().put("credential", JSONObject().put("type", "DEMO")
             .put("identifier", if (elder) "demo-elder" else "demo-child"))
             .put("device", JSONObject().put("device_id", deviceId).put("name", if (elder) "演示长辈设备" else "演示家人设备").put("app_version", "0.1.0"))
-        val result = exchange(origin, "/v1/auth/login", "POST", body, null, null)
-        currentCoroutineContext().ensureActive()
-        onCacheInvalidated()
-        store.save(JSONObject().put("origin", origin).put("access_token", result.getString("access_token"))
-            .put("refresh_token", result.getString("refresh_token")).put("user_id", result.getJSONObject("user").getString("id")))
+        signIn(address, "/v1/auth/login", body, personalAccount = false)
     }
+
+    suspend fun loginAccount(address: String, elder: Boolean, deviceId: String, username: String, password: String,
+                             displayName: String?) {
+        val account = username.trim().lowercase()
+        require(account.matches(Regex("[a-z0-9_]{4,32}"))) { "账号应为 4 至 32 个字母、数字或下划线。" }
+        require(password.isNotEmpty()) { "请输入密码。" }
+        val device = JSONObject().put("device_id", deviceId)
+            .put("name", if (elder) "念念老人端" else "念念子女端").put("app_version", "0.1.0")
+        if (displayName != null) {
+            require(displayName.trim().isNotEmpty()) { "请输入家人认识的称呼。" }
+            require(password.codePointCount(0, password.length) >= 15) { "密码至少需要 15 个字符。" }
+            val body = JSONObject().put("username", account).put("password", password)
+                .put("display_name", displayName.trim()).put("device", device)
+            signIn(address, "/v1/auth/register", body, personalAccount = true)
+        } else {
+            val credential = JSONObject().put("type", "PASSWORD").put("identifier", account).put("proof", password)
+            val body = JSONObject().put("credential", credential).put("device", device)
+            signIn(address, "/v1/auth/login", body, personalAccount = true)
+        }
+    }
+
+    private suspend fun signIn(address: String, path: String, body: JSONObject, personalAccount: Boolean) =
+        requestMutex.withLock {
+            withContext(Dispatchers.IO) {
+                val origin = ConnectionPolicy.origin(configuredOrigin ?: address, debug)
+                val result = exchange(origin, path, "POST", body, null, null)
+                currentCoroutineContext().ensureActive()
+                onCacheInvalidated()
+                store.save(JSONObject().put("origin", origin).put("access_token", result.getString("access_token"))
+                    .put("refresh_token", result.getString("refresh_token"))
+                    .put("user_id", result.getJSONObject("user").getString("id"))
+                    .put("personal_account", personalAccount))
+            }
+        }
 
     private suspend fun refreshSessionOrRequireLogin(origin: String, session: JSONObject) {
         try {
@@ -290,7 +334,12 @@ class FamilyRepository(
     }
 
     suspend fun registerMessageDevice(body: JSONObject): JSONObject = requestMutex.withLock {
-        executeCall("/v1/devices/register", "POST", body, false, null, UUID.randomUUID().toString())
+        val session = store.load()
+        val request = if (session.optBoolean("personal_account")) {
+            val key = "niannian:${session.getString("user_id")}:${body.getString("device_id")}"
+            JSONObject(body.toString()).put("device_id", UUID.nameUUIDFromBytes(key.toByteArray(Charsets.UTF_8)).toString())
+        } else body
+        executeCall("/v1/devices/register", "POST", request, false, null, UUID.randomUUID().toString())
     }
 
     suspend fun acknowledgeMessage(id: String, read: Boolean): JSONObject = requestMutex.withLock {

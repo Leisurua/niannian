@@ -374,10 +374,10 @@ internal fun ElderDesignHome(
             ElderSettingsSheet(
                 scale = textScale,
                 state = state,
-                onQuickUsbLogin = {
+                onQuickUsbLogin = if (model.demoLoginAvailable) ({
                     model.login("http://127.0.0.1:8000")
                     toastMessage = "正在通过 USB 隧道连接本机后端 (127.0.0.1:8000)…"
-                },
+                }) else null,
                 onSelectScale = { textScale = it },
                 onOpenFeature = { target ->
                     settingsOpen = false
@@ -1148,7 +1148,7 @@ private fun ElderBottomNavBar(
 private fun ElderSettingsSheet(
     scale: Float,
     state: CompanionState,
-    onQuickUsbLogin: () -> Unit,
+    onQuickUsbLogin: (() -> Unit)?,
     onSelectScale: (Float) -> Unit,
     onOpenFeature: (HomeFeature) -> Unit = {},
     onOpenGame: () -> Unit,
@@ -1296,7 +1296,7 @@ private fun ElderSettingsSheet(
                     Text("想起从前", fontSize = 18f.spScaled(scale))
                 }
                 Spacer(modifier = Modifier.height(10.dp))
-                if (!loggedIn) {
+                if (!loggedIn && onQuickUsbLogin != null) {
                     Button(
                         onClick = onQuickUsbLogin,
                         colors = ButtonDefaults.buttonColors(
@@ -1315,7 +1315,7 @@ private fun ElderSettingsSheet(
                         )
                     }
                     Spacer(modifier = Modifier.height(10.dp))
-                } else {
+                } else if (loggedIn) {
                     Surface(
                         shape = RoundedCornerShape(16.dp),
                         color = PaperDeep,
@@ -1383,7 +1383,7 @@ private fun ElderSettingsSheet(
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
-                            text = if (loggedIn) "打开完整原功能控制台（提醒/记忆/对话/授权）" else "打开联机与原功能控制台（服务配置 / 登录）",
+                            text = if (loggedIn) "家庭配对与授权设置" else "注册 / 登录并连接家人",
                             fontSize = 14f.spScaled(scale),
                             fontWeight = FontWeight.Medium,
                             color = Ink

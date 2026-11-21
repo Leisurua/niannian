@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import CHAR, CheckConstraint, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import CHAR, CheckConstraint, DateTime, ForeignKey, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -13,10 +13,14 @@ class User(Base):
     __tablename__ = "user"
     __table_args__ = (CheckConstraint("global_status IN ('ACTIVE','SUSPENDED','DELETED')", name="ck_user_status"),
                       CheckConstraint("length(display_name) > 0", name="ck_user_name"),
+                      CheckConstraint("(username IS NULL) = (password_hash IS NULL)", name="ck_user_password"),
+                      UniqueConstraint("username", name="uq_user_username"),
                       CheckConstraint("jsonb_typeof(accessibility_settings) = 'object'", name="ck_user_settings"))
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
     global_status: Mapped[str] = mapped_column(String(16), default="ACTIVE", server_default="ACTIVE")
     display_name: Mapped[str] = mapped_column(String(120))
+    username: Mapped[str | None] = mapped_column(String(32))
+    password_hash: Mapped[str | None] = mapped_column(Text)
     phone_ciphertext: Mapped[str | None] = mapped_column(Text)
     phone_hash: Mapped[str | None] = mapped_column(CHAR(64), unique=True)
     phone_last4: Mapped[str | None] = mapped_column(CHAR(4))

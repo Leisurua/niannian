@@ -882,7 +882,7 @@ internal fun FamilyDesignHome(
                             )
                         }
                         Spacer(modifier = Modifier.height(12.dp))
-                        if (!state.loggedIn) {
+                        if (!state.loggedIn && model.demoLoginAvailable) {
                             Button(
                                 onClick = {
                                     model.login("http://127.0.0.1:8000")
@@ -969,7 +969,8 @@ internal fun FamilyDesignHome(
                                 }
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Text(text = "打开联机与原功能全量控制台（提醒/记忆/摘要/通知）", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = FInk)
+                                Text(text = if (state.loggedIn) "家庭配对与授权设置" else "注册 / 登录并连接家人",
+                                    fontSize = 14.sp, fontWeight = FontWeight.Medium, color = FInk)
                             }
                         }
                         Spacer(modifier = Modifier.height(10.dp))

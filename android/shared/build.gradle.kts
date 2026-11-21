@@ -1,7 +1,18 @@
+import java.net.URI
+
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+}
+
+val apiOrigin = providers.gradleProperty("niannianApiOrigin").orElse("").get().trim().trimEnd('/')
+if (apiOrigin.isNotEmpty()) {
+    val uri = URI(apiOrigin)
+    require(uri.scheme == "https" && uri.host != null && uri.rawUserInfo == null && uri.rawPath.isEmpty()
+        && uri.rawQuery == null && uri.rawFragment == null && (uri.port == -1 || uri.port in 1..65535)) {
+        "niannianApiOrigin must be a HTTPS origin without a path or credentials"
+    }
 }
 
 android {
@@ -9,9 +20,13 @@ android {
     compileSdk = 35
     defaultConfig {
         minSdk = 26
+        buildConfigField("String", "API_ORIGIN", "\"$apiOrigin\"")
         javaCompileOptions { annotationProcessorOptions { arguments["room.schemaLocation"] = "$projectDir/schemas" } }
     }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 }
 
 dependencies {

@@ -8,12 +8,15 @@ env_file="${script_dir}/.env"
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 host=""; certificate=""; private_key=""; ca_certificate=""; https_port=443; storage_port=9443
+certbot_name=""; renew_certificate=false
 while (( $# )); do
   case "$1" in
     --host) [[ $# -ge 2 ]] || die "--host requires a DNS name or IP address."; host="$2"; shift 2 ;;
     --certificate) [[ $# -ge 2 ]] || die "--certificate requires a PEM file."; certificate="$2"; shift 2 ;;
     --private-key) [[ $# -ge 2 ]] || die "--private-key requires a PEM file."; private_key="$2"; shift 2 ;;
     --ca-certificate) [[ $# -ge 2 && -n "$2" ]] || die "--ca-certificate requires a PEM file."; ca_certificate="$2"; shift 2 ;;
+    --certbot-name) [[ $# -ge 2 ]] || die "--certbot-name requires a certificate name."; certbot_name="$2"; shift 2 ;;
+    --renew-certificate) renew_certificate=true; shift ;;
     --https-port) [[ $# -ge 2 ]] || die "--https-port requires a port."; https_port="$2"; shift 2 ;;
     --storage-port) [[ $# -ge 2 ]] || die "--storage-port requires a port."; storage_port="$2"; shift 2 ;;
     *) die "Unknown argument: $1" ;;
@@ -27,6 +30,16 @@ docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required."
 https_port=$((10#${https_port})); storage_port=$((10#${storage_port}))
 (( https_port >= 1 && https_port <= 65535 && storage_port >= 1 && storage_port <= 65535 && https_port != storage_port )) \
   || die "TLS ports must be distinct and between 1 and 65535."
+if [[ -n "${certbot_name}" ]]; then
+  [[ "${certbot_name}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && -z "${certificate}" && -z "${private_key}" ]] \
+    || die "Use --certbot-name on its own to select a Certbot certificate and key."
+  live="/etc/letsencrypt/live/${certbot_name}"
+  archive="/etc/letsencrypt/archive/${certbot_name}"
+  certificate="$(realpath -e "${live}/fullchain.pem")" || die "Certbot fullchain is unavailable."
+  private_key="$(realpath -e "${live}/privkey.pem")" || die "Certbot private key is unavailable."
+  [[ "${certificate}" == "${archive}"/fullchain*.pem && "${private_key}" == "${archive}"/privkey*.pem ]] \
+    || die "Certbot certificate and key must resolve to the selected archive."
+fi
 for source in "${certificate}" "${private_key}"; do
   [[ "${source}" = /* && -f "${source}" && ! -L "${source}" ]] || die "Certificate and key must be absolute regular files."
 done
@@ -51,6 +64,7 @@ key_public="$(openssl pkey -in "${private_key}" -pubout -outform DER | openssl s
 [[ "${cert_public}" == "${key_public}" ]] || die "Certificate and private key do not match."
 
 if [[ ! -f "${env_file}" ]]; then
+  [[ "${renew_certificate}" == false ]] || die "Run the initial TLS deployment before renewing the gateway certificate."
   bash "${script_dir}/deploy.sh" --host "${host}" --init-only
 fi
 
@@ -65,7 +79,11 @@ export PUBLIC_BASE_URL="https://${host}:${https_port}"
 export S3_PUBLIC_ENDPOINT="https://${host}:${storage_port}"
 compose=(docker compose --env-file "${env_file}" -f "${base_compose}" -f "${tls_compose}")
 "${compose[@]}" config --quiet
-"${compose[@]}" up -d --build
+if [[ "${renew_certificate}" == true ]]; then
+  "${compose[@]}" up -d --no-deps --force-recreate gateway
+else
+  "${compose[@]}" up -d --build
+fi
 probe_trust=()
 if [[ -n "${ca_certificate}" ]]; then probe_trust=(--ca-certificate "${ca_certificate}"); fi
 bash "${script_dir}/smoke-tls.sh" --host "${host}" \
