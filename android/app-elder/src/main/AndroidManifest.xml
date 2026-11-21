@@ -16,6 +16,11 @@
     <application android:label="NianNian Elder" android:theme="@style/Theme.NianNian"
         android:allowBackup="false" android:networkSecurityConfig="@xml/network_security_config"
         android:fullBackupContent="@xml/backup_rules" android:dataExtractionRules="@xml/data_extraction_rules">
+        <provider android:name="org.example.niannian.feature.conversation.AvatarPhotoProvider"
+            android:authorities="${applicationId}.avatar-photo"
+            android:exported="false" android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/avatar_photo_paths" />
+        </provider>
         <receiver android:name=".TabletAdminReceiver" android:exported="true"
             android:permission="android.permission.BIND_DEVICE_ADMIN">
             <meta-data android:name="android.app.device_admin" android:resource="@xml/tablet_admin" />
