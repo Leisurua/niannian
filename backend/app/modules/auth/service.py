@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.audit.service import record
 from app.modules.auth.models import DeviceSession, User
+from app.modules.auth.passwords import hash_password, verify_password
 from app.modules.auth.tokens import TokenCodec, digest, new_refresh, refresh_device_name
 from app.platform.config import Settings
 from app.platform.errors import AppError
@@ -66,6 +67,7 @@ async def active_user(db: AsyncSession, user_id: UUID, *, lock: bool = True) -> 
 async def authenticate(db: AsyncSession, bearer: str, settings: Settings) -> Identity:
     claims = codec(settings).verify(bearer)
     user = await active_user(db, UUID(claims["sub"]))
+    require_login_mode(user, settings)
     session = await db.get(DeviceSession, UUID(claims["sid"]))
     if not session or session.user_id != user.id or session.revoked_at or session.expires_at <= utcnow():
         raise AppError("AUTH_SESSION_REVOKED", "当前登录已失效，请重新登录。", 401)
@@ -89,20 +91,55 @@ async def issue(db: AsyncSession, user_id: UUID, device_name: str, settings: Set
             "token_type": "Bearer", "expires_in": settings.auth_access_seconds}, row
 
 
-async def login(db: AsyncSession, body, settings: Settings, request_id: str) -> dict:
-    codec(settings)
-    if settings.provider_mode != "mock" or body.credential.type != "DEMO" or body.credential.identifier not in DEMO_USERS:
-        raise AppError("AUTH_INVALID_CREDENTIALS", "仅支持虚构 DEMO 账户，请检查演示配置。", 401)
-    user_id, name = DEMO_USERS[body.credential.identifier]
-    await db.execute(insert(User).values(id=user_id, display_name=name).on_conflict_do_nothing(index_elements=[User.id]))
-    user = await active_user(db, user_id)
-    pair, session = await issue(db, user.id, body.device.name, settings, request_id)
-    await record(db, user.id, "DEMO_LOGIN", "DEVICE_SESSION", session.id, request_id=request_id,
-                 metadata={"provider": "mock", "device_id_hash": digest(body.device.device_id)})
+def require_login_mode(user: User, settings: Settings) -> None:
+    if (user.password_hash is not None) != (settings.auth_mode == "password"):
+        raise AppError("AUTH_SESSION_REVOKED", "当前登录已失效，请重新登录。", 401)
+
+
+async def login_response(db, user, device, settings, request_id, action) -> dict:
+    pair, session = await issue(db, user.id, device.name, settings, request_id)
+    await record(db, user.id, action, "DEVICE_SESSION", session.id, request_id=request_id,
+                 metadata={"provider": "mock" if action == "DEMO_LOGIN" else "password",
+                           "device_id_hash": digest(device.device_id)})
     from app.modules.family.service import summaries
     return {**pair, "user": user_view(user), "families": await summaries(db, user.id),
-            "device_session": {"id": str(session.id), "device_name": body.device.name,
+            "device_session": {"id": str(session.id), "device_name": device.name,
                                "created_at": session.issued_at.isoformat()}}
+
+
+async def register(db: AsyncSession, body, settings: Settings, request_id: str) -> dict:
+    if settings.auth_mode != "password":
+        raise AppError("AUTH_REGISTRATION_DISABLED", "此服务未开放个人账号注册。", 403)
+    codec(settings)
+    password_hash = await hash_password(body.password.get_secret_value())
+    user_id = await db.scalar(
+        insert(User).values(id=uuid7(), username=body.username, password_hash=password_hash,
+                            display_name=body.display_name)
+        .on_conflict_do_nothing(index_elements=[User.username]).returning(User.id)
+    )
+    if user_id is None:
+        raise AppError("AUTH_USERNAME_TAKEN", "此账号已存在，请登录或换一个账号。", 409)
+    user = await active_user(db, user_id)
+    return await login_response(db, user, body.device, settings, request_id, "ACCOUNT_REGISTERED")
+
+
+async def login(db: AsyncSession, body, settings: Settings, request_id: str) -> dict:
+    codec(settings)
+    credential = body.credential
+    if settings.auth_mode == "password":
+        if credential.type != "PASSWORD" or credential.proof is None:
+            raise AppError("AUTH_INVALID_CREDENTIALS", "请使用个人账号登录。", 401)
+        candidate = await db.scalar(select(User).where(User.username == credential.identifier.strip().lower()))
+        if not await verify_password(credential.proof.get_secret_value(), candidate.password_hash if candidate else None):
+            raise AppError("AUTH_INVALID_CREDENTIALS", "账号或密码不正确。", 401)
+        user = await active_user(db, candidate.id)
+        return await login_response(db, user, body.device, settings, request_id, "PASSWORD_LOGIN")
+
+    if settings.provider_mode != "mock" or credential.type != "DEMO" or credential.identifier not in DEMO_USERS:
+        raise AppError("AUTH_INVALID_CREDENTIALS", "仅支持虚构 DEMO 账户，请检查演示配置。", 401)
+    user_id, name = DEMO_USERS[credential.identifier]
+    await db.execute(insert(User).values(id=user_id, display_name=name).on_conflict_do_nothing(index_elements=[User.id]))
+    return await login_response(db, await active_user(db, user_id), body.device, settings, request_id, "DEMO_LOGIN")
 
 
 async def refresh(db: AsyncSession, token: str, settings: Settings, request_id: str) -> dict:
@@ -110,7 +147,7 @@ async def refresh(db: AsyncSession, token: str, settings: Settings, request_id: 
     row = await db.scalar(select(DeviceSession).where(DeviceSession.refresh_token_hash == digest(token)))
     if not row:
         raise AppError("AUTH_INVALID_CREDENTIALS", "登录凭证无效，请重新登录。", 401)
-    await active_user(db, row.user_id)
+    require_login_mode(await active_user(db, row.user_id), settings)
     await db.refresh(row)
     if row.revoked_at:
         if row.logout_reason == "ROTATED":

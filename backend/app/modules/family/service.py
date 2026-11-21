@@ -1,12 +1,13 @@
+import re
+from base64 import b32encode
 from datetime import timedelta
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.modules.audit import service as audit
 from app.modules.auth.service import Identity, codec, display_names, set_display_name
-from app.modules.auth.tokens import digest
+from app.modules.auth.tokens import decode, digest
 from app.modules.family.models import Family, FamilyInvitation, FamilyMember
 from app.platform.errors import AppError
 from app.platform.identifiers import utcnow, uuid7
@@ -123,6 +124,11 @@ async def create(db: AsyncSession, actor: Identity, body, key: str, settings, re
     return family_view(family, member)
 
 
+def pairing_code(settings, invitation_id: UUID) -> str:
+    proof = codec(settings).opaque("pairing", str(invitation_id))
+    return b32encode(decode(proof)[:10]).decode("ascii")
+
+
 def invitation_view(row: FamilyInvitation, token: str) -> dict:
     return {"id": str(row.id), "family_id": str(row.family_id), "target_role": row.target_role,
             "status": row.status, "expires_at": row.expires_at.isoformat(), "token": token}
@@ -136,11 +142,14 @@ async def invite(db: AsyncSession, actor: Identity, family_id: UUID, body, key: 
         row = await db.get(FamilyInvitation, previous)
         if not row or row.family_id != family_id:
             raise AppError("FAMILY_INVITATION_INVALID", "邀请不可用。", 404)
-        return invitation_view(row, codec(settings).opaque("invitation", str(row.id)))
+        token = pairing_code(settings, row.id)
+        if digest(token) != row.token_hash:
+            token = codec(settings).opaque("invitation", str(row.id))
+        return invitation_view(row, token)
     if body.expires_at <= utcnow():
         raise AppError("VALIDATION_ERROR", "邀请有效期必须晚于当前时间。", 422)
     row_id = uuid7()
-    token = codec(settings).opaque("invitation", str(row_id))
+    token = pairing_code(settings, row_id)
     row = FamilyInvitation(id=row_id, family_id=family_id, created_by_user_id=actor.user_id,
                            token_hash=digest(token), target_role=body.target_role, expires_at=body.expires_at,
                            max_usage=body.max_usage, used_count=0, status="ACTIVE", created_at=utcnow())
@@ -151,7 +160,9 @@ async def invite(db: AsyncSession, actor: Identity, family_id: UUID, body, key: 
     return invitation_view(row, token)
 
 
-async def accept(db: AsyncSession, actor: Identity, token: str, body, request_id: str) -> dict:
+async def accept(db: AsyncSession, actor: Identity, token: str, body, request_id: str, *, require_preview: bool = False) -> dict:
+    if re.fullmatch(r"[A-Z2-7]{16}|(?:[A-Z2-7]{4}-){3}[A-Z2-7]{4}", token, re.IGNORECASE | re.ASCII):
+        token = token.replace("-", "").upper()
     invitation = await db.scalar(select(FamilyInvitation).where(FamilyInvitation.token_hash == digest(token)))
     if not invitation:
         raise AppError("FAMILY_INVITATION_INVALID", "邀请无效或已失效。", 404)
@@ -163,12 +174,15 @@ async def accept(db: AsyncSession, actor: Identity, token: str, body, request_id
     existing_id = await audit.event_target(db, actor.user_id, "INVITATION_REDEEMED", "invitation_id", str(invitation.id))
     existing = await db.get(FamilyMember, existing_id) if existing_id else None
     if existing_id:
-        if not existing or existing.user_id != actor.user_id or existing.status != "PENDING":
+        already_confirmed = require_preview and body.confirm_identity is True and existing and existing.status == "ACTIVE"
+        if not existing or existing.user_id != actor.user_id or (existing.status != "PENDING" and not already_confirmed):
             raise AppError("FAMILY_INVITATION_INVALID", "邀请无效或已失效。", 404)
         member = existing
     else:
         if invitation.status != "ACTIVE" or invitation.used_count >= invitation.max_usage:
             raise AppError("FAMILY_INVITATION_INVALID", "邀请无效或已失效。", 404)
+        if require_preview and body.confirm_identity is True:
+            raise AppError("FAMILY_INVITATION_PREVIEW_REQUIRED", "请先读取配对码并核对邀请信息。", 409)
         member = await db.scalar(select(FamilyMember).where(FamilyMember.family_id == family.id,
                                 FamilyMember.user_id == actor.user_id, FamilyMember.status.in_(["PENDING", "ACTIVE"])))
         if member:
@@ -185,15 +199,16 @@ async def accept(db: AsyncSession, actor: Identity, token: str, body, request_id
         await db.flush()
         await audit.record(db, actor.user_id, "INVITATION_REDEEMED", "FAMILY_MEMBER", member.id,
                            family.id, request_id, metadata={"invitation_id": str(invitation.id)})
-    if body.confirm_identity is True:
+    if body.confirm_identity is True and member.status == "PENDING":
         member.status, member.joined_at = "ACTIVE", utcnow()
         member.updated_at = max(utcnow(), member.updated_at + timedelta(microseconds=1))
         await audit.record(db, actor.user_id, "MEMBER_CONFIRMED", "FAMILY_MEMBER", member.id, family.id, request_id)
     if body.requested_display_name is not None:
         await set_display_name(db, actor.user_id, body.requested_display_name)
     await db.flush()
-    names = await display_names(db, [actor.user_id])
-    return member_view(member, names.get(actor.user_id, ""))
+    names = await display_names(db, [actor.user_id, invitation.created_by_user_id])
+    return {**member_view(member, names.get(actor.user_id, "")),
+            "inviter_display_name": names.get(invitation.created_by_user_id, "")}
 
 
 async def members(db: AsyncSession, actor: Identity, family_id: UUID, status: str | None = None) -> list[dict]:

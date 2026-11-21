@@ -296,6 +296,14 @@ Windows 使用 `gradlew.bat`；按需运行 `:shared:lintDebug`。APK 位于各 
 
 模拟器连接 `http://10.0.2.2:8000`。真机 API 用 HTTPS；USB Debug 可执行 `adb reverse tcp:8000 tcp:8000` 后填 `http://127.0.0.1:8000`。照片上传直接访问 S3_PUBLIC_ENDPOINT，下载通过 PUBLIC_BASE_URL 表示的 API；这些地址都需从设备可达。必要时为 USB 联调转发存储端口，或设置设备可访问的存储地址。不能把任意局域网 HTTP 地址当作 Android 已允许的 API。
 
+### 无线家庭配对
+
+两端各自注册个人账号。子女端打开「家庭配对与授权设置」，创建家庭并生成长辈配对码。老人端输入或粘贴配对码，核对邀请人、家庭名称和角色后确认。配对码有效十分钟，供一位受邀者使用。加入后，长辈可按需另行授权。
+
+在独立的服务端数据库和私有存储上按 [Linux HTTPS 部署](#linux-服务端)配置两端都可访问的 HTTPS 域名。在 `infra/linux/.env` 设置 `APP_ENV=dev`、`DEMO_DATA=false`、`AUTH_MODE=password`，再运行 `deploy-tls.sh`。当前个人账号使用账号名和密码，尚未提供自助找回。
+
+在 `android/` 运行 `gradlew.bat -PniannianApiOrigin=https://你的服务域名 :app-elder:assembleDevRelease :app-family:assembleDevRelease`，按发布渠道要求签名后分发。配置域名后，两端启动即可访问同一个服务器，界面隐藏 USB 演示登录。
+
 长辈端按下一条未提示提醒（含稍后提醒）、免打扰结束或缓存到期时间注册本机闹钟，不进行每分钟后台轮询。当前使用非精确闹钟，Android/OEM 省电和频率限制仍可能造成延迟，不保证准点送达。实机需开启此应用的系统通知并允许后台运行；禁止后台运行时，MIUI 等系统可直接阻止闹钟。服务端生成执行记录不代表手机已收到通知。
 
 ## Windows
@@ -315,6 +323,14 @@ niannian-elder-demo
 首次联调：家属建家并生成邀请 → 长辈接受并确认加入 → Windows 注册本机/Android 打开留言卡片 → 家属发文字 → 长辈收到并点击“我已读完这条” → 回复 → 家属查看回执。接收方暂未注册或离线时仍保存给该成员，稍后可补收；回执表示这个成员的客户端已接收或本人已确认，不表示所有设备均在线。留言发送失败后用原内容重试，客户端复用幂等键；不会自动重复发送。当前没有后台消息推送。
 
 需要 exe 时在当前环境安装 pyinstaller，再运行 `windows/build.ps1 -Client family` 或 `-Client elder`，输出在 `windows/dist/`。打包不是每次编辑的前置条件。
+
+### Windows ECS 私有内测
+
+在专用 Windows Server x64 实例安装 [Microsoft Visual C++ v14 运行库](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)。内测 ZIP 包含 `runtime/python.zip`（解压后含 `tools/python.exe` 的 CPython 3.12 包）、`runtime/pgsql/`（含 pgvector 的 PostgreSQL Windows 运行目录）、`runtime/minio.exe` 和 `source.tar.gz`（含当前版本的 `niannian/backend/`）。
+
+在实例的管理员 PowerShell 运行 `infra/windows/install-private-test.ps1 -Bundle <内测 ZIP 路径>`。网络较慢时可通过 `-OfflineDependencies` 提供与锁文件一致的 Windows CPython 3.12 依赖 ZIP，ZIP 根目录为 Python 包文件。脚本以 LocalService 运行开机任务，首次启动生成独立凭证和数据库，开启测试个人账号。服务和日志位于 `C:\ProgramData\NiannianTest`。API、数据库和私有存储均绑定回环地址。
+
+维护端通过 SSH 将本地回环端口转发到实例的 `127.0.0.1:18000`，再查 `/health/ready` 并使用虚构账号验证家庭配对。公网发布参见下方 Linux HTTPS 部署。
 
 ## Linux 服务端
 
@@ -342,6 +358,29 @@ TLS 部署将原始 API/MinIO 端口限制到 Linux 回环，通过 nginx 暴露
 TLS 首次部署可直接运行 `deploy-tls.sh`。脚本先验证证书有效期、主机名和信任链，再生成私有配置并启动服务。公开 CA 使用系统信任。私有 CA 使用 `--ca-certificate /绝对路径/trusted-ca.pem`，自签证书可直接沿用 `--certificate`。更新已有 TLS 部署时继续执行 `deploy-tls.sh`。
 
 网关通过 Docker 内部 DNS 重新解析 API 和 MinIO 地址。探针等待 HTTPS 就绪，再检查 WSS 路由和私有存储端点。
+
+### 阿里云 ECS 公网部署
+
+小规模跨网试用选择阿里云 ECS 中国香港地域、Ubuntu 24.04 LTS 和公网 IPv4，从 2 vCPU、4 GiB 起步。创建前核对控制台的可用规格、每小时费用、试用剩余额度和公网流量。个人版试用按额度抵扣，超出后按量计费。中国香港节点无需办理工信部 ICP 备案，中国内地试用实例不满足阿里云的备案条件。[ECS 试用规则](https://help.aliyun.com/zh/ecs/user-guide/ecs-free-trial) · [备案服务器检查](https://help.aliyun.com/zh/icp-filing/basic-icp-service/user-guide/icp-filing-server-access-information-check)
+
+在中国香港地域导入本机的 RSA SSH 公钥，并在创建实例时绑定。安全组和主机防火墙允许公网访问 80（证书签发与续期）、443（应用）和 9443（照片）。SSH 的 22 端口仅允许维护端地址访问，PostgreSQL 和 MinIO 管理端口保留在实例内部。[SSH 密钥对](https://help.aliyun.com/zh/ecs/user-guide/instance-logon-credential-management) · [安全组](https://help.aliyun.com/zh/ecs/user-guide/start-using-security-groups)
+
+在实例安装 [Docker Engine 和 Compose 插件](https://docs.docker.com/engine/install/ubuntu/)以及支持 IP 地址的 [Certbot 5.4 或以上](https://letsencrypt.org/2026/03/11/shorter-certs-certbot/)。在专用实例上保留 80 端口给 Certbot 的 standalone 模式。将项目部署目录放到 `/opt/niannian`，由 root 管理。以下命令中的 `PUBLIC_IPV4` 替换为该云主机的公网 IPv4。
+
+```bash
+cd /opt/niannian
+sudo bash infra/linux/deploy.sh --host PUBLIC_IPV4 --init-only
+sudoedit infra/linux/.env
+# 设定 APP_ENV=dev、DEMO_DATA=false、AUTH_MODE=password 后保存。
+sudo certbot certonly --standalone --preferred-profile shortlived \
+  --cert-name niannian --ip-address PUBLIC_IPV4
+sudo bash infra/linux/deploy-tls.sh --host PUBLIC_IPV4 --certbot-name niannian
+sudo certbot reconfigure --cert-name niannian \
+  --deploy-hook 'bash /opt/niannian/infra/linux/deploy-tls.sh --host PUBLIC_IPV4 --certbot-name niannian --renew-certificate'
+sudo certbot renew --cert-name niannian --dry-run --run-deploy-hooks
+```
+
+确认 Certbot 安装方式自带的续期任务正在运行。每次续期后只重建 HTTPS 网关，加载新证书并重新检查 API、WSS 和私有存储。双端发布包的 `niannianApiOrigin` 使用 `https://PUBLIC_IPV4`，从不同网络验证两端注册、生成配对码、确认入家和照片上传后再分发。
 
 ```bash
 docker compose --env-file infra/linux/.env -f infra/linux/docker-compose.yml ps

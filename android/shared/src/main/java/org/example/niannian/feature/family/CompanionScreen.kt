@@ -1,5 +1,6 @@
 package org.example.niannian.feature.family
 
+import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -28,9 +30,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.activity.compose.BackHandler
+import org.example.niannian.data.ConnectionPolicy
 import org.example.niannian.feature.reminder.ReminderModel
 import org.example.niannian.feature.memory.MemoryModel
 import org.example.niannian.feature.conversation.ConversationModel
@@ -73,12 +79,13 @@ private fun CompanionScreenContent(model: CompanionModel, environmentLabel: Stri
     elderDeviceSettings: @Composable (CompanionState) -> Unit) {
     val state by model.state.collectAsState()
     val mutationUnavailable = state.busy || state.offline || state.pendingWrite
-    var address by remember(state.address) { mutableStateOf(state.address) }
     var familyName by remember { mutableStateOf("") }
     var invitation by remember { mutableStateOf("") }
     var revokeMember by remember { mutableStateOf<Member?>(null) }
     var consentChange by remember { mutableStateOf<ConsentChange?>(null) }
-    var showFamilySettings by rememberSaveable { mutableStateOf(false) }
+    var showFamilySettings by rememberSaveable {
+        mutableStateOf(model.configuredOrigin != null && !model.accountRepository.hasSession())
+    }
     var showAccount by rememberSaveable { mutableStateOf(false) }
     if (model.elder) {
         HomeTheme { ElderWelcome { showFamilySettings = true } }
@@ -151,8 +158,8 @@ private fun CompanionScreenContent(model: CompanionModel, environmentLabel: Stri
             Text("家庭与授权设置", fontSize = 28.sp)
             if (model.elder) elderDeviceSettings(state)
             Button(onClick = { showAccount = true }, enabled = !state.busy) { Text("本人数据管理 / 删除回执") }
-            Text(environmentLabel, color = MaterialTheme.colorScheme.primary)
-            Text("念念是 AI 陪伴助手，不是真实家人。此版本使用虚构 DEMO 账户，不提供诊断、真实通话或已经送达的承诺。", fontSize = 18.sp)
+            if (model.demoLoginAvailable) Text(environmentLabel, color = MaterialTheme.colorScheme.primary)
+            Text("念念是 AI 陪伴助手，不是真实家人。", fontSize = 18.sp)
             if (state.busy) CircularProgressIndicator()
             if (state.error.isNotEmpty()) {
                 Text(state.error, color = MaterialTheme.colorScheme.error, fontSize = 18.sp)
@@ -165,17 +172,13 @@ private fun CompanionScreenContent(model: CompanionModel, environmentLabel: Stri
             }
             if (state.message.isNotEmpty()) Text(state.message, fontSize = 18.sp)
             if (!state.loggedIn) {
-                OutlinedTextField(address, { address = it }, label = { Text("服务地址") }, modifier = Modifier.fillMaxWidth(), singleLine = true, enabled = !state.busy)
-                Action(if (model.elder) "⚡ 一键真机 USB 登录 (127.0.0.1:8000)" else "⚡ 一键真机 USB 登录 (127.0.0.1:8000)", state.busy) {
-                    address = "http://127.0.0.1:8000"
-                    model.login("http://127.0.0.1:8000")
-                }
-                Action(if (model.elder) "以演示长辈登录" else "以演示家人登录", state.busy) { model.login(address) }
+                AccountLoginForm(model, state)
             } else {
                 if (model.elder && state.offline && state.selected == null) offlineContent()
                 Text("您好，${state.userName}", fontSize = 22.sp)
                 Text("请选择家庭", fontSize = 20.sp)
-                if (state.families.isEmpty()) Text("还没有家庭。家人可先创建家庭，再邀请长辈。")
+                if (state.families.isEmpty()) Text(if (model.elder)
+                    "请向家人索取家庭配对码。" else "创建家庭后，就能生成配对码邀请长辈。")
                 state.families.forEach { family ->
                     OutlinedButton(onClick = { model.choose(family.id) }, enabled = !state.busy,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
@@ -186,23 +189,27 @@ private fun CompanionScreenContent(model: CompanionModel, environmentLabel: Stri
                     OutlinedTextField(familyName, { familyName = it }, label = { Text("新家庭称呼") }, modifier = Modifier.fillMaxWidth(), enabled = !state.busy)
                     Action("创建家庭", mutationUnavailable) { model.createFamily(familyName) }
                 }
-                OutlinedTextField(invitation, { invitation = it }, label = { Text("家人提供的邀请码") }, modifier = Modifier.fillMaxWidth(), enabled = !state.busy)
-                Action("读取邀请并核对", mutationUnavailable) { model.inspectInvitation(invitation) }
+                OutlinedTextField(invitation, { invitation = it }, label = { Text("家人提供的家庭配对码") },
+                    modifier = Modifier.fillMaxWidth(), singleLine = true, enabled = !state.busy)
+                Action("查看邀请信息", mutationUnavailable || invitation.isBlank()) { model.inspectInvitation(invitation) }
                 val selected = state.selected
                 if (selected?.status == "PENDING") {
                     Text("待确认家庭：${selected.name}；角色：${roleLabel(selected.role)}", fontSize = 20.sp)
-                    Text("请先向提供邀请码的家人核对身份；确认加入不等于开启数据授权。")
+                    if (state.invitationInviter.isNotBlank()) Text("邀请人：${state.invitationInviter}", fontSize = 18.sp)
+                    Text("请先联系家人核对这份邀请。加入后，您可以在设置里逐项选择是否共享数据。")
                     Action("我已核对身份，确认加入", mutationUnavailable) { model.confirmInvitation() }
                 }
                 if (selected?.status == "ACTIVE") {
                     Text(selected.name, fontSize = 24.sp)
+                    if (!model.elder && state.canManageMembers) {
+                        Action("生成长辈配对码", mutationUnavailable) { model.invite("ELDER") }
+                        Action("邀请紧急联系人", mutationUnavailable) { model.invite("EMERGENCY_CONTACT") }
+                        if (state.invite.isNotEmpty()) PairingCode(state.invite, mutationUnavailable)
+                    }
                     ContactSettingsPanel(model, selected.id, mutationUnavailable)
                     Text(if (model.elder) "今日 · 家庭已连接" else "家庭动态 · 已连接", fontSize = 20.sp)
                     Text(if (model.elder) "家庭记忆、语音/文字聊天和提醒已开放。" else "家庭记忆与提醒已开放。")
                     if (!model.elder) {
-                        if (state.canManageMembers) Action("生成长辈邀请码", mutationUnavailable) { model.invite("ELDER") }
-                        if (state.canManageMembers) Action("邀请紧急联系人", mutationUnavailable) { model.invite("EMERGENCY_CONTACT") }
-                        if (state.invite.isNotEmpty()) SelectionContainer { Text(state.invite, fontSize = 18.sp) }
                         state.members.forEach { member ->
                             Text("${member.name.ifEmpty { "历史成员" }} · ${roleLabel(member.role)} · ${statusLabel(member.status)}")
                             if (state.canManageMembers && member.userId != state.userId && member.status in listOf("PENDING", "ACTIVE")) {
@@ -252,6 +259,56 @@ private fun CompanionScreenContent(model: CompanionModel, environmentLabel: Stri
                 Text("语音依赖设备服务。实际联系结果请查看求助记录。")
             }
         }
+    }
+}
+
+@Composable
+private fun AccountLoginForm(model: CompanionModel, state: CompanionState) {
+    var address by remember(state.address) { mutableStateOf(state.address) }
+    var registering by remember { mutableStateOf(false) }
+    var username by remember { mutableStateOf("") }
+    var displayName by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    val field = Modifier.fillMaxWidth()
+    if (model.configuredOrigin == null) {
+        OutlinedTextField(address, { address = it }, label = { Text("服务地址") },
+            modifier = field, singleLine = true, enabled = !state.busy)
+    }
+    OutlinedTextField(username, { username = it }, label = { Text("账号") },
+        supportingText = { if (registering) Text("4–32 个字母、数字或下划线") },
+        modifier = field, singleLine = true, enabled = !state.busy)
+    if (registering) {
+        OutlinedTextField(displayName, { displayName = it }, label = { Text("家人认识的称呼") },
+            modifier = field, singleLine = true, enabled = !state.busy)
+    }
+    OutlinedTextField(password, { password = it }, label = { Text("密码") },
+        supportingText = { if (registering) Text("至少 15 个字符") },
+        modifier = field, singleLine = true, enabled = !state.busy,
+        visualTransformation = PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
+    Action(if (registering) "注册并登录" else "登录",
+        state.busy || username.isBlank() || password.isEmpty() || (registering && displayName.isBlank())) {
+        model.loginAccount(address, username, password, if (registering) displayName else null)
+        password = ""
+    }
+    OutlinedButton(enabled = !state.busy, onClick = { registering = !registering; password = "" },
+        modifier = field.heightIn(min = 52.dp)) {
+        Text(if (registering) "已有账号，返回登录" else "创建个人账号", fontSize = 18.sp)
+    }
+    if (model.demoLoginAvailable) {
+        Action("通过 USB 登录演示账号", state.busy) { model.login("http://127.0.0.1:8000") }
+        Action("用填写的地址登录演示账号", state.busy || address.isBlank()) { model.login(address) }
+    }
+}
+
+@Composable
+private fun PairingCode(token: String, busy: Boolean) {
+    val context = LocalContext.current
+    val code = ConnectionPolicy.displayPairingCode(token)
+    SelectionContainer { Text(code, fontSize = 24.sp) }
+    Action("分享家庭配对码", busy) {
+        val message = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, code)
+        context.startActivity(Intent.createChooser(message, "分享家庭配对码"))
     }
 }
 

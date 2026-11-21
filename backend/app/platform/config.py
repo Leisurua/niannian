@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     s3_access_key: str | None = Field(default=None, repr=False)
     s3_secret_key: str | None = Field(default=None, repr=False)
     auth_signing_key: SecretStr = Field(default=SecretStr(""), repr=False)
+    auth_mode: Literal["demo", "password"] = "demo"
     auth_access_seconds: int = Field(default=900, ge=60, le=3600)
     auth_refresh_seconds: int = Field(default=604800, ge=900, le=2592000)
     auth_login_limit: int = Field(default=10, ge=1, le=1000)
@@ -124,6 +125,9 @@ class Settings(BaseSettings):
             raise ValueError("demo requires fictional data and mock providers")
         if self.app_env == "test" and self.provider_mode != "mock":
             raise ValueError("test requires mock providers")
+        if self.auth_mode == "password" and self.app_env != "test":
+            if self.app_env != "dev" or self.demo_data or urlsplit(self.public_base_url).scheme != "https":
+                raise ValueError("password accounts require APP_ENV=dev, DEMO_DATA=false and an HTTPS public base URL")
         if self.embedding_provider != 'mock':
             if self.app_env == 'demo':
                 raise ValueError('demo requires Mock Embedding')

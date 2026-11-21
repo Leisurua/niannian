@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.auth import service
-from app.modules.auth.schemas import LoginRequest, RefreshRequest
+from app.modules.auth.schemas import LoginRequest, RefreshRequest, RegisterRequest
 from app.modules.auth.tokens import digest
 from app.platform.authentication import current_identity
 from app.platform.config import get_settings
@@ -30,6 +30,13 @@ def limit_login(request: Request) -> None:
         _attempts.popitem(last=False)
     if count >= get_settings().auth_login_limit:
         raise AppError("AUTH_LOGIN_RATE_LIMITED", "尝试次数较多，请稍后重试。", 429)
+
+
+@router.post("/auth/register", status_code=201, operation_id="registerAccount")
+async def register(body: RegisterRequest, request: Request, db: AsyncSession = Depends(transaction)):
+    limit_login(request)
+    return {**await service.register(db, body, get_settings(), request.state.request_id),
+            "request_id": request.state.request_id}
 
 
 @router.post("/auth/login", status_code=201, operation_id="login")
