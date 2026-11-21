@@ -14,6 +14,12 @@ internal fun voiceCommand(text: String): VoiceCommand? = when (
     else -> null
 }
 
+/** Do not arm the keyword microphone when the speaker will say its keyword. */
+internal fun playbackStopAllowed(text: String): Boolean {
+    val spoken = text.filter { it.isLetterOrDigit() }
+    return spoken.isNotBlank() && !spoken.contains("停一下")
+}
+
 /** Device speech services. Callbacks run on the main thread; no audio is stored by the app. */
 interface ConversationVoice {
     fun listen(ready: () -> Unit, partial: (String) -> Unit, final: (String) -> Unit, failed: (String) -> Unit, captured: () -> Unit)
@@ -22,6 +28,8 @@ interface ConversationVoice {
     fun startPcm(started: () -> Unit, finished: () -> Unit, failed: (String) -> Unit) { failed("此设备不支持云端声音播放。") }
     fun pcmChunk(bytes: ByteArray) {}
     fun endPcm() {}
+    val supportsPlaybackStop: Boolean get() = false
+    fun listenForPlaybackStop(onStop: () -> Unit) {}
     fun stop()
     fun close()
 }

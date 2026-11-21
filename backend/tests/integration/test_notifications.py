@@ -342,10 +342,17 @@ def test_wss_to_inapp_minimal_event_and_idempotent_read(system, utterance, categ
         assert conn.execute(text('SELECT source_message_id FROM signal_event')).scalar() is None
 
 
-def test_elder_help_button_progress_idempotency_and_family_handling(system):
+def test_elder_help_button_progress_idempotency_and_family_handling(system, monkeypatch):
+    from cryptography.fernet import Fernet
+    from app.platform.config import get_settings
+    monkeypatch.setenv('CONTACT_ENCRYPTION_KEY', Fernet.generate_key().decode())
+    get_settings.cache_clear()
     client, engine, factory, _ = system
     home = household(client)
-    grant(client, home, 'NOTIFICATION_TO_FAMILY')
+    grant_id = grant(client, home, 'NOTIFICATION_TO_FAMILY')
+    contact = dict(phone='+12025550101', share_phone=True, emergency=True)
+    saved = client.put(f'/v1/families/{home[0]}/my-contact', headers={**home[2], 'If-Match': '0'}, json=contact)
+    assert saved.status_code == 200, saved.text
     pref(client, home)
     path = '/v1/signal-events/help-requests'
     body = {'family_id': home[0], 'source': 'BUTTON', 'kind': 'CONTACT_FAMILY'}
@@ -366,6 +373,7 @@ def test_elder_help_button_progress_idempotency_and_family_handling(system):
     drain(factory)
     owner = client.get('/v1/signal-events/' + event_id, headers=home[4]).json()
     assert owner['status'] == 'NOTIFIED' and owner['can_handle'] is False
+    assert owner['contacts'][0]['phone'] == contact['phone']
     family_detail = client.get('/v1/signal-events/' + event_id, headers=home[2]).json()
     assert family_detail['can_handle'] is True and family_detail['recommended_action'] == 'CONTACT_FAMILY_NOW'
     handled = post(client, '/v1/signal-events/' + event_id + '/actions', home[2],
@@ -376,6 +384,8 @@ def test_elder_help_button_progress_idempotency_and_family_handling(system):
     with engine.connect() as conn:
         assert conn.execute(text("SELECT count(*) FROM signal_event WHERE trigger_category='EXPLICIT_HELP_BUTTON'")).scalar() == 1
         assert conn.execute(text("SELECT count(*) FROM audit_log WHERE action='HELP_REQUESTED'")).scalar() == 1
+    post(client, '/v1/consents/' + grant_id + '/revoke', home[4])
+    assert 'contacts' not in client.get('/v1/signal-events/' + event_id, headers=home[4]).json()
 
 
 def test_elder_help_without_authorized_recipient_records_failure(system):

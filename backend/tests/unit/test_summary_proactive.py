@@ -237,9 +237,13 @@ def test_safety_survives_llm_and_tts_outage_without_sensitive_side_effects():
 
 
 def test_summary_keeps_only_curated_themes_and_never_echoes_raw_input():
-    from app.modules.conversation.summary import TOPICS, controlled_text, topic_for
+    from app.modules.conversation.summary import LEGACY_TOPICS, TOPICS, controlled_text, topic_for
     private = '虚构私密文本，不应出现在摘要里'
     assert topic_for(private) in TOPICS and private not in topic_for(private)
     assert controlled_text(private) is None
     assert controlled_text('\n'.join(TOPICS)) is None
     assert controlled_text('\n'.join(TOPICS[:2])) == '\n'.join(TOPICS[:2])
+    assert controlled_text(LEGACY_TOPICS[0]) == TOPICS[3]
+    assert controlled_text('\n'.join((LEGACY_TOPICS[0], TOPICS[3]))) == TOPICS[3]
+    assert topic_for('今天会下雨吗') == TOPICS[3]
+    assert 'Mock' not in TOPICS[3]

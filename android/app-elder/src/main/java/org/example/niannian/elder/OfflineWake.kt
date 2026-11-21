@@ -34,7 +34,10 @@ internal suspend fun <T> withOfflineRecognizer(context: Context, grammar: String
 }
 
 internal suspend fun waitForWakePhrase(context: Context, ready: () -> Unit) =
-    withOfflineRecognizer(context, WAKE_GRAMMAR) { recognizer ->
+    waitForOfflinePhrase(context, WAKE_GRAMMAR, "你好小念", ready)
+
+internal suspend fun waitForOfflinePhrase(context: Context, grammar: String, expected: String, ready: () -> Unit = {}) =
+    withOfflineRecognizer(context, grammar) { recognizer ->
         withContext(Dispatchers.Main) {
             val microphone = SpeechService(recognizer, OFFLINE_SAMPLE_RATE)
             try {
@@ -50,7 +53,7 @@ internal suspend fun waitForWakePhrase(context: Context, ready: () -> Unit) =
                             val phrase = runCatching {
                                 JSONObject(hypothesis.orEmpty()).optString("text").filterNot(Char::isWhitespace)
                             }.getOrDefault("")
-                            if (waiting.isActive && phrase == "你好小念") waiting.resume(Unit)
+                            if (waiting.isActive && phrase == expected) waiting.resume(Unit)
                         }
                     }
                     if (microphone.startListening(listener)) ready()

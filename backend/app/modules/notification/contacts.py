@@ -101,9 +101,13 @@ async def delete_member(db, fid, uid):
     await db.execute(delete(FamilyContact).where(FamilyContact.family_id == fid, FamilyContact.user_id == uid))
 
 
-async def event_contacts(db, actor, event):
+async def event_contacts(db, actor, event, *, own_help=False):
     from app.modules.signal.service import can_handle, recipient
-    if not await can_handle(db, actor, event):
+    if own_help:
+        from app.modules.signal.help import is_request
+        if actor.user_id != event.owner_user_id or not is_request(event):
+            return []
+    elif not await can_handle(db, actor, event):
         return []
     rows = (await db.scalars(select(FamilyContact).join(FamilyMember,
         (FamilyMember.family_id == FamilyContact.family_id) & (FamilyMember.user_id == FamilyContact.user_id))

@@ -13,7 +13,7 @@ class ConversationModelTest {
         JSONObject().put("conversation_id", id).put("sequence", sequence).put("type", type).put("payload", payload)
             .apply { if (replyTo != null) put("in_reply_to", replyTo) }.toString()
 
-    private class Voice(private val autoReady: Boolean = true) : ConversationVoice {
+    private class Voice(private val autoReady: Boolean = true, override val supportsPlaybackStop: Boolean = true) : ConversationVoice {
         var ready: () -> Unit = {}
         var partial: (String) -> Unit = {}
         var final: (String) -> Unit = {}
@@ -21,6 +21,10 @@ class ConversationModelTest {
         var started: () -> Unit = {}
         var finished: () -> Unit = {}
         var captured: () -> Unit = {}
+        var playbackStop: () -> Unit = {}
+        var stopListeners = 0
+        var pcmStarts = 0
+        var pcmChunks = 0
         val spoken = mutableListOf<String>()
         val speechRates = mutableListOf<Boolean>()
         var stops = 0
@@ -31,9 +35,15 @@ class ConversationModelTest {
             if (autoReady) ready()
         }
         override fun finishListening() { finishes++ }
+        override fun listenForPlaybackStop(onStop: () -> Unit) { stopListeners++; playbackStop = onStop }
         override fun speak(text: String, slow: Boolean, started: () -> Unit, finished: () -> Unit, failed: (String) -> Unit) {
             spoken.add(text); speechRates.add(slow); this.started = started; this.finished = finished; failure = failed
         }
+        override fun startPcm(started: () -> Unit, finished: () -> Unit, failed: (String) -> Unit) {
+            pcmStarts++
+            this.started = started; this.finished = finished; failure = failed
+        }
+        override fun pcmChunk(bytes: ByteArray) { pcmChunks++ }
         override fun stop() { stops++ }
         override fun close() { stop() }
     }
@@ -147,6 +157,33 @@ class ConversationModelTest {
         model.voiceEntry(announceIdentity = true)
         assertTrue(model.state.value.recording)
         assertEquals(listOf(CONVERSATION_IDENTITY), voice.spoken)
+        model.clear()
+    }
+
+    @Test fun failedIdentityOffersConfirmationAndRevocationClearsIt() = runBlocking {
+        val gateway = Gateway(); val model = ConversationModel(gateway, this); val voice = Voice()
+        model.bind("family", "elder"); model.attachVoice(voice)
+        model.start(); yield(); gateway.listener(frame(1)); yield()
+        model.voiceEntry(announceIdentity = true)
+        val lateFinish = voice.finished
+        voice.failure("未安装中文声音")
+        lateFinish()
+        assertEquals(VoiceRecovery.CONFIRM_IDENTITY, model.state.value.voiceRecovery)
+        assertFalse(model.state.value.recording)
+        model.confirmVoiceIdentity()
+        assertTrue(model.state.value.recording)
+        assertNull(model.state.value.voiceRecovery)
+        assertEquals(listOf(CONVERSATION_IDENTITY), voice.spoken)
+
+        model.clear()
+        model.bind("family", "elder")
+        model.start(); yield(); gateway.listener(frame(1)); yield()
+        model.voiceEntry(announceIdentity = true)
+        voice.failure("未安装中文声音")
+        gateway.listener(frame(2, "voice.permission", JSONObject().put("allowed", false))); yield()
+        model.confirmVoiceIdentity()
+        assertFalse(model.state.value.voiceActive)
+        assertNull(model.state.value.voiceRecovery)
         model.clear()
     }
 
@@ -320,6 +357,27 @@ class ConversationModelTest {
         model.clear()
     }
 
+    @Test fun turnTimeoutKeepsInputAndConnectionForTheNextTurn() = runBlocking {
+        val gateway = Gateway(); val model = ConversationModel(gateway, this)
+        model.bind("family", "elder"); model.start(); yield(); gateway.listener(frame(1)); yield()
+        assertTrue(model.input("第一次输入"))
+        val timedOut = gateway.sent.last().getLong("sequence")
+        gateway.listener(frame(2, "error", JSONObject().put("code", "TURN_TIMEOUT").put("retryable", true), timedOut))
+        gateway.listener(frame(3, "assistant.state", JSONObject().put("state", "IDLE"), timedOut)); yield()
+        assertFalse(model.state.value.busy)
+        assertTrue(model.state.value.connected)
+        assertEquals("第一次输入", model.state.value.retryText)
+        assertEquals(1, gateway.sent.count { it.getString("type") == "text.input" })
+        assertTrue(model.input("第二次输入"))
+        val next = gateway.sent.last().getLong("sequence")
+        gateway.listener(frame(4, "assistant.text", JSONObject().put("text", "旧回答"), timedOut))
+        gateway.listener(frame(5, "assistant.text", JSONObject().put("text", "新回答"), next)); yield()
+        assertEquals("新回答", model.state.value.reply)
+        assertFalse(model.state.value.messages.any { it.text == "旧回答" })
+        assertEquals(0, gateway.closed)
+        model.clear()
+    }
+
     @Test fun voiceRecognitionFeedsExistingTurnAndReplyPlaysUntilCompletion() = runBlocking {
         val gateway = Gateway(); val voice = Voice(); val model = ConversationModel(gateway, this)
         model.attachVoice(voice); model.bind("family", "elder"); model.start(); yield()
@@ -329,9 +387,12 @@ class ConversationModelTest {
         assertEquals(CompanionPhase.LISTENING, model.state.value.companionPhase)
         voice.partial("我喜欢"); assertEquals("我喜欢", model.state.value.partialTranscript)
         model.finishListening()
+        model.finishListening(); voice.captured()
         assertEquals(1, voice.finishes); assertTrue(model.state.value.recognizing)
         assertEquals(CompanionPhase.THINKING, model.state.value.companionPhase)
-        voice.final("我喜欢种花")
+        assertFalse(gateway.sent.any { it.getString("type") == "text.input" })
+        val recognitionResult = voice.final
+        recognitionResult("我喜欢种花")
         val request = gateway.sent.last().getLong("sequence")
         assertEquals("text.input", gateway.sent.last().getString("type"))
         assertEquals("我喜欢种花", gateway.sent.last().getJSONObject("payload").getString("text"))
@@ -347,6 +408,129 @@ class ConversationModelTest {
         assertEquals(CompanionPhase.SPEAKING, model.state.value.companionPhase)
         voice.finished(); assertFalse(model.state.value.speaking); assertEquals("IDLE", model.state.value.state)
         assertEquals(CompanionPhase.IDLE, model.state.value.companionPhase)
+        recognitionResult("我喜欢种花")
+        assertEquals(1, gateway.sent.count { it.getString("type") == "text.input" })
+        model.clear()
+    }
+
+    @Test fun handsFreeResumesAfterPlaybackAndIgnoresStaleStopCommands() = runBlocking {
+        val gateway = Gateway(); val voice = Voice(); val model = ConversationModel(gateway, this)
+        model.attachVoice(voice); model.bind("family", "elder"); model.start(); yield()
+        gateway.listener(frame(1)); yield()
+        model.voiceEntry(handsFree = true)
+        voice.final("今天会下雨吗")
+        val first = gateway.sent.last().getLong("sequence")
+        gateway.listener(frame(2, "assistant.text", JSONObject().put("text", "今天有雨。"), first)); yield()
+        voice.started()
+        val oldStop = voice.playbackStop
+        voice.finished()
+        assertTrue(model.state.value.recording)
+        voice.final("下得大吗")
+        val second = gateway.sent.last().getLong("sequence")
+        gateway.listener(frame(3, "assistant.text", JSONObject().put("text", "有小雨。"), second)); yield()
+        voice.started()
+        oldStop()
+        assertTrue(model.state.value.speaking)
+        voice.playbackStop()
+        assertTrue(model.state.value.recording)
+        assertFalse(model.state.value.speaking)
+        voice.final("结束聊天")
+        model.awaitIdle()
+        assertEquals(1, gateway.ends)
+        assertFalse(model.state.value.recording)
+        model.clear()
+    }
+
+    @Test fun interruptedPlaybackNeverResumesHandsFreeOrIdentityCapture() = runBlocking {
+        for (identity in listOf(false, true)) {
+            val gateway = Gateway(); val voice = Voice(); val model = ConversationModel(gateway, this)
+            model.attachVoice(voice); model.bind("family", "elder"); model.start(); yield()
+            gateway.listener(frame(1)); yield()
+            model.voiceEntry(announceIdentity = identity, handsFree = true)
+            if (!identity) {
+                voice.final("你好")
+                val request = gateway.sent.last().getLong("sequence")
+                gateway.listener(frame(2, "assistant.text", JSONObject().put("text", "您好。"), request)); yield()
+            }
+            voice.started()
+            val lateFinish = voice.finished
+            val lateStop = voice.playbackStop
+            voice.failure("其他应用正在使用音频")
+            lateFinish(); lateStop()
+            assertFalse(model.state.value.recording)
+            assertFalse(model.state.value.speaking)
+            assertFalse(model.state.value.recognizing)
+            assertTrue(model.state.value.connected)
+            model.voiceEntry(handsFree = true)
+            assertTrue(model.state.value.recording)
+            model.clear()
+        }
+    }
+
+    @Test fun spokenStopKeywordCannotArmItsOwnMicrophone() = runBlocking {
+        for (reply in listOf("停一下", "您可以说停 一下。", "请说：停，一，下。")) {
+            val gateway = Gateway(); val voice = Voice(); val model = ConversationModel(gateway, this)
+            model.attachVoice(voice); model.bind("family", "elder"); model.start(); yield()
+            gateway.listener(frame(1)); yield()
+            model.voiceEntry(handsFree = true)
+            voice.final("怎样暂停朗读")
+            val request = gateway.sent.last().getLong("sequence")
+            gateway.listener(frame(2, "assistant.text", JSONObject().put("text", reply), request)); yield()
+            voice.started()
+            assertTrue(model.state.value.speaking)
+            assertEquals(0, voice.stopListeners)
+            voice.finished()
+            assertTrue(model.state.value.recording)
+            model.clear()
+        }
+    }
+
+    @Test fun unsupportedDeviceStillResumesHandsFreeWithoutListeningDuringPlayback() = runBlocking {
+        val gateway = Gateway(); val voice = Voice(supportsPlaybackStop = false)
+        val model = ConversationModel(gateway, this)
+        model.attachVoice(voice); model.bind("family", "elder"); model.start(); yield()
+        gateway.listener(frame(1)); yield()
+        model.voiceEntry(handsFree = true)
+        voice.final("今天冷吗")
+        val request = gateway.sent.last().getLong("sequence")
+        gateway.listener(frame(2, "assistant.text", JSONObject().put("text", "今天很冷。"), request)); yield()
+        voice.started()
+        assertFalse(model.state.value.canStopByVoice)
+        assertEquals(0, voice.stopListeners)
+        voice.finished()
+        assertTrue(model.state.value.recording)
+        model.clear()
+    }
+
+    @Test fun cloudReplyCanBeStoppedBeforeAudioStarts() = runBlocking {
+        val gateway = Gateway(); val voice = Voice(); val model = ConversationModel(gateway, this)
+        model.attachVoice(voice); model.bind("family", "elder")
+        model.selectVoice("family-voice", "家人声音")
+        model.start(); yield(); gateway.listener(frame(1)); yield()
+        model.voiceEntry()
+        voice.final("你好")
+        val request = gateway.sent.last().getLong("sequence")
+        val reply = JSONObject().put("text", "您好。").put("speech_mode", "cloud")
+        val start = JSONObject().put("playback_id", "old-playback").put("voice_profile_id", "family-voice")
+            .put("sample_rate", 24000).put("channels", 1)
+        gateway.listener(frame(2, "assistant.text", reply, request)); yield()
+        assertTrue(model.state.value.speechPending)
+        assertFalse(model.state.value.speaking)
+        model.interrupt()
+        gateway.listener(frame(3, "tts.start", start, request))
+        gateway.listener(frame(4, "tts.chunk", JSONObject().put("playback_id", "old-playback").put("audio", "AAA="), request)); yield()
+        assertFalse(model.state.value.voiceActive)
+        assertEquals(0, voice.pcmStarts)
+        assertEquals(0, voice.pcmChunks)
+
+        assertTrue(model.input("再问一句"))
+        val next = gateway.sent.last().getLong("sequence")
+        gateway.listener(frame(5, "assistant.text", reply, next))
+        gateway.listener(frame(6, "tts.start", start.put("playback_id", "new-playback"), next)); yield()
+        assertTrue(model.state.value.speechPending)
+        assertEquals(1, voice.pcmStarts)
+        voice.started()
+        assertTrue(model.state.value.speaking)
         model.clear()
     }
 
@@ -402,6 +586,33 @@ class ConversationModelTest {
             assertEquals(before, gateway.sent.size)
             assertFalse(model.state.value.recording); assertFalse(model.state.value.speaking)
             assertEquals("", model.state.value.partialTranscript); assertTrue(model.state.value.messages.isEmpty())
+            model.clear()
+        }
+    }
+
+    @Test fun cancellingAfterManualFinishDiscardsLateRecognition() = runBlocking {
+        for (cancel in listOf("stop", "background", "end", "revoke")) {
+            val gateway = Gateway(); val voice = Voice(); val model = ConversationModel(gateway, this)
+            model.attachVoice(voice); model.bind("family", "elder"); model.start(); yield()
+            gateway.listener(frame(1)); yield()
+            model.voiceEntry()
+            voice.partial("临时识别")
+            model.finishListening()
+            assertTrue(model.state.value.recognizing)
+            val lateResult = voice.final
+
+            when (cancel) {
+                "stop" -> model.interrupt()
+                "background" -> model.clear()
+                "end" -> { model.end(); yield() }
+                "revoke" -> {
+                    gateway.listener(frame(2, "voice.permission", JSONObject().put("allowed", false))); yield()
+                }
+            }
+            lateResult("尚未发送的话")
+            assertFalse(cancel, model.state.value.voiceActive)
+            assertEquals(cancel, "", model.state.value.partialTranscript)
+            assertFalse(cancel, gateway.sent.any { it.getString("type") == "text.input" })
             model.clear()
         }
     }
@@ -600,6 +811,7 @@ class ConversationModelTest {
         assertEquals(CompanionPhase.THINKING, model.state.value.companionPhase)
         voice.failure("识别失败")
         assertEquals(CompanionPhase.IDLE, model.state.value.companionPhase)
+        assertEquals(VoiceRecovery.RETRY, model.state.value.voiceRecovery)
         assertTrue(model.input("可以继续文字聊天"))
         model.clear()
     }

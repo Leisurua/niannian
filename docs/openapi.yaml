@@ -49,6 +49,8 @@ x-websocket-channels:
       fallback text and an error event. Recent context is connection-local and cleared on disconnect; clients must not automatically
       replay input. Solicited events carry in_reply_to with the originating client sequence, including asynchronous turn results
       and interrupt acknowledgements. The initial ready, unsolicited invitations and protocol rejection errors may omit it.
+      Ordinary turn retrieval and generation share a 22-second budget. On timeout the connection remains open and
+      the server sends a solicited error (TURN_TIMEOUT, retryable true) followed by assistant.state IDLE for the same input.
       Clients validate server sequence continuity before discarding events older than the latest input or interrupt.
       interrupt cancels pending generation but retains the last completed reply and its permission dependencies within
       this connection, allowing a spoken repeat after device ASR starts. New text generation clears replay eligibility;
@@ -1435,6 +1437,7 @@ paths:
       tags:
       - Reminders
       operationId: updateReminder
+      description: 在用药与其他类型之间转换会返回 409 RESOURCE_STATE_CONFLICT。请另建所需类型的提醒。
       parameters:
       - $ref: '#/components/parameters/IfMatch'
       requestBody:
@@ -4505,6 +4508,9 @@ components:
           - DONE
           - LATER
           - SKIPPED
+        note:
+          type: string
+          maxLength: 500
         next_due_at:
           $ref: '#/components/schemas/Timestamp'
     ReminderFeedbackRequest:

@@ -71,7 +71,7 @@ async def build(db, actor, fid, owner, start, end, timezone_name):
             InteractionMetric.consent_id == grant.id, InteractionMetric.retention_until > now,
             InteractionMetric.occurred_at >= since, InteractionMetric.occurred_at < until,
             Conversation.deleted_at.is_(None), Conversation.status != 'DELETED',
-        ).order_by(InteractionMetric.occurred_at, InteractionMetric.sequence))).all()
+        ))).all()
         if grant.granted_at > since:
             missing.append('本期统计授权未覆盖完整时间范围；开启前的交流不会补录。')
     else:
@@ -145,7 +145,10 @@ def narrative(report):
     lines.append(f"主题分类来源：本地语义 {methods['LOCAL_SEMANTIC']} 轮、规则 {methods['RULE']} 轮、语义不可用回退 {methods['RULE_FALLBACK']} 轮。")
     for day in count['days']:
         if day['turns']:
-            lines.append(f"{day['date']}：{day['turns']} 轮，首次 {day['first_interaction'][11:16]}，末次 {day['last_interaction'][11:16]}。")
+            first = datetime.fromisoformat(day['first_interaction'])
+            last = datetime.fromisoformat(day['last_interaction'])
+            clock_format = '%H:%M' if first.utcoffset() == last.utcoffset() else '%H:%M %z'
+            lines.append(f"{day['date']}：{day['turns']} 轮，首次 {first.strftime(clock_format)}，末次 {last.strftime(clock_format)}。")
     reminders = data['reminders']
     if reminders is not None:
         feedback = reminders['feedback']

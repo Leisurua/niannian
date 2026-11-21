@@ -16,7 +16,7 @@ from app.integrations.mock import MockAvatar, MockLLM, MockTTS
 from app.ai.signal_candidates import SemanticSignal, extract_mock, extract_semantic
 from app.modules.safety.rules import evaluate, supports_scam_advice, WARNING, SCAM_ADVICE, EMERGENCY_COPY, RULE_VERSION
 
-PROMPT_VERSION = '1.4.0'
+PROMPT_VERSION = '1.5.0'
 IDENTITY = '你好，我是念念 AI，不是真实家人。闲聊为 Mock 演示；日期、天气和提醒会查询实际数据。今天想问什么？'
 REAL_IDENTITY = '你好，我是念念 AI，不是真实家人。闲聊文字会交给 AI 服务生成回复；日期、天气和提醒会查询实际数据。今天想问什么？'
 UNKNOWN = '我不确定，可以问问家人。当前没有可用且获准引用的家庭记忆。'

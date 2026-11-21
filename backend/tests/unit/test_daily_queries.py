@@ -21,6 +21,8 @@ def choice(title='喝水提醒', status='PENDING'):
     ('今天有什么安排', 'REMINDERS'), ('今天还有什么提醒', 'REMINDERS'),
     ('今天会下雨吗', 'WEATHER'), ('需要带伞吗', 'WEATHER'), ('今天几号', 'DATE'), ('现在几点', 'DATE'),
     ('第一项完成了', 'FEEDBACK'), ('稍后处理', 'FEEDBACK'), ('十分钟后再提醒我', 'FEEDBACK'),
+    ('第一项暂时跳过', 'FEEDBACK'), ('请帮我跳过第一项', 'FEEDBACK'),
+    ('别跳过第一项', 'FEEDBACK_CLARIFY'), ('第一项可以跳过吗', 'FEEDBACK_CLARIFY'),
     ('明天有什么安排', 'UNSUPPORTED'), ('明天会下雨吗', 'UNSUPPORTED'),
     ('我还没完成', 'FEEDBACK_CLARIFY'), ('如果第一项完成了', 'FEEDBACK_CLARIFY'),
     ('第一项完成了吗', 'FEEDBACK_CLARIFY'), ('女儿说第一项完成了', 'FEEDBACK_CLARIFY'),
@@ -55,6 +57,11 @@ def test_feedback_requires_an_unambiguous_choice_and_explicit_minutes():
     assert daily.feedback_command('第一项稍后处理') == ('LATER', '第一项', 10)
     assert daily.feedback_command('第二项二十五分钟后再提醒我') == ('LATER', '第二项', 25)
     assert daily.feedback_command('第一项30分钟后提醒我') == ('LATER', '第一项', 30)
+    assert daily.feedback_command('第一项暂时跳过') == ('SKIPPED', '第一项', None)
+    assert daily.select_choice(daily.feedback_command('请帮我跳过第一项'), (first, second)) == first
+    assert daily.select_choice(daily.feedback_command('跳过'), (first, second)) is None
+    assert daily.feedback_command('如果第一项跳过') is None
+    assert daily.feedback_command('别跳过第一项') is None
 
 
 def test_weather_missing_city_and_failed_provider_never_invent_an_answer():

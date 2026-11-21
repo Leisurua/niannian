@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 import org.example.niannian.feature.conversation.AndroidConversationVoice
 import org.example.niannian.feature.conversation.ConversationVoice
 import org.json.JSONObject
+import org.vosk.Recognizer
 import org.vosk.android.RecognitionListener
 import org.vosk.android.SpeechService
 
@@ -31,16 +32,20 @@ private class OfflineConversationVoice(private val context: Context, private val
     ConversationVoice by playback {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var listening: Job? = null
+    private var playbackStop: Job? = null
     private var finishCapture: (() -> Unit)? = null
 
     override fun listen(ready: () -> Unit, partial: (String) -> Unit, final: (String) -> Unit,
         failed: (String) -> Unit, captured: () -> Unit) {
         val previous = listening
+        val previousStop = playbackStop
         stop()
         listening = scope.launch {
             try {
                 previous?.join()
+                previousStop?.join()
                 val text = withOfflineRecognizer(context) { recognizer ->
+                    if (BuildConfig.VOSK_LONG_ENDPOINT) recognizer.setEndpointerMode(Recognizer.EndpointerMode.LONG)
                     withContext(Dispatchers.Main) {
                         val microphone = SpeechService(recognizer, OFFLINE_SAMPLE_RATE)
                         try {
@@ -88,6 +93,25 @@ private class OfflineConversationVoice(private val context: Context, private val
 
     override fun finishListening() { finishCapture?.invoke() }
 
+    override val supportsPlaybackStop = true
+
+    override fun listenForPlaybackStop(onStop: () -> Unit) {
+        val previous = playbackStop
+        previous?.cancel()
+        playbackStop = scope.launch {
+            previous?.join()
+            listening?.join()
+            try {
+                waitForOfflinePhrase(context, """["停 一下", "[unk]"]""", "停一下")
+                onStop()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // The visible Stop button remains available if local recognition fails.
+            }
+        }
+    }
+
     override fun speak(text: String, slow: Boolean, started: () -> Unit, finished: () -> Unit, failed: (String) -> Unit) {
         listening?.cancel()
         playback.speak(text, slow, started, finished, failed)
@@ -100,6 +124,7 @@ private class OfflineConversationVoice(private val context: Context, private val
 
     override fun stop() {
         listening?.cancel()
+        playbackStop?.cancel()
         playback.stop()
     }
 
