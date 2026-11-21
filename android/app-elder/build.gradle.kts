@@ -1,3 +1,5 @@
+import com.android.build.api.variant.BuildConfigField
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -14,6 +16,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+        buildConfigField("boolean", "VOSK_LONG_ENDPOINT", "false")
     }
 
     flavorDimensions += "environment"
@@ -35,6 +38,15 @@ android {
     }
 
     providers.gradleProperty("niannianWakeAssets").orNull?.let { sourceSets["main"].assets.srcDir(it) }
+}
+
+val voiceLongEndpoint = providers.gradleProperty("niannianVoiceLongEndpoint").map { it == "true" }.orElse(false)
+androidComponents {
+    onVariants(selector().withBuildType("debug").withFlavor("environment" to "demo")) { variant ->
+        variant.buildConfigFields.put("VOSK_LONG_ENDPOINT", voiceLongEndpoint.map {
+            BuildConfigField("boolean", it.toString(), null)
+        })
+    }
 }
 
 dependencies {

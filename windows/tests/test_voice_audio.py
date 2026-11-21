@@ -84,6 +84,36 @@ def test_send_failure_retains_draft_and_explicit_end_notifies_server():
     panel.reset.assert_called_once_with()
 
 
+def test_turn_timeout_allows_next_reply_and_playback_on_same_socket():
+    socket = ConversationSocket.__new__(ConversationSocket)
+    socket.id, socket.sequence, socket.floor = 'session', 1, 0
+    socket.closed, socket.lock = Event(), Lock()
+    socket.socket = SimpleNamespace(send=Mock())
+    panel = SimpleNamespace(connection=socket, playback=None, voice_allowed=True, slow=False,
+        input=SimpleNamespace(get=Mock(side_effect=['第一句话', '第二句话']), set=Mock()),
+        status=SimpleNamespace(set=Mock()), audio=SimpleNamespace(stop=Mock(), speak=Mock()),
+        append=Mock(), clear_invitation=Mock())
+    panel.command = partial(ConversationPanel.command, panel)
+
+    ConversationPanel.submit(panel)
+    ConversationPanel.receive(panel, dict(type='error', in_reply_to=2,
+        payload={'code': 'TURN_TIMEOUT', 'retryable': True}))
+    ConversationPanel.receive(panel, dict(type='assistant.state', in_reply_to=2, payload={'state': 'IDLE'}))
+    assert panel.connection is socket and not socket.closed.is_set()
+    assert '本次请求未完成' in panel.status.set.call_args.args[0]
+    socket.socket.send.assert_called_once()
+    panel.audio.speak.assert_not_called()
+
+    ConversationPanel.submit(panel)
+    ConversationPanel.receive(panel, dict(type='assistant.text', in_reply_to=2, payload={'text': '过期回复'}))
+    ConversationPanel.receive(panel, dict(type='assistant.text', in_reply_to=3,
+        payload={'text': '听见第二句话了。', 'speech_mode': 'device'}))
+    sent = [json.loads(call.args[0])['payload']['text'] for call in socket.socket.send.call_args_list]
+    assert sent == ['第一句话', '第二句话']
+    panel.append.assert_called_with('念念：听见第二句话了。')
+    panel.audio.speak.assert_called_once_with('听见第二句话了。', False)
+
+
 @pytest.mark.parametrize('action,reply,speech_mode', [
     ('ACCEPT', '今天想做什么？', 'device'),
     ('DECLINE', '好的，暂时不聊。', 'none'),

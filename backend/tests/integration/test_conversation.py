@@ -1,6 +1,7 @@
 import pytest
 from app.ai.conversation import CHAT, UNKNOWN, AIOrchestrator
 from app.main import app
+from app.modules.conversation import api
 from sqlalchemy import text
 from starlette.websockets import WebSocketDisconnect
 
@@ -125,6 +126,34 @@ def test_pending_turn_cannot_publish_after_interrupt_end_disconnect_or_revoke(sy
             assert llm.cancelled.wait(2)
     finally:
         del app.state.conversation_orchestrator
+
+
+def test_turn_budget_cancels_model_and_accepts_next_input_on_same_socket(system, monkeypatch):
+    client, _, _, _ = system
+    home = household(client)
+    cid = start(client, home)
+    llm = HeldLLM()
+    monkeypatch.setattr(api, 'TURN_TIMEOUT_SECONDS', 1)
+    monkeypatch.setattr(api, 'configured_orchestrator', lambda settings: AIOrchestrator(llm=llm))
+    with client.websocket_connect('/v1/ws/conversations/' + cid, headers=home[4]) as ws:
+        handshake(ws, cid)
+        ws.send_json(ws_frame(cid, 'text.input', 2, {'text': '这轮会超时'}))
+        assert ws.receive_json()['payload']['state'] == 'THINKING'
+        assert llm.started.wait(1)
+        timeout = ws.receive_json()
+        assert timeout['type'] == 'error' and timeout['in_reply_to'] == 2
+        assert timeout['payload'] == {'code': 'TURN_TIMEOUT', 'retryable': True}
+        idle = ws.receive_json()
+        assert idle['type'] == 'assistant.state' and idle['in_reply_to'] == 2
+        assert idle['payload']['state'] == 'IDLE'
+        assert llm.cancelled.is_set()
+
+        llm.release.set()
+        ws.send_json(ws_frame(cid, 'text.input', 3, {'text': '你好'}))
+        assert ws.receive_json()['payload']['state'] == 'THINKING'
+        answer = ws.receive_json()
+        assert answer['in_reply_to'] == 3 and answer['payload']['text'] == CHAT
+        assert ws.receive_json()['payload']['state'] == 'IDLE'
 
 
 def test_reconnect_does_not_repeat_identity_or_previous_reply(system):

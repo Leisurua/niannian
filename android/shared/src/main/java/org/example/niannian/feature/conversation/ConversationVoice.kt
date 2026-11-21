@@ -28,6 +28,7 @@ interface ConversationVoice {
     fun startPcm(started: () -> Unit, finished: () -> Unit, failed: (String) -> Unit) { failed("此设备不支持云端声音播放。") }
     fun pcmChunk(bytes: ByteArray) {}
     fun endPcm() {}
+    val supportsPlaybackStop: Boolean get() = false
     fun listenForPlaybackStop(onStop: () -> Unit) {}
     fun stop()
     fun close()
