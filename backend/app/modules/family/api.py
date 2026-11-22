@@ -44,7 +44,9 @@ async def invite(family_id: UUID, body: InvitationCreate, request: Request, idem
 async def accept(token: str, body: InvitationAccept, request: Request, actor=Depends(current_identity), db: AsyncSession = Depends(transaction)):
     if not 16 <= len(token) <= 512:
         raise AppError('FAMILY_INVITATION_INVALID', '邀请无效或已失效。', 404)
-    return {**await service.accept(db, actor, token, body, request.state.request_id), 'request_id': request.state.request_id}
+    return {**await service.accept(db, actor, token, body, request.state.request_id,
+                                   require_preview=get_settings().auth_mode == 'password'),
+            'request_id': request.state.request_id}
 
 
 @router.get('/families/{family_id}/members', operation_id='listFamilyMembers')

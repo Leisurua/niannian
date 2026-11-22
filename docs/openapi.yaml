@@ -688,11 +688,40 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /auth/register:
+    post:
+      tags:
+      - Auth
+      operationId: registerAccount
+      description: Creates an individual account and issues a session when password authentication is enabled.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Registered and signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
   /auth/login:
     post:
       tags:
       - Auth
       operationId: login
+      description: Accepts DEMO or PASSWORD credentials according to the server's configured authentication mode.
       security: []
       requestBody:
         required: true
@@ -870,6 +899,7 @@ paths:
       tags:
       - Families
       operationId: acceptFamilyInvitation
+      description: Read the invitation to view the inviter and pending membership, then confirm it. Password accounts must read it before confirming.
       requestBody:
         required: true
         content:
@@ -887,6 +917,8 @@ paths:
           $ref: '#/components/responses/BadRequestError'
         '404':
           $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
   /families/{family_id}/members:
     parameters:
     - $ref: '#/components/parameters/FamilyId'
@@ -3792,6 +3824,24 @@ components:
         expires_in:
           type: integer
           minimum: 1
+    RegisterRequest:
+      type: object
+      required: [username, password, display_name, device]
+      properties:
+        username:
+          type: string
+          pattern: '^[a-z0-9_]{4,32}$'
+        password:
+          type: string
+          writeOnly: true
+          minLength: 15
+          maxLength: 128
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        device:
+          $ref: '#/components/schemas/LoginRequest/properties/device'
     LoginRequest:
       type: object
       required:
@@ -3808,6 +3858,7 @@ components:
               type: string
               enum:
               - DEMO
+              - PASSWORD
               - VERIFICATION_CODE
             identifier:
               type: string
@@ -3909,6 +3960,9 @@ components:
       - status
       - version
       properties:
+        inviter_display_name:
+          type: string
+          description: Inviter name included by the invitation acceptance endpoint.
         id:
           $ref: '#/components/schemas/Id'
         family_id:

@@ -9,7 +9,7 @@ from sqlalchemy import or_, select
 from app.modules.account.service import lock_families
 from app.modules.audit.models import AuditLog
 from app.modules.audit.service import record
-from app.modules.auth.models import DeviceSession
+from app.modules.auth.models import DeviceSession, User
 from app.modules.consent.models import Consent
 from app.modules.conversation.models import Conversation
 from app.modules.conversation.proactive_models import ProactiveDailyCounter, ProactivePreference
@@ -40,6 +40,9 @@ async def build_export(db, actor, storage, settings, request_id):
         scope='本人资料、授权、本人业务内容、本人声音和已发送留言；不批量导出其他主体的家庭内容。',
         excluded=['访问/刷新令牌、邀请码和凭证摘要', '供应商内部标识、向量和运维元数据',
             '已删除、撤回或到期的内容', '会话中未持久化的逐字稿与录音', '其他主体的业务内容'])
+    username = await db.scalar(select(User.username).where(User.id == uid))
+    if username is not None:
+        data['user'] = {**actor.user, 'username': username}
     budget = settings.account_export_max_bytes
 
     async def rows(model, condition):

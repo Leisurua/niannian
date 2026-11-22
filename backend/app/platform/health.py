@@ -10,7 +10,7 @@ from app.platform.db import Base
 from app.platform.identifiers import utcnow
 
 
-EXPECTED_MIGRATION_HEAD = '20261101_operational_readiness'
+EXPECTED_MIGRATION_HEAD = '20261121_password_accounts'
 WORKER_SERVICE = 'worker'
 
 

@@ -3,7 +3,7 @@ name: niannian-linux
 x-backend-environment: &backend-environment
   APP_ENV: ${APP_ENV:-demo}
   PROVIDER_MODE: mock
-  DEMO_DATA: "true"
+  DEMO_DATA: ${DEMO_DATA:-true}
   LLM_PROVIDER: ${LLM_PROVIDER:-mock}
   LLM_BASE_URL: ${LLM_BASE_URL:-}
   LLM_MODEL: ${LLM_MODEL:-}
@@ -18,6 +18,7 @@ x-backend-environment: &backend-environment
   LOG_LEVEL: INFO
   DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
   AUTH_SIGNING_KEY: ${AUTH_SIGNING_KEY}
+  AUTH_MODE: ${AUTH_MODE:-demo}
   CONTACT_ENCRYPTION_KEY: ${CONTACT_ENCRYPTION_KEY:-}
   NOTIFICATION_EXTERNAL_ENABLED: ${NOTIFICATION_EXTERNAL_ENABLED:-false}
   NOTIFICATION_PUSH_PROVIDER: ${NOTIFICATION_PUSH_PROVIDER:-mock}

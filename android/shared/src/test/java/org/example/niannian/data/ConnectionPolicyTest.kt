@@ -23,4 +23,12 @@ class ConnectionPolicyTest {
             assertThrows(IllegalArgumentException::class.java) { ConnectionPolicy.invitation(it) }
         }
     }
+
+    @Test fun pairingCodeCanBeReadOrPastedInGroups() {
+        val code = "ABCD2345EFGH6723"
+        assertEquals("ABCD-2345-EFGH-6723", ConnectionPolicy.displayPairingCode(code))
+        assertEquals(code, ConnectionPolicy.invitation("abcd-2345-efgh-6723"))
+        assertEquals(code, ConnectionPolicy.invitation("ABCD 2345 EFGH 6723"))
+        assertEquals(code, ConnectionPolicy.invitation(code))
+    }
 }

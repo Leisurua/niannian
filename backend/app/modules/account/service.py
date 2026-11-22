@@ -76,6 +76,7 @@ async def request_deletion(db, actor, receipt_token, settings):
     # receipt commit atomically; failures cannot leave a half-disabled account.
     await db.execute(update(User).where(User.id == uid).values(global_status='DELETED', deleted_at=now,
         display_name='已删除账户', phone_ciphertext=None, phone_hash=None, phone_last4=None,
+        username=None, password_hash=None,
         accessibility_settings={}, timezone='UTC', created_at=now, updated_at=now))
     await db.execute(delete(DeviceSession).where(DeviceSession.user_id == uid))
     await erase_database(db, uid)
