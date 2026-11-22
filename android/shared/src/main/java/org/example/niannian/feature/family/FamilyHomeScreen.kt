@@ -882,22 +882,7 @@ internal fun FamilyDesignHome(
                             )
                         }
                         Spacer(modifier = Modifier.height(12.dp))
-                        if (!state.loggedIn && model.demoLoginAvailable) {
-                            Button(
-                                onClick = {
-                                    model.login("http://127.0.0.1:8000")
-                                    toast = "正在通过 USB 隧道连接本机后端 (127.0.0.1:8000)…"
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = FSage700, contentColor = Color.White),
-                                shape = CircleShape,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(50.dp)
-                            ) {
-                                Text(text = "⚡ 一键连接本机后端 (demo-child)", fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                            }
-                            Spacer(modifier = Modifier.height(10.dp))
-                        } else if (state.loggedIn) {
+                        if (state.loggedIn) {
                             Surface(shape = RoundedCornerShape(16.dp), color = FPaperDeep, modifier = Modifier.fillMaxWidth()) {
                                 Column(modifier = Modifier.padding(14.dp)) {
                                     Text(

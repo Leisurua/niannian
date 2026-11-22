@@ -48,7 +48,7 @@ private class Connection(url: URL, handler: (Connection) -> Reply) : HttpURLConn
     override fun getErrorStream() = inputStream
 }
 
-private class FakeApi {
+private class FakeApi(origin: String = "") {
     val requests = CopyOnWriteArrayList<Connection>()
     val store = MemorySession()
     var admin = true
@@ -56,7 +56,7 @@ private class FakeApi {
     var failWrite = false
     var secondConsentPage = false
     var handler: ((Connection) -> Reply)? = null
-    val repository = FamilyRepository(store, false) { url ->
+    val repository = FamilyRepository(store, false, accountOrigin = origin) { url ->
         Connection(url) { request ->
             requests.add(request)
             if (offline) throw IOException("fictional offline")
@@ -93,6 +93,58 @@ private suspend fun CompanionModel.idle() = withTimeout(5000) {
 }
 
 class FamilyRecoveryTest {
+    @Test fun personalAccountCanSignInAgainAfterReopeningTheApp() = runBlocking {
+        val origin = "https://accounts.example.com"
+        val api = FakeApi(origin)
+        val password = "虚构pass42"
+        api.store.clear()
+        api.handler = { request ->
+            assertEquals("accounts.example.com", request.url.host)
+            when (request.url.path) {
+                "/v1/auth/register", "/v1/auth/login" -> {
+                    val body = JSONObject(request.sentBody.toString("UTF-8"))
+                    if (request.url.path.endsWith("/register")) {
+                        assertEquals("example_user", body.getString("username"))
+                        assertEquals(password, body.getString("password"))
+                    } else {
+                        val credential = body.getJSONObject("credential")
+                        assertEquals("PASSWORD", credential.getString("type"))
+                        assertEquals("example_user", credential.getString("identifier"))
+                        assertEquals(password, credential.getString("proof"))
+                    }
+                    Reply(201, JSONObject().put("user", JSONObject().put("id", "self"))
+                        .put("access_token", "fictional-access").put("refresh_token", "fictional-refresh"))
+                }
+                "/v1/auth/logout" -> Reply(204)
+                "/v1/families" -> page(emptyList())
+                else -> api.respond(request)
+            }
+        }
+        val original = CompanionModel(api.repository, true, "device", this)
+        original.idle()
+        original.loginAccount(" Example_User ", password, "虚构长辈")
+        original.idle()
+        assertTrue(original.state.value.loggedIn)
+        original.logout()
+        original.idle()
+        assertFalse(api.repository.hasSession())
+        assertEquals(0, api.store.load().length())
+
+        val reopened = CompanionModel(api.repository, true, "device", this)
+        reopened.idle()
+        assertEquals(origin, api.repository.savedOrigin())
+        reopened.loginAccount("example_user", password, null)
+        reopened.idle()
+        assertEquals("self", reopened.state.value.userId)
+
+        api.handler = { error(401, "AUTH_SESSION_REVOKED") }
+        reopened.reload()
+        reopened.idle()
+        assertFalse(reopened.state.value.loggedIn)
+        assertEquals(origin, api.repository.savedOrigin())
+        assertEquals(0, api.store.load().length())
+    }
+
     @Test fun accountExportStreamsZipOnlyForCurrentUser() = runBlocking {
         val api = FakeApi()
         api.store.save(api.store.load().put("user_id", "self"))
@@ -139,6 +191,7 @@ class FamilyRecoveryTest {
         }
         assertTrue(runCatching { api.repository.deleteAccount("self", "https://example.com", token) }.exceptionOrNull() is IOException)
         assertFalse(api.repository.hasSession())
+        assertFalse(api.store.load().has("origin"))
         val progress = deletionProgress(api.repository.deletionReceipt("https://example.com", token))
         assertTrue(progress.contains("删除尚未全部完成"))
         assertTrue(progress.contains("供应商 fictional：未核验"))

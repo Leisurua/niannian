@@ -866,7 +866,7 @@ paths:
               $ref: '#/components/schemas/InvitationCreate'
       responses:
         '201':
-          description: One-time invitation token (shown once)
+          description: Password accounts receive eight letters and digits, valid for at most ten minutes and one recipient
           content:
             application/json:
               schema:
@@ -893,13 +893,13 @@ paths:
       required: true
       schema:
         type: string
-        minLength: 16
+        minLength: 8
         maxLength: 512
     post:
       tags:
       - Families
       operationId: acceptFamilyInvitation
-      description: Read the invitation to view the inviter and pending membership, then confirm it. Password accounts must read it before confirming.
+      description: Read the invitation to view the inviter and pending membership, then confirm it. Password accounts must read it before confirming and are subject to attempt limits.
       requestBody:
         required: true
         content:
@@ -919,6 +919,8 @@ paths:
           $ref: '#/components/responses/NotFoundError'
         '409':
           $ref: '#/components/responses/ConflictError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
   /families/{family_id}/members:
     parameters:
     - $ref: '#/components/parameters/FamilyId'
@@ -3834,7 +3836,7 @@ components:
         password:
           type: string
           writeOnly: true
-          minLength: 15
+          minLength: 8
           maxLength: 128
         display_name:
           type: string

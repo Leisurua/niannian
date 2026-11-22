@@ -12,7 +12,6 @@ import androidx.activity.compose.setContent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import java.util.UUID
-import org.example.niannian.core.common.RuntimeConfig
 import org.example.niannian.core.telemetry.AppExecutionBoundary
 import org.example.niannian.core.telemetry.TelemetryLogger
 import org.example.niannian.feature.family.CompanionModel
@@ -73,10 +72,9 @@ class MainActivity : ComponentActivity() {
             val messageModel = ViewModelProvider(this, factory)[MessageModel::class.java]
             val toolsModel = ViewModelProvider(this, factory)[ConversationToolsModel::class.java]
             val notificationModel = ViewModelProvider(this, factory)[NotificationModel::class.java]
-            val runtime = RuntimeConfig.fromBuildValues(BuildConfig.ENVIRONMENT, BuildConfig.PROVIDER_MODE)
             setContent {
                 val account by model.state.collectAsState()
-                CompanionScreen(model, runtime.statusLabel, reminderModel, memoryModel, toolsModel,
+                CompanionScreen(model, reminderModel, memoryModel, toolsModel,
                     messages = messageModel,
                     notificationSettings = { BackgroundNotificationSettings(repository, account.userId) },
                     notifications = notificationModel)

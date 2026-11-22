@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 import re
 from uuid import uuid4
 
@@ -24,9 +24,9 @@ def test_personal_accounts_join_with_a_one_time_family_code(system, monkeypatch)
         "credential": {"type": "DEMO", "identifier": "demo-child"}, "device": device,
     }).status_code == 401
 
-    password = "fictional pairing test password"
+    password = "虚构pass42"
 
-    def register(username, display_name):
+    def register(username, display_name, password=password):
         return client.post("/v1/auth/register", json={
             "username": username, "password": password, "display_name": display_name, "device": device,
         })
@@ -35,7 +35,8 @@ def test_personal_accounts_join_with_a_one_time_family_code(system, monkeypatch)
         assert result.status_code == 201
         return {"Authorization": "Bearer " + result.json()["access_token"]}
 
-    child = register("child_pairing", "虚构子女")
+    assert register("short_pairing", "虚构短密码", password[:-1]).status_code == 422
+    child = register("child_pairing", "虚构子女", "fictional pairing test password")
     elder = register("elder_pairing", "虚构长辈")
     outsider = register("other_pairing", "虚构其他家庭")
     ch, eh, oh = map(headers, (child, elder, outsider))
@@ -50,12 +51,14 @@ def test_personal_accounts_join_with_a_one_time_family_code(system, monkeypatch)
     assert family.status_code == 201
     family_id = family.json()["id"]
     invitations = f"/v1/families/{family_id}/invitations"
-    body = {"target_role": "ELDER", "expires_at": (utcnow() + timedelta(minutes=10)).isoformat(), "max_usage": 1}
+    now = utcnow()
+    body = {"target_role": "ELDER", "expires_at": (now + timedelta(hours=1)).isoformat(), "max_usage": 3}
     key = str(uuid4())
     invitation = post(client, invitations, ch, body, key)
     assert invitation.status_code == 201
     code = invitation.json()["token"]
-    assert re.fullmatch(r"[A-Z2-7]{16}", code)
+    assert re.fullmatch(r"[A-Z2-7]{8}", code) and not code.isalpha() and not code.isdigit()
+    assert datetime.fromisoformat(invitation.json()["expires_at"]) < now + timedelta(minutes=11)
     assert post(client, invitations, ch, body, key).json()["token"] == code
 
     formatted = "-".join(code[index:index + 4] for index in range(0, len(code), 4)).lower()
@@ -71,13 +74,18 @@ def test_personal_accounts_join_with_a_one_time_family_code(system, monkeypatch)
         assert joined.status_code == 200 and joined.json()["status"] == "ACTIVE"
         assert joined.json()["permission_codes"] == []
     assert client.get(f"/v1/families/{family_id}", headers=eh).status_code == 200
+    assert post(client, invitations, eh, body).status_code == 403
     assert client.get(f"/v1/families/{family_id}", headers=oh).status_code == 404
     assert client.get(f"/v1/consents?family_id={family_id}", headers=eh).json()["items"] == []
 
     assert client.post("/v1/auth/logout", headers=eh).status_code == 204
-    sign_in = {"credential": {"type": "PASSWORD", "identifier": "elder_pairing", "proof": "incorrect"},
+    sign_in = {"credential": {"type": "PASSWORD", "identifier": " ELDER_PAIRING ", "proof": "incorrect"},
         "device": {**device, "device_id": str(uuid4())}}
     assert client.post("/v1/auth/login", json=sign_in).status_code == 401
     sign_in["credential"]["proof"] = password
     signed_in = client.post("/v1/auth/login", json=sign_in)
+    assert signed_in.json()["user"]["id"] == elder.json()["user"]["id"]
     assert client.get(f"/v1/families/{family_id}", headers=headers(signed_in)).status_code == 200
+    for _ in range(9):
+        assert client.post(path, headers=oh, json={}).status_code == 404
+    assert client.post(path, headers=oh, json={}).status_code == 429

@@ -19,7 +19,12 @@ _attempts: OrderedDict[str, tuple[float, int]] = OrderedDict()
 
 
 def limit_login(request: Request) -> None:
-    key = digest(request.client.host if request.client else "unknown")
+    host = request.client.host if request.client else "unknown"
+    limit_attempt(f"auth:{host}", get_settings().auth_login_limit, "AUTH_LOGIN_RATE_LIMITED")
+
+
+def limit_attempt(scope: str, limit: int, error_code: str) -> None:
+    key = digest(scope)
     now = time.monotonic()
     start, count = _attempts.get(key, (now, 0))
     if now - start >= 60:
@@ -28,8 +33,8 @@ def limit_login(request: Request) -> None:
     _attempts.move_to_end(key)
     while len(_attempts) > 2048:
         _attempts.popitem(last=False)
-    if count >= get_settings().auth_login_limit:
-        raise AppError("AUTH_LOGIN_RATE_LIMITED", "尝试次数较多，请稍后重试。", 429)
+    if count >= limit:
+        raise AppError(error_code, "尝试次数较多，请稍后重试。", 429)
 
 
 @router.post("/auth/register", status_code=201, operation_id="registerAccount")

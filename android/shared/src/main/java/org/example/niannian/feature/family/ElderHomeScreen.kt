@@ -374,10 +374,6 @@ internal fun ElderDesignHome(
             ElderSettingsSheet(
                 scale = textScale,
                 state = state,
-                onQuickUsbLogin = if (model.demoLoginAvailable) ({
-                    model.login("http://127.0.0.1:8000")
-                    toastMessage = "正在通过 USB 隧道连接本机后端 (127.0.0.1:8000)…"
-                }) else null,
                 onSelectScale = { textScale = it },
                 onOpenFeature = { target ->
                     settingsOpen = false
@@ -1148,7 +1144,6 @@ private fun ElderBottomNavBar(
 private fun ElderSettingsSheet(
     scale: Float,
     state: CompanionState,
-    onQuickUsbLogin: (() -> Unit)?,
     onSelectScale: (Float) -> Unit,
     onOpenFeature: (HomeFeature) -> Unit = {},
     onOpenGame: () -> Unit,
@@ -1296,26 +1291,7 @@ private fun ElderSettingsSheet(
                     Text("想起从前", fontSize = 18f.spScaled(scale))
                 }
                 Spacer(modifier = Modifier.height(10.dp))
-                if (!loggedIn && onQuickUsbLogin != null) {
-                    Button(
-                        onClick = onQuickUsbLogin,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Sage700,
-                            contentColor = Color.White
-                        ),
-                        shape = CircleShape,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp)
-                    ) {
-                        Text(
-                            text = "⚡ 一键连接本机后端 (demo-elder)",
-                            fontSize = 15f.spScaled(scale),
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(10.dp))
-                } else if (loggedIn) {
+                if (loggedIn) {
                     Surface(
                         shape = RoundedCornerShape(16.dp),
                         color = PaperDeep,
