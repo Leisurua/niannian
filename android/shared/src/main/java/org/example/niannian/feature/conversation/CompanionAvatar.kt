@@ -27,11 +27,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.CancellationException
 
 val LocalAvatarModel = staticCompositionLocalOf<AvatarModel?> { null }
 private val LocalAvatarImport = staticCompositionLocalOf<(() -> Unit)?> { null }
-private val LocalPhotoPicker = staticCompositionLocalOf<(() -> Unit)?> { null }
+private val LocalAvatarPhotoActions = staticCompositionLocalOf<AvatarPhotoActions?> { null }
 private val LocalAvatarGeneration = staticCompositionLocalOf<AvatarGenerationModel?> { null }
 
 @Composable
@@ -43,27 +42,9 @@ fun AvatarHost(model: AvatarModel?, family: String, user: String, usable: Boolea
     var checkedKey by remember(family, user) { mutableStateOf<String?>(null) }
     val state by model.state.collectAsState()
     val context = LocalContext.current
-    val generationState = generationModel?.state?.collectAsState()?.value
-    var pendingPhoto by remember(family, user) { mutableStateOf<android.net.Uri?>(null) }
-    var photoOwner by remember(family, user) { mutableStateOf<String?>(null) }
-    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> pendingPhoto = uri }
-    LaunchedEffect(pendingPhoto, foreground, usable, generationState?.available, generationState?.family, generationState?.user) {
-        val uri = pendingPhoto
-        if (uri != null && foreground && usable && generationState?.available == true
-            && generationState.family == family && generationState.user == user) {
-            if (photoOwner != "$family:$user") {
-                pendingPhoto = null
-                return@LaunchedEffect
-            }
-            try {
-                val bytes = withContext(Dispatchers.IO) { prepareAvatarPhoto(context, uri) }
-                val snapshot = generationModel?.state?.value
-                if (snapshot?.family == family && snapshot.user == user) generationModel.selectedPhoto(bytes)
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { generationModel?.photoFailed() }
-            pendingPhoto = null
-        }
-    }
+    val photoActions = if (usable && generationModel != null) key(family, user, generationModel) {
+        rememberAvatarPhotoActions(generationModel, family, user, foreground)
+    } else null
     var foregroundPackBinding by remember(family, user) { mutableStateOf<Pair<String, Int>?>(null) }
     var pendingForegroundPackUri by remember(family, user) { mutableStateOf<android.net.Uri?>(null) }
     val packPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -104,10 +85,7 @@ fun AvatarHost(model: AvatarModel?, family: String, user: String, usable: Boolea
             foregroundPackBinding = "${snapshot.family}:${snapshot.user}:${snapshot.grantId}" to model.storageRevision.value
             packPicker.launch("application/zip")
         }
-    }, LocalAvatarGeneration provides generationModel, LocalPhotoPicker provides {
-        photoOwner = "$family:$user"
-        photoPicker.launch("image/*")
-    }, content = content)
+    }, LocalAvatarGeneration provides generationModel, LocalAvatarPhotoActions provides photoActions, content = content)
 }
 
 @Composable
@@ -152,11 +130,10 @@ fun AvatarControls() {
     val importAvatar = LocalAvatarImport.current
     Text("陪伴形象", fontSize = 22.sp)
     PhotoAvatarControls()
-    Text("也可导入本机角色包。使用人物外观仍由念念 AI 回答。", fontSize = 18.sp)
     if (state.message.isNotBlank()) Text(state.message, fontSize = 18.sp)
-    Button(onClick = { importAvatar?.invoke() }, enabled = state.allowed && !state.busy,
+    OutlinedButton(onClick = { importAvatar?.invoke() }, enabled = state.allowed && !state.busy,
         modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
-        Text(if (state.busy) "正在导入…" else "导入角色包", fontSize = 20.sp)
+        Text(if (state.busy) "正在导入…" else "导入本机 ZIP 角色包", fontSize = 20.sp)
     }
     TextButton(onClick = { model.remove() }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
         Text("删除本机形象并恢复默认", fontSize = 18.sp)
@@ -169,12 +146,30 @@ private fun PhotoAvatarControls() {
     val model = LocalAvatarGeneration.current ?: return
     val state by model.state.collectAsState()
     val appearance = LocalAvatarModel.current?.state?.collectAsState()?.value
-    val selectPhoto = LocalPhotoPicker.current
+    val photoActions = LocalAvatarPhotoActions.current
+    var showPhotoSources by remember(state.family, state.user) { mutableStateOf(false) }
     var phase by remember(state.job?.id) { mutableStateOf(CompanionPhase.IDLE) }
     val running = state.job?.status in listOf("UPLOADING", "QUEUED", "STYLIZING", "PREPARING", "RENDERING")
-    Text(if (state.available) "选择照片，授权制作，预览满意后再启用。" else "照片制作服务暂未开放或无法连接，可继续使用默认形象。", fontSize = 18.sp)
-    Button(onClick = { selectPhoto?.invoke() }, enabled = state.available && !state.busy && !running,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("选择照片制作形象", fontSize = 20.sp) }
+    val canSelectPhoto = photoActions != null && state.available && !state.busy && !running
+    Text(if (state.available) "拍摄或选择照片制作陪伴形象，预览后可确认启用。" else "照片制作服务暂未开放或无法连接，可继续使用默认形象。", fontSize = 18.sp)
+    Button(onClick = { showPhotoSources = true }, enabled = canSelectPhoto,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("导入角色包", fontSize = 20.sp) }
+    if (showPhotoSources && canSelectPhoto) {
+        AlertDialog(
+            onDismissRequest = { showPhotoSources = false },
+            title = { Text("选择照片来源") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { showPhotoSources = false; photoActions.takePhoto() },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("拍摄", fontSize = 20.sp) }
+                    OutlinedButton(onClick = { showPhotoSources = false; photoActions.pickPhoto() },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("从相册里选取", fontSize = 20.sp) }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showPhotoSources = false }) { Text("取消") } }
+        )
+    }
+    photoActions?.error?.let { Text(it, fontSize = 18.sp) }
     if (state.message.isNotBlank()) Text(state.message, fontSize = 18.sp)
     state.job?.let { job ->
         Text(job.label, fontSize = 20.sp)
