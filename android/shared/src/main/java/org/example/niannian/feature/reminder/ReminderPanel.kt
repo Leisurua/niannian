@@ -75,7 +75,16 @@ fun ReminderPanel(model: ReminderModel, family: String, user: String, subjects: 
             }
         }
     }
-    fun save(confirmed: Boolean) { model.save(target, title, content, date, time, zone, type, daily, confirmed, editing) }
+    if (state.family != family || state.user != user) return
+    fun resetEditor() {
+        editing = null
+        title = ""
+        content = ""
+        type = "WATER"
+    }
+    fun save(confirmed: Boolean) {
+        model.save(target, title, content, date, time, zone, type, daily, confirmed, editing, onSaved = ::resetEditor)
+    }
     confirmation?.let { (kind, id) ->
         var reason by remember(id) { mutableStateOf("") }
         AlertDialog(onDismissRequest = { confirmation = null }, title = { Text("请再次核对") },
@@ -94,7 +103,7 @@ fun ReminderPanel(model: ReminderModel, family: String, user: String, subjects: 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(if (model.elder) "我的提醒" else "家人提醒", fontSize = 24.sp)
-            Text("Demo / Mock 登录环境 · 记录反馈不代表已经服药。", fontSize = 18.sp)
+            Text("提醒反馈由本人提交，记录反馈不代表实际服药。", fontSize = 18.sp)
             if (state.offline) Text(if (model.elder) "当前离线 · 仅显示有效本人缓存，反馈先保存在本机。" else "当前离线，家人提醒内容已隐藏。", fontSize = 20.sp)
             Text("提醒按设置的时区执行；后台时间可能延迟，请保持页面打开并核对系统通知权限。")
             if (model.elder) Action("开启本机提醒通知", state.busy) {
@@ -148,7 +157,7 @@ fun ReminderPanel(model: ReminderModel, family: String, user: String, subjects: 
             Action("保存提醒", disabled || title.isBlank() || target.isBlank()) {
                 if (type == "MEDICATION") confirmation = "medication" to "" else save(false)
             }
-            if (editing != null) Action("取消编辑", state.busy) { editing = null; title = ""; content = "" }
+            if (editing != null) Action("取消编辑", state.busy, ::resetEditor)
         }
     }
 }

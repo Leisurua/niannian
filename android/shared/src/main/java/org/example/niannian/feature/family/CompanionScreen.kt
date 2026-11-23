@@ -79,10 +79,10 @@ private fun CompanionScreenContent(model: CompanionModel, environmentLabel: Stri
     elderDeviceSettings: @Composable (CompanionState) -> Unit) {
     val state by model.state.collectAsState()
     val mutationUnavailable = state.busy || state.offline || state.pendingWrite
-    var familyName by remember { mutableStateOf("") }
-    var invitation by remember { mutableStateOf("") }
-    var revokeMember by remember { mutableStateOf<Member?>(null) }
-    var consentChange by remember { mutableStateOf<ConsentChange?>(null) }
+    var familyName by remember(state.userId) { mutableStateOf("") }
+    var invitation by remember(state.userId) { mutableStateOf("") }
+    var revokeMember by remember(state.userId, state.selected?.id) { mutableStateOf<Member?>(null) }
+    var consentChange by remember(state.userId, state.selected?.id) { mutableStateOf<ConsentChange?>(null) }
     var showFamilySettings by rememberSaveable {
         mutableStateOf(model.configuredOrigin != null && !model.accountRepository.hasSession())
     }

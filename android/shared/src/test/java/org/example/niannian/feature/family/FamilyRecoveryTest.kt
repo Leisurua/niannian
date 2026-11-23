@@ -93,6 +93,25 @@ private suspend fun CompanionModel.idle() = withTimeout(5000) {
 }
 
 class FamilyRecoveryTest {
+    @Test fun interruptedFamilySwitchResumesTheChosenFamilyWithoutRestoringTheOldOne() = runBlocking {
+        val api = FakeApi()
+        val model = CompanionModel(api.repository, false, "fictional-device", this)
+        model.idle()
+        assertEquals("family-a", model.state.value.selected?.id)
+        api.offline = true
+        model.choose("family-b")
+        model.idle()
+        assertNull(model.state.value.selected)
+        assertTrue(model.state.value.members.isEmpty())
+        assertTrue(model.state.value.permissions.isEmpty())
+        assertEquals("family-b", api.repository.savedFamilyId())
+        api.offline = false
+        model.reload()
+        model.idle()
+        assertEquals("family-b", model.state.value.selected?.id)
+        assertEquals("", model.state.value.error)
+    }
+
     @Test fun accountExportStreamsZipOnlyForCurrentUser() = runBlocking {
         val api = FakeApi()
         api.store.save(api.store.load().put("user_id", "self"))

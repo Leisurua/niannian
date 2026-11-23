@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -56,6 +57,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -189,7 +191,8 @@ internal fun ElderDesignHome(
 
     var startWithVoice by remember { mutableStateOf(false) }
     var chatTopic by remember { mutableStateOf<String?>(null) }
-    var settingsOpen by remember { mutableStateOf(false) }
+    var settingsOpen by remember(state.userId, state.selected?.id) { mutableStateOf(false) }
+    BackHandler(enabled = settingsOpen) { settingsOpen = false }
     var gameOpen by remember(state.userId, state.selected?.id) { mutableStateOf(false) }
     var recallOpen by remember(state.userId, state.selected?.id) { mutableStateOf(false) }
 
@@ -216,6 +219,7 @@ internal fun ElderDesignHome(
         modifier = Modifier
             .fillMaxSize()
             .background(Paper)
+            .safeDrawingPadding()
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             // Scrollable Home Content

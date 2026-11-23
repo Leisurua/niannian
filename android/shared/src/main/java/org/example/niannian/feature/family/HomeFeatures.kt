@@ -69,21 +69,27 @@ internal fun homeFamilyReminderRows(state: CompanionState, reminders: ReminderSt
     now: Instant = Instant.now()): List<FamilyReminderRow> {
     if (state.offline || state.error.isNotBlank() || reminders.offline || homeFamily(state).isBlank() ||
         reminders.family != homeFamily(state) || reminders.user != state.userId || subject.isBlank()) return emptyList()
-    return reminders.rules.filter { it.optBoolean("active", true) && it.optString("owner_user_id") == subject }.map { rule ->
+    val scheduledRows = reminders.rules.filter { it.optBoolean("active", true) && it.optString("owner_user_id") == subject }.mapNotNull { rule ->
         val zone = ZoneId.of(rule.getString("timezone"))
-        val day = if (rule.getString("recurrence_kind") == "ONCE") LocalDate.parse(rule.getString("start_date"))
-            else now.atZone(zone).toLocalDate()
-        val scheduled = day.atTime(LocalTime.parse(rule.getString("schedule_time_local"))).atZone(zone).toInstant()
+        val day = now.atZone(zone).toLocalDate()
+        val occurrence = ReminderCalendar.occurrences(parseRule(rule),
+            day.atStartOfDay(zone).toInstant(), day.plusDays(1).atStartOfDay(zone).toInstant()).singleOrNull()
+            ?: return@mapNotNull null
         val executions = rule.optJSONArray("executions")
         val execution = (0 until (executions?.length() ?: 0)).map { executions!!.getJSONObject(it) }
-            .firstOrNull { parseApiInstant(it.getString("scheduled_at")) == scheduled }
-        FamilyReminderRow(rule.getString("id"), rule.getString("schedule_time_local").take(5),
-            rule.getString("title"), rule.getString("content"), execution?.optString("feedback_status") == "DONE",
-            isMedication = rule.getString("type") == "MEDICATION")
-    }.sortedBy { it.time }.let { rows ->
-        val next = rows.firstOrNull { !it.done }?.id
-        rows.map { it.copy(isNext = it.id == next) }
+            .firstOrNull { parseApiInstant(it.getString("scheduled_at")) == occurrence.scheduledAt }
+        val feedback = execution?.optString("feedback_status") ?: "PENDING"
+        val due = if (feedback == "LATER") execution?.optString("next_due_at")
+            ?.takeIf { it.isNotBlank() }?.let(::parseApiInstant) ?: occurrence.scheduledAt else occurrence.scheduledAt
+        val row = FamilyReminderRow(rule.getString("id"), due.atZone(zone).toLocalTime().toString().take(5),
+            rule.getString("title"), rule.getString("content"), feedback == "DONE",
+            isNext = feedback !in setOf("DONE", "SKIPPED") && due >= now && due.atZone(zone).toLocalDate() == day,
+            isMedication = rule.getString("type") == "MEDICATION", feedback = feedback)
+        due to row
     }
+    val rows = scheduledRows.sortedBy { it.first }.map { it.second }
+    val next = rows.firstOrNull { it.isNext }?.id
+    return rows.map { it.copy(isNext = it.id == next) }
 }
 
 internal fun homeCurrentReminderCards(state: CompanionState, reminders: ReminderState,

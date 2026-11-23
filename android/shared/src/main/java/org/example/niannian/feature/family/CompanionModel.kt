@@ -134,7 +134,13 @@ class CompanionModel(private val repository: FamilyRepository, val elder: Boolea
         else repository.call("/v1/consents", "POST", JSONObject().put("family_id", family)
             .put("subject_user_id", current.value.userId).put("grantee_user_id", recipient).put("scope", scope).put("source", "SETTINGS"), true)
     }
-    fun choose(id: String) = action { repository.noteFamily(id); current.value = current.value.copy(invite = ""); home(id) }
+    fun choose(id: String) = action {
+        repository.noteFamily(id)
+        current.value = current.value.copy(selected = null, creator = "", members = emptyList(),
+            permissions = emptyList(), selfPermissions = emptyList(), invite = "", invitationInviter = "",
+            canManageMembers = false)
+        home(id)
+    }
     fun createFamily(name: String) = action {
         require(name.isNotBlank()) { "请输入家庭称呼。" }
         val result = repository.call("/v1/families", "POST", JSONObject().put("name", name), true)

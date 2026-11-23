@@ -20,9 +20,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -44,6 +47,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -88,7 +92,8 @@ internal data class FamilyReminderRow(
     val detail: String,
     val done: Boolean,
     val isNext: Boolean = false,
-    val isMedication: Boolean = false
+    val isMedication: Boolean = false,
+    val feedback: String = "PENDING"
 )
 
 private data class FamilyMemoryCandidateRow(
@@ -124,11 +129,15 @@ internal fun FamilyDesignHome(
     var toast by remember { mutableStateOf<String?>(null) }
 
 
-    var addReminderSheetOpen by remember { mutableStateOf(false) }
-    var newRemTime by remember { mutableStateOf("17:30") }
-    var newRemTitle by remember { mutableStateOf("") }
+    var addReminderSheetOpen by remember(state.userId, family, subjectId) { mutableStateOf(false) }
+    var newRemTime by remember(state.userId, family, subjectId) { mutableStateOf("17:30") }
+    var newRemTitle by remember(state.userId, family, subjectId) { mutableStateOf("") }
 
-    var familySettingSheetOpen by remember { mutableStateOf(false) }
+    var familySettingSheetOpen by remember(state.userId, family) { mutableStateOf(false) }
+    BackHandler(enabled = addReminderSheetOpen || familySettingSheetOpen) {
+        addReminderSheetOpen = false
+        familySettingSheetOpen = false
+    }
 
     val momReminders = homeFamilyReminderRows(state, remindersState, subjectId)
     val backendMemories = homeMemoryItems(state, memoriesState).filter { it.subject == subjectId }
@@ -151,6 +160,7 @@ internal fun FamilyDesignHome(
         modifier = Modifier
             .fillMaxSize()
             .background(FPaper)
+            .safeDrawingPadding()
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             Column(
@@ -577,7 +587,14 @@ internal fun FamilyDesignHome(
                                     color = if (r.done) FSage50 else if (r.isNext) FPersimmon50 else FPaperDeep
                                 ) {
                                     Text(
-                                        text = if (r.done) "已完成 ✓" else if (r.isNext) "接下来" else "待执行",
+                                        text = when {
+                                            r.done -> "已反馈完成"
+                                            r.feedback == "SKIPPED" -> "已反馈跳过"
+                                            r.feedback == "LATER" -> "稍后提醒"
+                                            r.isNext -> "接下来"
+                                            r.feedback == "NO_RESPONSE" -> "尚未收到反馈"
+                                            else -> "等待反馈"
+                                        },
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = if (r.done) FSage700 else if (r.isNext) FPersimmon700 else FInkMute,
@@ -787,7 +804,7 @@ internal fun FamilyDesignHome(
                         .fillMaxWidth()
                         .clickable(enabled = false) {}
                 ) {
-                    Column(modifier = Modifier.padding(24.dp)) {
+                    Column(modifier = Modifier.imePadding().verticalScroll(rememberScrollState()).padding(24.dp)) {
                         Text(
                             text = "为$subjectName 添加生活提醒",
                             fontFamily = FontFamily.Serif,
@@ -912,10 +929,7 @@ internal fun FamilyDesignHome(
                                         color = FInkSoft
                                     )
                                     Spacer(modifier = Modifier.height(8.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                         listOf(
                                             HomeFeature.REMINDERS to "提醒管理",
                                             HomeFeature.MEMORIES to "记忆与照片",
@@ -923,21 +937,19 @@ internal fun FamilyDesignHome(
                                             HomeFeature.NOTIFICATIONS to "家人通知",
                                             HomeFeature.CONVERSATION to "交流回顾",
                                             HomeFeature.REPORTS to "统计与周报"
-                                        ).forEach { (feat, label) ->
-                                            Surface(
-                                                shape = CircleShape,
-                                                color = FPaperCard,
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .height(34.dp)
-                                                    .clip(CircleShape)
-                                                    .clickable {
-                                                        familySettingSheetOpen = false
-                                                        feature = feat
+                                        ).chunked(3).forEach { features ->
+                                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                features.forEach { (feat, label) ->
+                                                    OutlinedButton(
+                                                        onClick = {
+                                                            familySettingSheetOpen = false
+                                                            feature = feat
+                                                        },
+                                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+                                                    ) {
+                                                        Text(text = label, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = FInk)
                                                     }
-                                            ) {
-                                                Box(contentAlignment = Alignment.Center) {
-                                                    Text(text = label, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = FInk)
                                                 }
                                             }
                                         }
