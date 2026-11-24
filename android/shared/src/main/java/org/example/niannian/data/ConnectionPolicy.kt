@@ -16,10 +16,10 @@ object ConnectionPolicy {
 
     fun invitation(value: String): String {
         val token = value.trim()
-        if (token.matches(Regex("(?:[A-Za-z2-7]{4}[- ]){3}[A-Za-z2-7]{4}"))) {
+        if (token.matches(Regex("[A-Za-z2-7]{8}|[A-Za-z2-7]{16}|(?:[A-Za-z2-7]{4}[- ])(?:[A-Za-z2-7]{4}[- ][A-Za-z2-7]{4}[- ])?[A-Za-z2-7]{4}"))) {
             return token.replace("-", "").replace(" ", "").uppercase()
         }
-        require(token.matches(Regex("[A-Za-z0-9_-]{16,512}"))) { "请输入家人提供的完整家庭配对码。" }
+        require(token.matches(Regex("[A-Za-z0-9_-]{16,512}"))) { "请输入家人提供的 8 位邀请码。" }
         return token
     }
 

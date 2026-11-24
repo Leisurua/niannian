@@ -1,6 +1,8 @@
 package org.example.niannian.feature.conversation
 
+import android.content.ActivityNotFoundException
 import android.graphics.BitmapFactory
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -46,8 +48,8 @@ fun AvatarHost(model: AvatarModel?, family: String, user: String, usable: Boolea
         rememberAvatarPhotoActions(generationModel, family, user, foreground)
     } else null
     var foregroundPackBinding by remember(family, user) { mutableStateOf<Pair<String, Int>?>(null) }
-    var pendingForegroundPackUri by remember(family, user) { mutableStateOf<android.net.Uri?>(null) }
-    val packPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    var pendingForegroundPackUri by remember(family, user) { mutableStateOf<Uri?>(null) }
+    val packPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         pendingForegroundPackUri = uri
         if (uri == null) foregroundPackBinding = null
     }
@@ -83,7 +85,13 @@ fun AvatarHost(model: AvatarModel?, family: String, user: String, usable: Boolea
         val snapshot = model.state.value
         if (snapshot.allowed && !snapshot.busy) {
             foregroundPackBinding = "${snapshot.family}:${snapshot.user}:${snapshot.grantId}" to model.storageRevision.value
-            packPicker.launch("application/zip")
+            try {
+                // Some file providers label ZIPs as generic files. AvatarPack validates the contents.
+                packPicker.launch(arrayOf("*/*"))
+            } catch (_: ActivityNotFoundException) {
+                foregroundPackBinding = null
+                model.packPickerUnavailable()
+            }
         }
     }, LocalAvatarGeneration provides generationModel, LocalAvatarPhotoActions provides photoActions, content = content)
 }
@@ -129,16 +137,16 @@ fun AvatarControls() {
     val state by model.state.collectAsState()
     val importAvatar = LocalAvatarImport.current
     Text("陪伴形象", fontSize = 22.sp)
-    PhotoAvatarControls()
     if (state.message.isNotBlank()) Text(state.message, fontSize = 18.sp)
-    OutlinedButton(onClick = { importAvatar?.invoke() }, enabled = state.allowed && !state.busy,
+    Button(onClick = { importAvatar?.invoke() }, enabled = importAvatar != null && state.allowed && !state.busy,
         modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
-        Text(if (state.busy) "正在导入…" else "导入本机 ZIP 角色包", fontSize = 20.sp)
+        Text(if (state.busy) "正在导入…" else "导入角色包（ZIP）", fontSize = 20.sp)
     }
     TextButton(onClick = { model.remove() }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
         Text("删除本机形象并恢复默认", fontSize = 18.sp)
     }
     state.pack?.let { Text(it.credits, fontSize = 14.sp) }
+    PhotoAvatarControls()
 }
 
 @Composable
@@ -151,9 +159,10 @@ private fun PhotoAvatarControls() {
     var phase by remember(state.job?.id) { mutableStateOf(CompanionPhase.IDLE) }
     val running = state.job?.status in listOf("UPLOADING", "QUEUED", "STYLIZING", "PREPARING", "RENDERING")
     val canSelectPhoto = photoActions != null && state.available && !state.busy && !running
-    Text(if (state.available) "拍摄或选择照片制作陪伴形象，预览后可确认启用。" else "照片制作服务暂未开放或无法连接，可继续使用默认形象。", fontSize = 18.sp)
-    Button(onClick = { showPhotoSources = true }, enabled = canSelectPhoto,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("导入角色包", fontSize = 20.sp) }
+    if (state.available) {
+        OutlinedButton(onClick = { showPhotoSources = true }, enabled = canSelectPhoto,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("用照片制作形象", fontSize = 20.sp) }
+    }
     if (showPhotoSources && canSelectPhoto) {
         AlertDialog(
             onDismissRequest = { showPhotoSources = false },

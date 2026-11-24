@@ -176,31 +176,6 @@ internal fun BindHomeModels(state: CompanionState, account: CompanionModel, mode
 }
 
 @Composable
-internal fun HomeConnectionCard(state: CompanionState, model: CompanionModel, onSettings: () -> Unit) {
-    var address by remember(state.address) { mutableStateOf(state.address) }
-    HomeCard {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(homeConnectionLabel(state), style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.weight(1f).padding(top = 12.dp))
-            if (state.loggedIn) TextButton(onClick = {
-                if (state.pendingWrite) model.retry() else model.reload()
-            }, enabled = !state.busy) { Text(if (state.pendingWrite) "重试操作" else "刷新连接") }
-        }
-        Text("AI 陪伴 · 支持语音与文字 · 连接后显示服务状态", fontSize = 14.sp)
-        if (state.error.isNotBlank()) Text(state.error, color = MaterialTheme.colorScheme.error)
-        if (state.message.isNotBlank()) Text(state.message)
-        if (state.pendingWrite) Text("上次操作的结果尚未确认，请先重试。")
-        if (!state.loggedIn) {
-            OutlinedTextField(address, { address = it }, label = { Text("服务地址") },
-                enabled = !state.busy, singleLine = true, modifier = Modifier.fillMaxWidth())
-            HomeButton("演示登录", !state.busy) { model.login(address) }
-            HomeButton("通过 USB 连接本机", !state.busy) { model.login("http://127.0.0.1:8000") }
-        }
-        TextButton(onClick = onSettings, enabled = !state.busy) { Text("家庭、邀请与授权设置") }
-    }
-}
-
-@Composable
 internal fun HomeCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface,
         modifier = modifier.fillMaxWidth()) {

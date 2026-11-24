@@ -25,7 +25,7 @@ class LoginRequest(Input):
 
 class RegisterRequest(Input):
     username: str = Field(pattern=r"^[a-z0-9_]{4,32}$")
-    password: SecretStr = Field(min_length=15, max_length=128)
+    password: SecretStr = Field(min_length=8, max_length=128)
     display_name: str = Field(min_length=1, max_length=120)
     device: LoginDevice
 

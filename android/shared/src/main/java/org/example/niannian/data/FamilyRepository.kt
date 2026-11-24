@@ -17,21 +17,26 @@ import java.io.ByteArrayOutputStream
 
 class ApiFailure(val status: Int, val code: String, message: String) : Exception(message)
 
+internal const val MIN_ACCOUNT_PASSWORD_LENGTH = 8
+
 data class RetriedWrite(val path: String, val response: JSONObject)
 
 class FamilyRepository(
     private val store: SessionStore,
     private val debug: Boolean,
     private val onCacheInvalidated: () -> Unit = {},
+    private val accountOrigin: String = org.example.niannian.shared.BuildConfig.API_ORIGIN.ifBlank {
+        if (debug) "http://127.0.0.1:8000" else ""
+    },
     private val connectionFactory: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection }
 ) {
-    val configuredOrigin = org.example.niannian.shared.BuildConfig.API_ORIGIN.ifBlank { null }
+    val accountLoginAvailable get() = accountOrigin.isNotEmpty()
     private val requestMutex = Mutex()
 
     init {
-        if (configuredOrigin != null) {
+        if (accountLoginAvailable) {
             val session = store.load()
-            if (session.has("access_token") && (session.optString("origin") != configuredOrigin ||
+            if (session.has("access_token") && (session.optString("origin") != accountOrigin ||
                     !session.optBoolean("personal_account"))) {
                 store.clear()
                 onCacheInvalidated()
@@ -52,7 +57,7 @@ class FamilyRepository(
             }
         }
     }
-    fun savedOrigin() = configuredOrigin ?: store.load().optString("origin", if (debug) "http://10.0.2.2:8000" else "")
+    fun savedOrigin() = store.load().optString("origin", accountOrigin)
     fun clear() = store.clear()
 
     suspend fun exportAccount(userId: String, output: () -> java.io.OutputStream) {
@@ -99,7 +104,7 @@ class FamilyRepository(
         try {
             executeCall("/v1/me/deletion", "POST", JSONObject().put("confirmation", "DELETE_MY_ACCOUNT")
                 .put("receipt_token", token), false, null)
-        } finally { clear() }
+        } finally { store.clear() }
     }
 
     fun receiptOrigin(server: String): String = ConnectionPolicy.origin(server, debug)
@@ -189,7 +194,7 @@ class FamilyRepository(
                 result.toString()
             }.orEmpty()
             val json = if (content.isBlank()) JSONObject() else try { JSONObject(content) } catch (_: Exception) {
-                throw ApiFailure(status, "INVALID_RESPONSE", "服务响应无法读取，请检查服务地址。")
+                throw ApiFailure(status, "INVALID_RESPONSE", "无法读取念念服务的响应，请稍后重试。")
             }
             if (status !in 200..299) {
                 val error = json.optJSONObject("error")
@@ -200,15 +205,7 @@ class FamilyRepository(
         } finally { connection.disconnect() }
     }
 
-    suspend fun login(address: String, elder: Boolean, deviceId: String) {
-        check(configuredOrigin == null) { "请使用个人账号登录。" }
-        val body = JSONObject().put("credential", JSONObject().put("type", "DEMO")
-            .put("identifier", if (elder) "demo-elder" else "demo-child"))
-            .put("device", JSONObject().put("device_id", deviceId).put("name", if (elder) "演示长辈设备" else "演示家人设备").put("app_version", "0.1.0"))
-        signIn(address, "/v1/auth/login", body, personalAccount = false)
-    }
-
-    suspend fun loginAccount(address: String, elder: Boolean, deviceId: String, username: String, password: String,
+    suspend fun loginAccount(elder: Boolean, deviceId: String, username: String, password: String,
                              displayName: String?) {
         val account = username.trim().lowercase()
         require(account.matches(Regex("[a-z0-9_]{4,32}"))) { "账号应为 4 至 32 个字母、数字或下划线。" }
@@ -217,28 +214,31 @@ class FamilyRepository(
             .put("name", if (elder) "念念老人端" else "念念子女端").put("app_version", "0.1.0")
         if (displayName != null) {
             require(displayName.trim().isNotEmpty()) { "请输入家人认识的称呼。" }
-            require(password.codePointCount(0, password.length) >= 15) { "密码至少需要 15 个字符。" }
+            require(password.codePointCount(0, password.length) >= MIN_ACCOUNT_PASSWORD_LENGTH) {
+                "密码至少需要 $MIN_ACCOUNT_PASSWORD_LENGTH 个字符。"
+            }
             val body = JSONObject().put("username", account).put("password", password)
                 .put("display_name", displayName.trim()).put("device", device)
-            signIn(address, "/v1/auth/register", body, personalAccount = true)
+            signIn("/v1/auth/register", body)
         } else {
             val credential = JSONObject().put("type", "PASSWORD").put("identifier", account).put("proof", password)
             val body = JSONObject().put("credential", credential).put("device", device)
-            signIn(address, "/v1/auth/login", body, personalAccount = true)
+            signIn("/v1/auth/login", body)
         }
     }
 
-    private suspend fun signIn(address: String, path: String, body: JSONObject, personalAccount: Boolean) =
+    private suspend fun signIn(path: String, body: JSONObject) =
         requestMutex.withLock {
             withContext(Dispatchers.IO) {
-                val origin = ConnectionPolicy.origin(configuredOrigin ?: address, debug)
+                require(accountLoginAvailable) { "当前安装包未配置念念服务。" }
+                val origin = ConnectionPolicy.origin(accountOrigin, debug)
                 val result = exchange(origin, path, "POST", body, null, null)
                 currentCoroutineContext().ensureActive()
                 onCacheInvalidated()
                 store.save(JSONObject().put("origin", origin).put("access_token", result.getString("access_token"))
                     .put("refresh_token", result.getString("refresh_token"))
                     .put("user_id", result.getJSONObject("user").getString("id"))
-                    .put("personal_account", personalAccount))
+                    .put("personal_account", true))
             }
         }
 
@@ -253,7 +253,6 @@ class FamilyRepository(
             store.clear()
             throw cancelled
         } catch (failure: Exception) {
-            store.clear()
             if (failure is ApiFailure && failure.status == 401) throw failure
             throw ApiFailure(401, "AUTH_REFRESH_UNCONFIRMED", "登录更新结果未确认，请重新登录。")
         }

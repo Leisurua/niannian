@@ -16,11 +16,13 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -69,6 +71,7 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
     val voiceFactory = LocalConversationVoiceFactory.current
     val voice = remember(context, voiceFactory) { voiceFactory(context) }
     var draft by remember(familyId, userId) { mutableStateOf("") }
+    var showUsage by remember(familyId, userId) { mutableStateOf(false) }
     var permissionSession by remember(familyId, userId) { mutableStateOf<String?>(null) }
     var pendingVoiceEntry by remember(familyId, userId, startWithVoice, handsFree) { mutableStateOf(startWithVoice || handsFree) }
     fun beginVoice() {
@@ -140,9 +143,16 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
         onDispose { owner.lifecycle.removeObserver(observer); permissionSession = null; draft = ""; model.clear() }
     }
     if (state.family != familyId || state.user != userId) return
+    if (showUsage) ConversationUsageDialog(handsFree, state.llmMode) { showUsage = false }
     Card(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("念念 AI 陪伴", fontSize = 26.sp)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("念念 AI 陪伴", modifier = Modifier.weight(1f), fontSize = 26.sp)
+                TextButton(onClick = { showUsage = true },
+                    enabled = !state.busy && !state.voiceActive && permissionSession == null && !pendingVoiceEntry) {
+                    Text("使用与隐私说明", fontSize = 16.sp)
+                }
+            }
             if (onClose != null) Control("返回", true, onClose)
             val phase = state.companionPhase
             val canSpeak = !unavailable && permissionSession == null && (state.connected || !state.busy)
@@ -226,25 +236,13 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
                     Control("暂时不聊", !unavailable && !state.busy) { model.respondToInvitation("DECLINE") }
                     Control("今天少打扰我", !unavailable && !state.busy) { model.respondToInvitation("PAUSE_TODAY") }
                 }
-                Text(when (state.llmMode) {
-                    "real" -> "AI 对话 · 支持语音和文字"
-                    "mock" -> "闲聊为 Mock 演示 · 日期、天气和提醒查询使用实际数据"
-                    else -> "连接后可说话或打字"
-                }, color = MaterialTheme.colorScheme.primary)
-                Text("需要家人帮助时，点说话并说“我要向家人求助”。发送和处理结果以实际记录为准。", fontSize = 18.sp)
-                Text("我是 AI，不是真实家人。会话回顾需要本人明确授权；不会自动联系家人。", fontSize = 18.sp)
-                Text("可以问“今天几号”“今天会下雨吗”“今天有什么安排”，再说“第一项完成了”或“第一项稍后处理”。天气使用首页选择的城市。", fontSize = 18.sp)
-                Text(if (handsFree) "回答结束后可继续说话，也可以说“结束聊天”。"
-                    else "点击说话后可说“再说一遍”“慢一点”“恢复语速”“停一下”或“结束聊天”。播放时可点“打断并说话”或停止。", fontSize = 18.sp)
-                if (state.llmMode == "real") Text("想让家人核对一段往事，可以说“请把这段记忆交给家人确认：”再说一句自己的往事或偏好。", fontSize = 18.sp)
-                Text("已内置中文模型时，声音在本机识别。系统识别和朗读服务可能联网。应用不保存录音；控制口令直接执行，其他文字用于查询或 AI 对话。请勿说出密码或验证码。", fontSize = 18.sp)
+                if (state.llmMode == "mock") Text("闲聊为 Mock 演示", color = MaterialTheme.colorScheme.primary)
                 if (state.connected && !state.voiceAllowed)
                     Text("语音尚未授权：请在“家庭与授权设置 → 用于我与念念的交流”中允许语音处理。文字聊天仍可使用。", fontSize = 18.sp)
                 if (state.connected) {
                     Control(if (state.voiceEnabled) "关闭朗读" else "开启朗读", !unavailable && state.voiceAllowed) { model.toggleSpeech() }
                     Control("再说一遍", !unavailable && !state.busy && !state.recording && !state.recognizing && state.reply.isNotEmpty()) { model.repeat() }
                     Control(if (state.slowSpeech) "恢复语速" else "说慢一点", !unavailable) { model.toggleSpeechRate() }
-                    Text("朗读音量可用手机音量键调整。", fontSize = 18.sp)
                 }
                 Control(if (state.slow) "恢复字号" else "放大文字", !state.busy) { model.slowDown() }
                 Control("结束聊天", state.id.isNotEmpty() && !unavailable) { draft = ""; model.end() }
@@ -252,6 +250,28 @@ fun ConversationPanel(model: ConversationModel, familyId: String, userId: String
             }
         }
     }
+}
+
+@Composable
+private fun ConversationUsageDialog(handsFree: Boolean, llmMode: String, onClose: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("使用与隐私说明") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("我是 AI，不是真实家人。会话回顾需要本人明确授权；不会自动联系家人。", fontSize = 18.sp)
+                Text("需要家人帮助时，点说话并说“我要向家人求助”。发送和处理结果以实际记录为准。", fontSize = 18.sp)
+                Text("可以问“今天几号”“今天会下雨吗”“今天有什么安排”，再说“第一项完成了”或“第一项稍后处理”。天气使用首页选择的城市。", fontSize = 18.sp)
+                Text(if (handsFree) "回答结束后可继续说话，也可以说“结束聊天”。"
+                    else "点击说话后可说“再说一遍”“慢一点”“恢复语速”“停一下”或“结束聊天”。播放时可点“打断并说话”或停止。", fontSize = 18.sp)
+                Text("朗读音量可用手机音量键调整。", fontSize = 18.sp)
+                if (llmMode == "real") Text("想让家人核对一段往事，可以说“请把这段记忆交给家人确认：”再说一句自己的往事或偏好。", fontSize = 18.sp)
+                if (llmMode == "mock") Text("闲聊为 Mock 演示，日期、天气和提醒查询使用实际数据。", fontSize = 18.sp)
+                Text("已内置中文模型时，声音在本机识别。系统识别和朗读服务可能联网。应用不保存录音；控制口令直接执行，其他文字用于查询或 AI 对话。请勿说出密码或验证码。", fontSize = 18.sp)
+            }
+        },
+        confirmButton = { TextButton(onClick = onClose) { Text("关闭", fontSize = 18.sp) } },
+    )
 }
 
 @Composable private fun Control(label: String, enabled: Boolean, action: () -> Unit) {

@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.auth.api import limit_attempt
 from app.modules.family import service
 from app.modules.family.schemas import FamilyCreate, InvitationAccept, InvitationCreate, MemberUpdate
 from app.platform.authentication import current_identity
@@ -42,10 +43,14 @@ async def invite(family_id: UUID, body: InvitationCreate, request: Request, idem
 
 @router.post('/family-invitations/{token}/accept', operation_id='acceptFamilyInvitation')
 async def accept(token: str, body: InvitationAccept, request: Request, actor=Depends(current_identity), db: AsyncSession = Depends(transaction)):
-    if not 16 <= len(token) <= 512:
+    settings = get_settings()
+    if settings.auth_mode == 'password':
+        host = request.client.host if request.client else 'unknown'
+        limit_attempt(f'pairing:host:{host}', 30, 'FAMILY_INVITATION_RATE_LIMITED')
+        limit_attempt(f'pairing:user:{actor.user_id}', 10, 'FAMILY_INVITATION_RATE_LIMITED')
+    if not 8 <= len(token) <= 512:
         raise AppError('FAMILY_INVITATION_INVALID', '邀请无效或已失效。', 404)
-    return {**await service.accept(db, actor, token, body, request.state.request_id,
-                                   require_preview=get_settings().auth_mode == 'password'),
+    return {**await service.accept(db, actor, token, body, settings, request.state.request_id),
             'request_id': request.state.request_id}
 
 

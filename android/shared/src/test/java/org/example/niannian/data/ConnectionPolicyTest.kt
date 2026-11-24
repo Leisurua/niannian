@@ -25,6 +25,10 @@ class ConnectionPolicyTest {
     }
 
     @Test fun pairingCodeCanBeReadOrPastedInGroups() {
+        assertEquals("A3CD2345", ConnectionPolicy.displayPairingCode("A3CD2345"))
+        assertEquals("A3CD2345", ConnectionPolicy.invitation("a3cd2345"))
+        assertEquals("A3CD2345", ConnectionPolicy.invitation(" a3cd-2345 "))
+        assertEquals("A3CD2345", ConnectionPolicy.invitation("A3CD 2345"))
         val code = "ABCD2345EFGH6723"
         assertEquals("ABCD-2345-EFGH-6723", ConnectionPolicy.displayPairingCode(code))
         assertEquals(code, ConnectionPolicy.invitation("abcd-2345-efgh-6723"))

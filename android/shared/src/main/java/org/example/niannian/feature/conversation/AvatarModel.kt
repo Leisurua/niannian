@@ -116,6 +116,10 @@ class AvatarModel(private val gateway: PortraitGateway, private val store: Avata
             message = "暂时无法核对形象授权，已恢复默认形象，请联网后重试。")
     }
 
+    fun packPickerUnavailable() {
+        current.value = current.value.copy(message = "无法打开系统文件选择器，请检查手机的文件管理应用。")
+    }
+
     fun importPack(read: suspend () -> ByteArray): Job? {
         val snapshot = current.value
         if (!snapshot.allowed || snapshot.busy) return null

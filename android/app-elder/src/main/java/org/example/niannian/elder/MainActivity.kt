@@ -21,7 +21,6 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import java.util.UUID
-import org.example.niannian.core.common.RuntimeConfig
 import org.example.niannian.core.telemetry.AppExecutionBoundary
 import org.example.niannian.core.telemetry.TelemetryLogger
 import org.example.niannian.feature.family.CompanionModel
@@ -111,13 +110,12 @@ class MainActivity : ComponentActivity() {
             val avatarModel = ViewModelProvider(this, factory)[AvatarModel::class.java]
             appearance = avatarModel
             val avatarGeneration = ViewModelProvider(this, factory)[AvatarGenerationModel::class.java]
-            val runtime = RuntimeConfig.fromBuildValues(BuildConfig.ENVIRONMENT, BuildConfig.PROVIDER_MODE)
             setContent {
                 val state by model.state.collectAsState()
                 val target = state.selected?.takeIf { state.loggedIn && state.userId.isNotBlank() && it.status == "ACTIVE" && it.role == "ELDER" }
                     ?.let { HelpButtonTarget(state.userId, it.id) }
                 CompositionLocalProvider(LocalConversationVoiceFactory provides ::elderConversationVoice) {
-                    CompanionScreen(model, runtime.statusLabel, reminderModel, memoryModel, toolsModel,
+                    CompanionScreen(model, reminderModel, memoryModel, toolsModel,
                         messages = messageModel,
                         notifications = notificationModel,
                         avatar = avatarModel,

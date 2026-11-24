@@ -19,7 +19,7 @@ data class FamilyChoice(val id: String, val name: String, val role: String, val 
 data class Member(val id: String, val userId: String, val name: String, val role: String, val status: String, val version: Long, val permissions: List<String>)
 data class Permission(val id: String, val scope: String, val status: String, val version: Long, val expiry: String)
 data class CompanionState(
-    val busy: Boolean = false, val loggedIn: Boolean = false, val address: String = "http://10.0.2.2:8000",
+    val busy: Boolean = false, val loggedIn: Boolean = false,
     val userId: String = "", val userName: String = "", val families: List<FamilyChoice> = emptyList(),
     val selected: FamilyChoice? = null, val creator: String = "", val members: List<Member> = emptyList(),
     val permissions: List<Permission> = emptyList(), val selfPermissions: List<Permission> = emptyList(), val invite: String = "", val error: String = "",
@@ -31,17 +31,16 @@ class CompanionModel(private val repository: FamilyRepository, val elder: Boolea
     private val taskScope: CoroutineScope? = null) : ViewModel() {
     val voiceProfiles = org.example.niannian.feature.voice.VoiceProfilesModel(repository, taskScope ?: viewModelScope)
     val accountRepository get() = repository
-    val configuredOrigin get() = repository.configuredOrigin
-    val demoLoginAvailable get() = configuredOrigin == null
+    val accountLoginAvailable get() = repository.accountLoginAvailable
     fun accountDeleted() {
         voiceProfiles.bind("", "", elder)
-        current.value = CompanionState(address = current.value.address, message = "可使用独立凭证查询删除进度。")
+        current.value = CompanionState(message = "可使用独立凭证查询删除进度。")
     }
     private val current = MutableStateFlow(CompanionState())
     val state = current.asStateFlow()
 
     init { action {
-        current.value = current.value.copy(address = repository.savedOrigin(), loggedIn = repository.hasSession())
+        current.value = current.value.copy(loggedIn = repository.hasSession())
         if (current.value.loggedIn) home()
     } }
 
@@ -52,7 +51,7 @@ class CompanionModel(private val repository: FamilyRepository, val elder: Boolea
             try { work() }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (error: ApiFailure) {
-                if (error.status == 401 && current.value.loggedIn) current.value = CompanionState(address = current.value.address, error = "登录已失效，请重新登录。")
+                if (error.status == 401 && current.value.loggedIn) current.value = CompanionState(error = "登录已失效，请重新登录。")
                 else if (error.status == 403 || error.status == 404) {
                     repository.invalidateLocalData()
                     current.value = current.value.copy(selected = null,
@@ -66,18 +65,10 @@ class CompanionModel(private val repository: FamilyRepository, val elder: Boolea
         }
     }
 
-    fun login(address: String) = action {
-        repository.login(address, elder, deviceId)
-        finishLogin()
-    }
-
-    fun loginAccount(address: String, username: String, password: String, displayName: String?) = action {
-        repository.loginAccount(address, elder, deviceId, username, password, displayName)
-        finishLogin()
-    }
-
-    private suspend fun finishLogin() {
-        current.value = CompanionState(busy = true, loggedIn = true, address = repository.savedOrigin())
+    fun loginAccount(username: String, password: String, displayName: String?) = action {
+        repository.loginAccount(elder, deviceId, username, password, displayName)
+        val message = if (displayName == null) "已登录。" else "账号已创建并登录。"
+        current.value = CompanionState(busy = true, loggedIn = true, message = message)
         home()
     }
 
@@ -142,14 +133,16 @@ class CompanionModel(private val repository: FamilyRepository, val elder: Boolea
         home(result.getString("id"))
     }
 
-    fun invite(role: String) = action {
+    fun inviteElder() = action {
+        require(!elder)
         val family = current.value.selected ?: return@action
-        val result = repository.call("/v1/families/${family.id}/invitations", "POST", JSONObject().put("target_role", role)
+        val result = repository.call("/v1/families/${family.id}/invitations", "POST", JSONObject().put("target_role", "ELDER")
             .put("expires_at", Instant.now().plusSeconds(600).toString()).put("max_usage", 1), true)
         current.value = current.value.copy(invite = result.getString("token"), message = "配对码十分钟内有效，可使用一次。请只发给受邀家人。")
     }
 
     fun inspectInvitation(code: String) = action {
+        require(elder)
         val token = ConnectionPolicy.invitation(code)
         val member = repository.call("/v1/family-invitations/$token/accept", "POST", JSONObject())
         repository.saveInvitation(token, member.getString("family_id"), member.optString("inviter_display_name"))
@@ -158,6 +151,7 @@ class CompanionModel(private val repository: FamilyRepository, val elder: Boolea
     }
 
     fun confirmInvitation() = action {
+        require(elder)
         require(InvitationPolicy.canConfirm(current.value.selected?.id, current.value.selected?.status,
             repository.invitationFamily())) { "请重新读取当前家庭的配对码，核对后再确认。" }
         val token = ConnectionPolicy.invitation(repository.pendingInvitation())
@@ -232,7 +226,7 @@ class CompanionModel(private val repository: FamilyRepository, val elder: Boolea
         try { repository.call(if (allDevices) "/v1/auth/logout-all" else "/v1/auth/logout", "POST"); reachedServer = true }
         finally {
             repository.clear()
-            current.value = CompanionState(busy = true, address = current.value.address,
+            current.value = CompanionState(busy = true,
                 message = if (reachedServer) "已退出登录。" else "本机登录已清除；服务端及其他设备退出状态尚未确认。")
         }
     }

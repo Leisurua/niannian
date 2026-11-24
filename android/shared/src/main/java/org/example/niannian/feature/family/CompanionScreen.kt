@@ -20,6 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import org.example.niannian.feature.voice.LocalVoiceProfiles
@@ -33,10 +34,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.activity.compose.BackHandler
 import org.example.niannian.data.ConnectionPolicy
+import org.example.niannian.data.MIN_ACCOUNT_PASSWORD_LENGTH
 import org.example.niannian.feature.reminder.ReminderModel
 import org.example.niannian.feature.memory.MemoryModel
 import org.example.niannian.feature.conversation.ConversationModel
@@ -54,7 +57,7 @@ private val scopeLabels = linkedMapOf("VOICE" to "语音处理", "PORTRAIT" to "
 private data class ConsentChange(val familyId: String, val scope: String, val revokeId: String? = null, val self: Boolean = false)
 
 @Composable
-fun CompanionScreen(model: CompanionModel, environmentLabel: String,
+fun CompanionScreen(model: CompanionModel,
     reminders: ReminderModel, memories: MemoryModel, tools: ConversationToolsModel,
     conversation: ConversationModel? = null, notifications: NotificationModel? = null,
     messages: MessageModel? = null, onNotifications: () -> Unit = {}, offlineContent: @Composable () -> Unit = {},
@@ -65,14 +68,14 @@ fun CompanionScreen(model: CompanionModel, environmentLabel: String,
         state.loggedIn && !state.offline && state.error.isBlank(), state.busy,
         state.selfPermissions.filter { it.scope == "PORTRAIT" }.toString(), avatarGeneration) {
         CompositionLocalProvider(LocalVoiceProfiles provides model.voiceProfiles) {
-            CompanionScreenContent(model, environmentLabel, reminders, memories, tools, conversation, notifications,
+            CompanionScreenContent(model, reminders, memories, tools, conversation, notifications,
                 messages, onNotifications, offlineContent, notificationSettings, elderDeviceSettings)
         }
     }
 }
 
 @Composable
-private fun CompanionScreenContent(model: CompanionModel, environmentLabel: String,
+private fun CompanionScreenContent(model: CompanionModel,
     reminders: ReminderModel, memories: MemoryModel, tools: ConversationToolsModel,
     conversation: ConversationModel?, notifications: NotificationModel?, messages: MessageModel?,
     onNotifications: () -> Unit, offlineContent: @Composable () -> Unit, notificationSettings: @Composable () -> Unit,
@@ -84,7 +87,7 @@ private fun CompanionScreenContent(model: CompanionModel, environmentLabel: Stri
     var revokeMember by remember { mutableStateOf<Member?>(null) }
     var consentChange by remember { mutableStateOf<ConsentChange?>(null) }
     var showFamilySettings by rememberSaveable {
-        mutableStateOf(model.configuredOrigin != null && !model.accountRepository.hasSession())
+        mutableStateOf(!model.accountRepository.hasSession())
     }
     var showAccount by rememberSaveable { mutableStateOf(false) }
     if (model.elder) {
@@ -158,13 +161,12 @@ private fun CompanionScreenContent(model: CompanionModel, environmentLabel: Stri
             Text("家庭与授权设置", fontSize = 28.sp)
             if (model.elder) elderDeviceSettings(state)
             Button(onClick = { showAccount = true }, enabled = !state.busy) { Text("本人数据管理 / 删除回执") }
-            if (model.demoLoginAvailable) Text(environmentLabel, color = MaterialTheme.colorScheme.primary)
             Text("念念是 AI 陪伴助手，不是真实家人。", fontSize = 18.sp)
-            if (state.busy) CircularProgressIndicator()
-            if (state.error.isNotEmpty()) {
+            if (state.busy && state.loggedIn) CircularProgressIndicator()
+            if (state.error.isNotEmpty() && state.loggedIn) {
                 Text(state.error, color = MaterialTheme.colorScheme.error, fontSize = 18.sp)
-                if (state.offline && state.loggedIn) Text("以下为本次已加载信息，当前状态尚未重新确认。")
-                if (!state.pendingWrite && state.loggedIn) Action("重新读取", state.busy) { model.reload() }
+                if (state.offline) Text("以下为本次已加载信息，当前状态尚未重新确认。")
+                if (!state.pendingWrite) Action("重新读取", state.busy) { model.reload() }
             }
             if (state.pendingWrite) {
                 Text("上次操作的结果尚未确认，请先重试。", fontSize = 18.sp)
@@ -189,11 +191,14 @@ private fun CompanionScreenContent(model: CompanionModel, environmentLabel: Stri
                     OutlinedTextField(familyName, { familyName = it }, label = { Text("新家庭称呼") }, modifier = Modifier.fillMaxWidth(), enabled = !state.busy)
                     Action("创建家庭", mutationUnavailable) { model.createFamily(familyName) }
                 }
-                OutlinedTextField(invitation, { invitation = it }, label = { Text("家人提供的家庭配对码") },
-                    modifier = Modifier.fillMaxWidth(), singleLine = true, enabled = !state.busy)
-                Action("查看邀请信息", mutationUnavailable || invitation.isBlank()) { model.inspectInvitation(invitation) }
                 val selected = state.selected
-                if (selected?.status == "PENDING") {
+                if (model.elder) {
+                    OutlinedTextField(invitation, { invitation = it }, label = { Text("8 位邀请码") },
+                        modifier = Modifier.fillMaxWidth(), singleLine = true, enabled = !state.busy,
+                        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false))
+                    Action("查看邀请信息", mutationUnavailable || invitation.isBlank()) { model.inspectInvitation(invitation) }
+                }
+                if (model.elder && selected?.status == "PENDING") {
                     Text("待确认家庭：${selected.name}；角色：${roleLabel(selected.role)}", fontSize = 20.sp)
                     if (state.invitationInviter.isNotBlank()) Text("邀请人：${state.invitationInviter}", fontSize = 18.sp)
                     Text("请先联系家人核对这份邀请。加入后，您可以在设置里逐项选择是否共享数据。")
@@ -202,8 +207,7 @@ private fun CompanionScreenContent(model: CompanionModel, environmentLabel: Stri
                 if (selected?.status == "ACTIVE") {
                     Text(selected.name, fontSize = 24.sp)
                     if (!model.elder && state.canManageMembers) {
-                        Action("生成长辈配对码", mutationUnavailable) { model.invite("ELDER") }
-                        Action("邀请紧急联系人", mutationUnavailable) { model.invite("EMERGENCY_CONTACT") }
+                        Action("生成长辈邀请码", mutationUnavailable) { model.inviteElder() }
                         if (state.invite.isNotEmpty()) PairingCode(state.invite, mutationUnavailable)
                     }
                     ContactSettingsPanel(model, selected.id, mutationUnavailable)
@@ -264,40 +268,46 @@ private fun CompanionScreenContent(model: CompanionModel, environmentLabel: Stri
 
 @Composable
 private fun AccountLoginForm(model: CompanionModel, state: CompanionState) {
-    var address by remember(state.address) { mutableStateOf(state.address) }
     var registering by remember { mutableStateOf(false) }
     var username by remember { mutableStateOf("") }
     var displayName by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var showPassword by remember { mutableStateOf(false) }
     val field = Modifier.fillMaxWidth()
-    if (model.configuredOrigin == null) {
-        OutlinedTextField(address, { address = it }, label = { Text("服务地址") },
-            modifier = field, singleLine = true, enabled = !state.busy)
-    }
-    OutlinedTextField(username, { username = it }, label = { Text("账号") },
-        supportingText = { if (registering) Text("4–32 个字母、数字或下划线") },
-        modifier = field, singleLine = true, enabled = !state.busy)
+    OutlinedTextField(username, { username = it }, label = { Text("登录账号") },
+        supportingText = { Text(if (registering) "4–32 个字母、数字或下划线" else "使用注册时填写的登录账号") },
+        modifier = field, singleLine = true, enabled = !state.busy,
+        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false))
     if (registering) {
         OutlinedTextField(displayName, { displayName = it }, label = { Text("家人认识的称呼") },
             modifier = field, singleLine = true, enabled = !state.busy)
     }
     OutlinedTextField(password, { password = it }, label = { Text("密码") },
-        supportingText = { if (registering) Text("至少 15 个字符") },
+        supportingText = { if (registering) Text("至少 $MIN_ACCOUNT_PASSWORD_LENGTH 个字符") },
         modifier = field, singleLine = true, enabled = !state.busy,
-        visualTransformation = PasswordVisualTransformation(),
+        visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+        trailingIcon = {
+            TextButton(onClick = { showPassword = !showPassword }, enabled = !state.busy) {
+                Text(if (showPassword) "隐藏" else "显示")
+            }
+        },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
-    Action(if (registering) "注册并登录" else "登录",
-        state.busy || username.isBlank() || password.isEmpty() || (registering && displayName.isBlank())) {
-        model.loginAccount(address, username, password, if (registering) displayName else null)
-        password = ""
+    if (state.error.isNotEmpty()) Text(state.error, color = MaterialTheme.colorScheme.error, fontSize = 18.sp)
+    if (!model.accountLoginAvailable) Text("当前安装包未配置念念服务。", color = MaterialTheme.colorScheme.error)
+    val submitLabel = when {
+        state.busy -> "正在连接…"
+        registering -> "注册并登录"
+        else -> "登录"
     }
-    OutlinedButton(enabled = !state.busy, onClick = { registering = !registering; password = "" },
+    Action(submitLabel, state.busy || !model.accountLoginAvailable || username.isBlank() || password.isEmpty() ||
+        (registering && displayName.isBlank())) {
+        model.loginAccount(username, password, if (registering) displayName else null)
+        password = ""
+        showPassword = false
+    }
+    OutlinedButton(enabled = !state.busy, onClick = { registering = !registering; password = ""; showPassword = false },
         modifier = field.heightIn(min = 52.dp)) {
         Text(if (registering) "已有账号，返回登录" else "创建个人账号", fontSize = 18.sp)
-    }
-    if (model.demoLoginAvailable) {
-        Action("通过 USB 登录演示账号", state.busy) { model.login("http://127.0.0.1:8000") }
-        Action("用填写的地址登录演示账号", state.busy || address.isBlank()) { model.login(address) }
     }
 }
 
